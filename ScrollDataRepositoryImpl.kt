@@ -1,0 +1,212 @@
+package com.example.scrolltrack.data
+
+import android.app.Application
+import android.app.usage.UsageStats
+import android.app.usage.UsageStatsManager
+import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.util.Log
+import com.example.scrolltrack.db.DailyAppUsageDao // Ensure this is imported
+import com.example.scrolltrack.db.DailyAppUsageRecord
+import com.example.scrolltrack.db.ScrollSessionDao
+import com.example.scrolltrack.db.ScrollSessionRecord
+import com.example.scrolltrack.util.DateUtil
+import kotlinx.coroutines.flow.Flow
+import java.util.Calendar
+import java.util.Date
+
+class ScrollDataRepositoryImpl(
+    private val scrollSessionDao: ScrollSessionDao,
+    private val dailyAppUsageDao: DailyAppUsageDao, // Make sure this is passed in constructor
+    private val application: Application
+) : ScrollDataRepository {
+
+    private val TAG_REPO = "ScrollDataRepoImpl"
+    private val packageManager: PackageManager = application.packageManager
+
+    override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> {
+        return scrollSessionDao.getAggregatedScrollDataForDate(dateString)
+    }
+
+    override fun getTotalScrollForDate(dateString: String): Flow<Long?> {
+        return scrollSessionDao.getTotalScrollForDate(dateString)
+    }
+
+    override fun getAllSessions(): Flow<List<ScrollSessionRecord>> {
+        return scrollSessionDao.getAllSessionsFlow()
+    }
+
+    // New method implementation
+    override fun getDailyUsageRecordsForDate(dateString: String): Flow<List<DailyAppUsageRecord>> {
+        return dailyAppUsageDao.getUsageForDate(dateString)
+    }
+
+    override suspend fun updateTodayAppUsageStats(): Boolean {
+        val usageStatsManager =
+            application.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+                ?: run {
+                    Log.e(TAG_REPO, "UsageStatsManager not available for today's update.")
+                    return false
+                }
+
+        Log.d(TAG_REPO, "Starting update for today's app usage stats.")
+        val recordsToInsert = mutableListOf<DailyAppUsageRecord>()
+
+        val todayCalendar = Calendar.getInstance()
+        val dateString = DateUtil.formatDate(todayCalendar.time)
+        val dayStartTime = DateUtil.getStartOfDayMillis(dateString)
+        val dayEndTime = DateUtil.getEndOfDayMillis(dateString)
+
+        try {
+            val dailyUsageStatsList: List<UsageStats>? =
+                usageStatsManager.queryUsageStats(
+                    UsageStatsManager.INTERVAL_DAILY,
+                    dayStartTime,
+                    dayEndTime
+                )
+
+            if (dailyUsageStatsList != null && dailyUsageStatsList.isNotEmpty()) {
+                for (usageStats in dailyUsageStatsList) {
+                    if (usageStats.totalTimeInForeground > 0) {
+                        recordsToInsert.add(
+                            DailyAppUsageRecord(
+                                packageName = usageStats.packageName,
+                                dateString = dateString,
+                                usageTimeMillis = usageStats.totalTimeInForeground,
+                                lastUpdatedTimestamp = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG_REPO, "Error fetching or processing usage stats for today's update for $dateString", e)
+            return false // Indicate failure
+        }
+
+        if (recordsToInsert.isNotEmpty()) {
+            try {
+                dailyAppUsageDao.insertAllUsage(recordsToInsert)
+                Log.i(TAG_REPO, "Successfully inserted/updated ${recordsToInsert.size} usage records for today ($dateString).")
+            } catch (e: Exception) {
+                Log.e(TAG_REPO, "Error inserting today's usage records into database for $dateString.", e)
+                return false // Indicate failure
+            }
+        } else {
+            Log.i(TAG_REPO, "No new usage records to insert for today ($dateString).")
+        }
+        return true // Indicate success
+    }
+
+    override suspend fun getTotalUsageTimeMillisForDate(dateString: String): Long? {
+        val usageStatsManager =
+            application.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+                ?: run {
+                    Log.e(TAG_REPO, "UsageStatsManager not available.")
+                    return null
+                }
+
+        val startTime = DateUtil.getStartOfDayMillis(dateString)
+        val endTime = DateUtil.getEndOfDayMillis(dateString)
+
+        Log.d(TAG_REPO, "Querying UsageStats from: ${Date(startTime)} to: ${Date(endTime)} for filtered usage time on $dateString.")
+
+        var totalFilteredUsageTime: Long = 0
+        try {
+            val usageStatsList: List<UsageStats>? =
+                usageStatsManager.queryUsageStats(
+                    UsageStatsManager.INTERVAL_DAILY,
+                    startTime,
+                    endTime
+                )
+
+            if (usageStatsList != null && usageStatsList.isNotEmpty()) {
+                for (usageStats in usageStatsList) {
+                    if (usageStats.totalTimeInForeground > 0) {
+                        val packageName = usageStats.packageName
+                        if (packageName == application.packageName) continue
+                        try {
+                            val appInfo: ApplicationInfo = packageManager.getApplicationInfo(packageName, 0)
+                            if ((appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0) &&
+                                (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP == 0)) {
+                                continue
+                            }
+                            if (packageManager.getLaunchIntentForPackage(packageName) == null) {
+                                continue
+                            }
+                            totalFilteredUsageTime += usageStats.totalTimeInForeground
+                        } catch (e: PackageManager.NameNotFoundException) {
+                            // Log.w(TAG_REPO, "Package info not found during total calculation: $packageName for date $dateString")
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG_REPO, "Error calculating total usage stats for $dateString", e)
+            return null
+        }
+        return totalFilteredUsageTime
+    }
+
+    override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean {
+        val usageStatsManager =
+            application.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+                ?: run {
+                    Log.e(TAG_REPO, "UsageStatsManager not available for backfill.")
+                    return false
+                }
+
+        Log.i(TAG_REPO, "Starting historical app usage data backfill for the last $numberOfDays days.")
+        val recordsToInsert = mutableListOf<DailyAppUsageRecord>()
+
+        for (i in 0 until numberOfDays) {
+            val targetCalendar = Calendar.getInstance()
+            targetCalendar.add(Calendar.DAY_OF_YEAR, -i)
+            val dateString = DateUtil.formatDate(targetCalendar.time)
+            val dayStartTime = DateUtil.getStartOfDayMillis(dateString)
+            val dayEndTime = DateUtil.getEndOfDayMillis(dateString)
+
+            try {
+                val dailyUsageStatsList: List<UsageStats>? =
+                    usageStatsManager.queryUsageStats(
+                        UsageStatsManager.INTERVAL_DAILY,
+                        dayStartTime,
+                        dayEndTime
+                    )
+
+                if (dailyUsageStatsList != null && dailyUsageStatsList.isNotEmpty()) {
+                    for (usageStats in dailyUsageStatsList) {
+                        if (usageStats.totalTimeInForeground > 0) {
+                            // No filtering here for raw storage, filtering happens when calculating total or displaying
+                            recordsToInsert.add(
+                                DailyAppUsageRecord(
+                                    packageName = usageStats.packageName,
+                                    dateString = dateString,
+                                    usageTimeMillis = usageStats.totalTimeInForeground,
+                                    lastUpdatedTimestamp = System.currentTimeMillis()
+                                )
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG_REPO, "Error fetching or processing usage stats during backfill for $dateString", e)
+                // Decide if one day's error should stop the whole backfill or just skip the day
+            }
+        }
+
+        if (recordsToInsert.isNotEmpty()) {
+            try {
+                dailyAppUsageDao.insertAllUsage(recordsToInsert) // Use the correct DAO
+                Log.i(TAG_REPO, "Successfully inserted/updated ${recordsToInsert.size} historical usage records.")
+            } catch (e: Exception) {
+                Log.e(TAG_REPO, "Error inserting historical usage records into database.", e)
+                return false
+            }
+        } else {
+            Log.i(TAG_REPO, "No new historical usage records to insert from backfill.")
+        }
+        return true
+    }
+}
