@@ -85,3 +85,53 @@ val md_theme_dark_surfaceContainerLow = Color(0xFF1D1B22)
 val md_theme_dark_surfaceContainer = Color(0xFF211F26)
 val md_theme_dark_surfaceContainerHigh = Color(0xFF2B2930)
 val md_theme_dark_surfaceContainerHighest = Color(0xFF36343B)
+
+// Revamped Dark Theme for ScrollTrack - "Vibrant Dark"
+
+// Base Colors
+val VibrantDarkBackground = Color(0xFF0A0A0A) // True black for deepest background
+val VibrantDarkSurface = Color(0xFF181818)    // Very dark grey for primary surfaces (cards, sheets)
+val VibrantDarkSurfaceVariant = Color(0xFF282828) // Slightly lighter dark grey for secondary surfaces or elements
+
+// On-Colors (Text/Icons on Base Colors)
+val VibrantDarkOnBackground = Color(0xFFF5F5F5) // Near white for text on black background
+val VibrantDarkOnSurface = Color(0xFFF0F0F0)    // Slightly off-white for text on dark surfaces
+val VibrantDarkOnSurfaceVariant = Color(0xFFE0E0E0) // Slightly darker off-white for less emphasis
+
+// Primary Accent - Dynamic Blue
+val VibrantPrimaryBlue = Color(0xFF42A5F5)      // Bright, accessible Blue
+val VibrantPrimaryBlueDarker = Color(0xFF1E88E5) // Darker blue for container/pressed
+val VibrantOnPrimaryBlue = Color(0xFFFFFFFF)     // White text on blue
+
+// Secondary Accent - Energetic Green
+val VibrantSecondaryGreen = Color(0xFF66BB6A)   // Pleasant Green
+val VibrantSecondaryGreenDarker = Color(0xFF4CAF50) // Darker green for container/pressed
+val VibrantOnSecondaryGreen = Color(0xFF000000)  // Black text on green for contrast
+
+// Tertiary Accent - Rich Purple (Renamed from VibrantAccentPurple for consistency if used as Tertiary)
+val VibrantTertiaryPurple = Color(0xFFBA68C8)      // Soft Purple (was VibrantAccentPurple)
+val VibrantTertiaryPurpleDarker = Color(0xFFAB47BC) // Darker purple for container/pressed (was VibrantAccentPurpleDarker)
+val VibrantOnTertiaryPurple = Color(0xFFFFFFFF)    // White text on purple (was VibrantOnAccentPurple)
+
+// Status & Utility Colors
+val VibrantErrorRed = Color(0xFFEF5350)         // Standard Error Red
+val VibrantOnErrorRed = Color(0xFFFFFFFF)        // White text on Error Red
+
+val VibrantDivider = Color(0xFF424242)          // Subtle divider, darker than old AppDividerDark
+
+// Phone Usage Status Colors (Used in MainActivity)
+val UsageStatusGreen = Color(0xFF69F0AE)        // Bright, positive green
+val UsageStatusOrange = Color(0xFFFFAB40)       // Warning orange
+val UsageStatusRed = Color(0xFFFF5252)          // Alert red
+
+// Custom colors based on the inspirational UI (PREVIOUS LIGHT THEME - COMMENTING OUT FOR NOW)
+/*
+val AppLightBackground = Color(0xFFF7F8FF)
+val AppPrimaryBlue = Color(0xFF007AFF)
+// ... rest of the light theme colors ...
+val AppGraphPurpleLight = Color(0xFFE1BEE7) // Lighter purple for graph fills
+*/
+
+// Ensure the Material Design default dark colors are still available if needed by the default ColorScheme
+// These can be gradually replaced by the VibrantDark theme colors.
+// For now, we are defining new ones and will use them explicitly in AppNewDarkColorScheme.

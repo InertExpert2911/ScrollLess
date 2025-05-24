@@ -10,6 +10,7 @@ import android.os.Process // Import for Process.myUid()
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.scrolltrack.data.AppScrollData // Ensured this import if mapToAppScrollUiItems uses it directly
 import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.db.DailyAppUsageRecord // For type from repository
 import com.example.scrolltrack.util.ConversionUtil
@@ -59,63 +60,52 @@ class MainViewModel(
     // --- Helper function to filter and map DailyAppUsageRecords to AppUsageUiItems ---
     private suspend fun processUsageRecords(records: List<DailyAppUsageRecord>): List<AppUsageUiItem> {
         return withContext(Dispatchers.IO) {
-            records
-                /*  // Temporarily commented out for debugging - START
-                .filter { record ->
-                    if (record.packageName == application.packageName) return@filter false
-                    try {
-                        val appInfo = application.packageManager.getApplicationInfo(record.packageName, 0)
-                        if ((appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0) &&
-                            (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP == 0)) {
-                            return@filter false
-                        }
-                        if (application.packageManager.getLaunchIntentForPackage(record.packageName) == null) {
-                            return@filter false
-                        }
-                    } catch (e: PackageManager.NameNotFoundException) {
-                        return@filter false
+            records.mapNotNull { record ->
+                try {
+                    val pm = application.packageManager
+                    val appInfo = pm.getApplicationInfo(record.packageName, 0)
+                    // Basic filtering: ignore self and non-launchable system apps (similar to before)
+                    if (record.packageName == application.packageName) return@mapNotNull null
+                    if ((appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0) &&
+                        (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP == 0) &&
+                        pm.getLaunchIntentForPackage(record.packageName) == null) {
+                        return@mapNotNull null
                     }
-                    true
+
+                    AppUsageUiItem(
+                        id = record.packageName,
+                        appName = pm.getApplicationLabel(appInfo).toString(),
+                        icon = pm.getApplicationIcon(record.packageName),
+                        usageTimeMillis = record.usageTimeMillis,
+                        formattedUsageTime = DateUtil.formatDuration(record.usageTimeMillis),
+                        packageName = record.packageName
+                    )
+                } catch (e: PackageManager.NameNotFoundException) {
+                    Log.w("MainViewModel", "Package info not found for usage item ${record.packageName}, creating fallback UI item.")
+                    // Fallback for apps that might have been uninstalled but data exists
+                    AppUsageUiItem(record.packageName, record.packageName.substringAfterLast('.', record.packageName), null, record.usageTimeMillis, DateUtil.formatDuration(record.usageTimeMillis), record.packageName)
+                } catch (e: Exception) {
+                    Log.e("MainViewModel", "Error processing usage app data for ${record.packageName}", e)
+                    null
                 }
-                */ // Temporarily commented out for debugging - END
-                .mapNotNull { record ->
-                    try {
-                        val pm = application.packageManager
-                        val appInfo = pm.getApplicationInfo(record.packageName, 0)
-                        AppUsageUiItem(
-                            id = record.packageName,
-                            appName = pm.getApplicationLabel(appInfo).toString(),
-                            icon = pm.getApplicationIcon(record.packageName),
-                            usageTimeMillis = record.usageTimeMillis,
-                            formattedUsageTime = DateUtil.formatDuration(record.usageTimeMillis),
-                            packageName = record.packageName
-                        )
-                    } catch (e: PackageManager.NameNotFoundException) {
-                        Log.w("MainViewModel", "Package info not found for usage item ${record.packageName}")
-                        AppUsageUiItem(record.packageName, record.packageName.substringAfterLast('.'), null, record.usageTimeMillis, DateUtil.formatDuration(record.usageTimeMillis), record.packageName)
-                    } catch (e: Exception) {
-                        Log.e("MainViewModel", "Error processing usage app data for ${record.packageName}", e)
-                        null
-                    }
-                }.sortedByDescending { it.usageTimeMillis }
+            }.sortedByDescending { it.usageTimeMillis }
         }
     }
 
     private fun formatTotalUsageTime(totalMillis: Long?): String {
-        return if (totalMillis != null && totalMillis > 0) {
-            DateUtil.formatDuration(totalMillis)
-        } else if (totalMillis == 0L && isUsageStatsPermissionGrantedByAppOps()) { // Check permission if showing 0m
-            "0m"
-        } else {
-            "N/A" // Default if no data or permission issue (or loading)
+        return when {
+            totalMillis == null -> "N/A" // Explicitly handle null, perhaps permission not yet granted or error
+            totalMillis <= 0L && isUsageStatsPermissionGrantedByAppOps() -> "0m"
+            totalMillis <= 0L -> "N/A" // No permission or no usage
+            else -> DateUtil.formatDuration(totalMillis)
         }
     }
 
 
     // --- Data for TODAY'S SUMMARY (Main Screen) ---
     val todaysAppUsageUiList: StateFlow<List<AppUsageUiItem>> =
-        repository.getDailyUsageRecordsForDate(_todayDateString) // Uses fixed _todayDateString
-            .flatMapLatest { records -> flow { emit(processUsageRecords(records)) } }
+        repository.getDailyUsageRecordsForDate(_todayDateString)
+            .map { records -> processUsageRecords(records) } // Simplified from flatMapLatest if processUsageRecords is not returning a Flow
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     val totalPhoneUsageTodayFormatted: StateFlow<String> =
@@ -124,19 +114,25 @@ class MainViewModel(
             formatTotalUsageTime(totalMillis)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "Loading...")
 
+    // Added StateFlow for total phone usage in milliseconds for today
+    val totalPhoneUsageTodayMillis: StateFlow<Long> = 
+        todaysAppUsageUiList.map { appUsageList ->
+            appUsageList.sumOf { it.usageTimeMillis }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
+
     val aggregatedScrollDataToday: StateFlow<List<AppScrollUiItem>> =
-        repository.getAggregatedScrollDataForDate(_todayDateString) // Uses fixed _todayDateString
+        repository.getAggregatedScrollDataForDate(_todayDateString)
             .map { appScrollDataList -> mapToAppScrollUiItems(appScrollDataList) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     val totalScrollToday: StateFlow<Long> =
-        repository.getTotalScrollForDate(_todayDateString) // Uses fixed _todayDateString
+        repository.getTotalScrollForDate(_todayDateString)
             .map { it ?: 0L }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
 
     val scrollDistanceTodayFormatted: StateFlow<Pair<String, String>> =
-        totalScrollToday.map { scrollUnits ->
-            ConversionUtil.formatScrollDistance(scrollUnits, application.applicationContext)
+        totalScrollToday.map {
+            ConversionUtil.formatScrollDistance(it, application.applicationContext)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0.00 km" to "0.00 miles")
 
 
@@ -155,7 +151,7 @@ class MainViewModel(
 
 
     // Helper to map ScrollData to ScrollUiItem
-    private suspend fun mapToAppScrollUiItems(appScrollDataList: List<com.example.scrolltrack.data.AppScrollData>): List<AppScrollUiItem> {
+    private suspend fun mapToAppScrollUiItems(appScrollDataList: List<AppScrollData>): List<AppScrollUiItem> {
         return withContext(Dispatchers.IO) {
             appScrollDataList.mapNotNull { appData ->
                 try {
@@ -169,8 +165,8 @@ class MainViewModel(
                         packageName = appData.packageName
                     )
                 } catch (e: PackageManager.NameNotFoundException) {
-                    Log.w("MainViewModel", "Package info not found for scroll item ${appData.packageName}")
-                    AppScrollUiItem(appData.packageName, appData.packageName.substringAfterLast('.'), null, appData.totalScroll, appData.packageName)
+                    Log.w("MainViewModel", "Package info not found for scroll item ${appData.packageName}, creating fallback UI item.")
+                    AppScrollUiItem(appData.packageName, appData.packageName.substringAfterLast('.', appData.packageName), null, appData.totalScroll, appData.packageName)
                 } catch (e: Exception) {
                     Log.e("MainViewModel", "Error processing scroll app data for ${appData.packageName}", e)
                     null
@@ -234,19 +230,13 @@ class MainViewModel(
             val success = repository.backfillHistoricalAppUsageData(days)
             if (success) {
                 Log.i("MainViewModel", "Historical data backfill completed successfully.")
-                // Force a re-fetch for the current selected date in history view
-                // and for today's data on the main screen, in case backfill included these.
-                val tempHistoryDate = _selectedDateForHistory.value
-                _selectedDateForHistory.value = ""
-                _selectedDateForHistory.value = tempHistoryDate
-
-                // To refresh today's data if it was part of backfill (it usually is for day 0)
-                // we can re-emit _todayDateString if it were mutable, or rely on the fact that
-                // DB changes will propagate through the flows.
-                // A simple way to ensure today's flows re-evaluate if their source is DB:
-                refreshDataForToday()
-
-
+                // Refresh current views that might be affected
+                val currentHistoryDate = _selectedDateForHistory.value
+                if (currentHistoryDate != _todayDateString) { // Avoid double refresh if viewing today
+                     _selectedDateForHistory.value = "" // Force re-emission by changing value
+                     _selectedDateForHistory.value = currentHistoryDate
+                }
+                refreshDataForToday() // Always refresh today's summary
             } else {
                 Log.w("MainViewModel", "Historical data backfill failed or had issues.")
             }

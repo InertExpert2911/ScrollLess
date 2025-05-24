@@ -4,8 +4,8 @@ import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-import android.content.pm.PackageManager
-import android.graphics.drawable.Drawable
+// import android.content.pm.PackageManager // Re-evaluate if needed elsewhere, not directly by this file's Composables
+// import android.graphics.drawable.Drawable // Re-evaluate if needed by AppScrollUiItem if icon was handled here
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
@@ -20,43 +20,52 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+// import androidx.compose.foundation.shape.RoundedCornerShape // Not directly used by name in this file after changes
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.CalendarToday
+// import androidx.compose.material.icons.automirrored.filled.ArrowBack // Not used
+// import androidx.compose.material.icons.filled.BarChart // Not used
+// import androidx.compose.material.icons.filled.CalendarToday // Not used
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Insights
+// import androidx.compose.material.icons.filled.Insights // Not used
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+// import androidx.compose.ui.graphics.vector.ImageVector // Not used
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
+// import androidx.compose.ui.platform.LocalContext // Not used
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.sp // Used in PermissionRow
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavController
+// import androidx.navigation.NavController // NavHostController is used
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import coil.compose.rememberAsyncImagePainter
-import com.example.scrolltrack.navigation.ScreenRoutes // Ensure this path is correct
-import com.example.scrolltrack.ui.historical.HistoricalUsageScreen // Ensure this path is correct
+import com.example.scrolltrack.navigation.ScreenRoutes
+import com.example.scrolltrack.ui.historical.HistoricalUsageScreen
 import com.example.scrolltrack.ui.main.AppScrollUiItem
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.ui.main.MainViewModelFactory
 import com.example.scrolltrack.ui.theme.ScrollTrackTheme
-import com.example.scrolltrack.util.DateUtil
+import com.example.scrolltrack.ui.theme.UsageStatusGreen
+import com.example.scrolltrack.ui.theme.UsageStatusOrange
+import com.example.scrolltrack.ui.theme.UsageStatusRed
+// import com.example.scrolltrack.util.DateUtil // Not directly used in this file's composables after changes
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.TrendingUp
 
 class MainActivity : ComponentActivity() {
 
@@ -79,11 +88,11 @@ class MainActivity : ComponentActivity() {
         viewModel = ViewModelProvider(this, viewModelFactory)[MainViewModel::class.java]
 
         setContent {
-            ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = true) { // Using updated theme call
+            ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = true) {
                 val navController = rememberNavController()
                 AppNavigationHost(
                     navController = navController,
-                    viewModel = viewModel, // Pass the initialized viewModel
+                    viewModel = viewModel,
                     isAccessibilityEnabledState = isAccessibilityEnabledState,
                     isUsageStatsGrantedState = isUsageStatsGrantedState,
                     onEnableAccessibilityClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
@@ -135,7 +144,8 @@ class MainActivity : ComponentActivity() {
         if (settingValue != null) {
             val colonSplitter = TextUtils.SimpleStringSplitter(':')
             colonSplitter.setString(settingValue)
-            val serviceNameToCheckShort = "." + serviceClass.simpleName
+            val serviceSimpleName = serviceClass.simpleName ?: return false // Handle null simpleName gracefully
+            val serviceNameToCheckShort = "." + serviceSimpleName
             val serviceNameToCheckFull = context.packageName + "/" + serviceClass.name
             while (colonSplitter.hasNext()) {
                 val componentName = colonSplitter.next()
@@ -172,6 +182,7 @@ fun AppNavigationHost(
             val appScrollItems by viewModel.aggregatedScrollDataToday.collectAsStateWithLifecycle()
             val totalScrollUnits by viewModel.totalScrollToday.collectAsStateWithLifecycle()
             val totalUsageTimeFormatted by viewModel.totalPhoneUsageTodayFormatted.collectAsStateWithLifecycle()
+            val totalUsageTimeMillis: Long by viewModel.totalPhoneUsageTodayMillis.collectAsStateWithLifecycle()
             val scrollDistance by viewModel.scrollDistanceTodayFormatted.collectAsStateWithLifecycle()
 
             TodaySummaryScreen(
@@ -181,6 +192,7 @@ fun AppNavigationHost(
                 isUsageStatsPermissionGranted = isUsageStatsGrantedState,
                 onEnableUsageStatsClick = onEnableUsageStatsClick,
                 totalUsageTime = totalUsageTimeFormatted,
+                totalUsageTimeMillis = totalUsageTimeMillis,
                 totalScrollUnits = totalScrollUnits,
                 scrollDistanceKm = scrollDistance.first,
                 scrollDistanceMiles = scrollDistance.second,
@@ -194,7 +206,7 @@ fun AppNavigationHost(
         composable(ScreenRoutes.HISTORICAL_USAGE) {
             HistoricalUsageScreen(
                 navController = navController,
-                viewModel = viewModel // Pass the same ViewModel instance
+                viewModel = viewModel
             )
         }
     }
@@ -209,6 +221,7 @@ fun TodaySummaryScreen(
     isUsageStatsPermissionGranted: Boolean,
     onEnableUsageStatsClick: () -> Unit,
     totalUsageTime: String,
+    totalUsageTimeMillis: Long,
     totalScrollUnits: Long,
     scrollDistanceKm: String,
     scrollDistanceMiles: String,
@@ -222,149 +235,210 @@ fun TodaySummaryScreen(
     val usageStatsStatusColor = if (isUsageStatsPermissionGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
     val usageStatsStatusTextDisplay = "Usage Access: ${if (isUsageStatsPermissionGranted) "Granted" else "Denied"}"
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(greeting, style = MaterialTheme.typography.headlineSmall) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        },
-        modifier = modifier.fillMaxSize()
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-        ) {
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                shape = MaterialTheme.shapes.large,
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    PermissionRow(
-                        statusText = accessibilityStatusTextDisplay,
-                        statusColor = accessibilityStatusColor,
-                        buttonText = "Settings",
-                        onButtonClick = onEnableAccessibilityClick,
-                        showButton = !isAccessibilityServiceEnabled
-                    )
-                    Divider(Modifier.padding(vertical = 8.dp))
-                    PermissionRow(
-                        statusText = usageStatsStatusTextDisplay,
-                        statusColor = usageStatsStatusColor,
-                        buttonText = "Settings",
-                        onButtonClick = onEnableUsageStatsClick,
-                        showButton = !isUsageStatsPermissionGranted
-                    )
-                }
-            }
+    val phoneUsageColor = when {
+        totalUsageTimeMillis <= 2.5 * 60 * 60 * 1000 -> UsageStatusGreen
+        totalUsageTimeMillis <= 5 * 60 * 60 * 1000 -> UsageStatusOrange
+        else -> UsageStatusRed
+    }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                SummaryMetricCard(
-                    title = "Phone Usage Today",
-                    value = totalUsageTime,
-                    icon = Icons.Filled.BarChart,
-                    iconTint = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { onNavigateToHistoricalUsage() }
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState())
+            .padding(top = 32.dp, start = 16.dp, end = 16.dp, bottom = 16.dp)
+    ) {
+        Text(
+            text = greeting,
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(horizontal = 8.dp)
+        )
+        Text(
+            text = "Manage your daily digital habits.",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 8.dp, bottom = 20.dp)
+        )
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            shape = MaterialTheme.shapes.large,
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                PermissionRow(
+                    statusText = accessibilityStatusTextDisplay,
+                    statusColor = accessibilityStatusColor,
+                    buttonText = "Settings",
+                    onButtonClick = onEnableAccessibilityClick,
+                    showButton = !isAccessibilityServiceEnabled
                 )
-                SummaryMetricCard(
-                    title = "Scroll Distance Today",
-                    value = "$scrollDistanceKm\n$scrollDistanceMiles",
-                    icon = Icons.Filled.Insights,
-                    iconTint = MaterialTheme.colorScheme.tertiary,
-                    modifier = Modifier.weight(1f),
-                    isDistance = true
+                Divider(Modifier.padding(vertical = 8.dp).background(MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)))
+                PermissionRow(
+                    statusText = usageStatsStatusTextDisplay,
+                    statusColor = usageStatsStatusColor,
+                    buttonText = "Settings",
+                    onButtonClick = onEnableUsageStatsClick,
+                    showButton = !isUsageStatsPermissionGranted
                 )
             }
-            if (totalScrollUnits > 0) {
+        }
+
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min)
+                .padding(horizontal = 4.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            PhoneUsageCard(
+                modifier = Modifier.weight(1f),
+                totalUsageTime = totalUsageTime,
+                usageTimeColor = phoneUsageColor,
+                onNavigateToHistoricalUsage = onNavigateToHistoricalUsage
+            )
+            ScrollStatsCard(
+                modifier = Modifier.weight(1f),
+                scrollDistanceKm = scrollDistanceKm,
+                scrollDistanceMiles = scrollDistanceMiles,
+                totalScrollUnits = totalScrollUnits
+            )
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+        Text(
+            text = "Today's App Scroll Breakdown:",
+            style = MaterialTheme.typography.titleMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+            modifier = Modifier.padding(start = 8.dp)
+        )
+        Divider(
+            modifier = Modifier
+                .padding(horizontal = 8.dp, vertical = 12.dp)
+                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+        )
+
+        if (appScrollData.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(150.dp)
+                    .padding(horizontal = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
                 Text(
-                    text = "Today's Scroll Units: $totalScrollUnits",
-                    style = MaterialTheme.typography.labelSmall,
-                    textAlign = TextAlign.End,
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp, end = 8.dp),
+                    "No scroll data recorded today.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-
-            Spacer(modifier = Modifier.height(20.dp))
-            Text("Today's App Scroll Breakdown:", style = MaterialTheme.typography.titleMedium)
-            Divider(modifier = Modifier.padding(top = 4.dp, bottom = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
-
-            if (appScrollData.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(), contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "No scroll data recorded for today.\nTry scrolling in some apps!",
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(items = appScrollData, key = { it.id }) { appItem ->
-                        AppScrollItemEntry(appItem)
-                    }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .heightIn(max = 500.dp)
+                    .padding(horizontal = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(items = appScrollData, key = { it.id }) { appItem ->
+                    AppScrollItemEntry(appItem)
                 }
             }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+@Composable
+fun PhoneUsageCard(
+    modifier: Modifier = Modifier,
+    totalUsageTime: String,
+    usageTimeColor: Color,
+    onNavigateToHistoricalUsage: () -> Unit
+) {
+    Card(
+        modifier = modifier
+            .fillMaxHeight()
+            .clickable { onNavigateToHistoricalUsage() },
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(Icons.Filled.PhoneAndroid, contentDescription = "Phone Usage", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp).padding(bottom = 8.dp))
+            Text(
+                text = "PHONE USAGE",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = totalUsageTime,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = usageTimeColor
+                ),
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "View Details",
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }
 
 @Composable
-fun SummaryMetricCard(
-    title: String,
-    value: String,
-    icon: ImageVector,
-    iconTint: Color,
+fun ScrollStatsCard(
     modifier: Modifier = Modifier,
-    isDistance: Boolean = false
+    scrollDistanceKm: String,
+    scrollDistanceMiles: String,
+    totalScrollUnits: Long
 ) {
     Card(
-        modifier = modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+        modifier = modifier.fillMaxHeight(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp).defaultMinSize(minHeight = 100.dp),
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = iconTint,
-                modifier = Modifier.size(32.dp)
+            Icon(Icons.Filled.TrendingUp, contentDescription = "Scroll Stats", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(32.dp).padding(bottom = 8.dp))
+            Text(
+                text = "SCROLL STATS",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Text(text = title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(modifier = Modifier.height(4.dp))
-
-            val valueTextStyle = if (isDistance) {
-                MaterialTheme.typography.bodyLarge.copy(lineHeight = 20.sp)
-            } else {
-                MaterialTheme.typography.headlineMedium
-            }
             Text(
-                text = value,
-                style = valueTextStyle,
+                text = "$scrollDistanceKm / $scrollDistanceMiles",
+                style = MaterialTheme.typography.titleLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                 textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurface
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "$totalScrollUnits units",
+                style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                textAlign = TextAlign.Center
             )
         }
     }
@@ -376,32 +450,35 @@ fun PermissionRow(
     statusColor: Color,
     buttonText: String,
     onButtonClick: () -> Unit,
-    showButton: Boolean = true,
+    showButton: Boolean,
     modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = statusText,
-            fontSize = 14.sp,
+            style = MaterialTheme.typography.labelLarge,
             color = statusColor,
             modifier = Modifier.weight(1f).padding(end = 8.dp)
         )
         if (showButton) {
-            FilledTonalButton(
+            Button(
                 onClick = onButtonClick,
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                Text(buttonText, fontSize = 12.sp)
+                Text(buttonText, color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelMedium)
             }
         } else {
             Icon(
                 imageVector = Icons.Filled.CheckCircle,
                 contentDescription = "Permission Granted",
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(28.dp)
             )
         }
     }
@@ -410,15 +487,15 @@ fun PermissionRow(
 @Composable
 fun AppScrollItemEntry(appData: AppScrollUiItem, modifier: Modifier = Modifier) {
     Card(
-        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        elevation = CardDefaults.cardElevation(1.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { /* TODO: Handle item click for more details later */ }
+                .clickable { /* TODO: Handle item click */ }
                 .padding(horizontal = 12.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -438,7 +515,8 @@ fun AppScrollItemEntry(appData: AppScrollUiItem, modifier: Modifier = Modifier) 
                     text = appData.appName,
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = appData.packageName,
@@ -459,17 +537,19 @@ fun AppScrollItemEntry(appData: AppScrollUiItem, modifier: Modifier = Modifier) 
     }
 }
 
-@Preview(showBackground = true, name = "Today Summary Screen - Dark")
+@Preview(showBackground = true, name = "Today Summary Screen - Dark - Vibrant")
 @Composable
-fun TodaySummaryScreenDarkPreview() {
+fun TodaySummaryScreenDarkPreviewVibrant() {
     ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = false) {
+        val exampleTimeMillis = (7 * 60 * 60 * 1000 + 18 * 60 * 1000).toLong()
         TodaySummaryScreen(
             greeting = "Good Evening ✨",
-            isAccessibilityServiceEnabled = true,
+            isAccessibilityServiceEnabled = false,
             onEnableAccessibilityClick = {},
             isUsageStatsPermissionGranted = true,
             onEnableUsageStatsClick = {},
-            totalUsageTime = "4h 30m",
+            totalUsageTime = "7h 18m",
+            totalUsageTimeMillis = exampleTimeMillis,
             totalScrollUnits = 249194L,
             scrollDistanceKm = "2.45 km",
             scrollDistanceMiles = "1.52 miles",
