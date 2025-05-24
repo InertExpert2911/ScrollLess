@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">ScrollTrack</string>
+    <string name="accessibility_service_description">ScrollTrack needs permission to observe scrolling actions and app usage to help you understand your scrolling habits. No personal data is collected or shared without your explicit consent.</string>
+</resources>

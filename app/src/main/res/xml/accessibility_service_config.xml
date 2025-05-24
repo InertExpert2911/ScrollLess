@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeViewScrolled|typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="100"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/accessibility_service_description"
+    />
+    <!--
+        android:packageNames="com.example.app1, com.example.app2"
+        If you want to listen to specific apps, uncomment and list their package names.
+        Leaving it out (or setting packageNames to null programmatically) means listen to all.
+        For development, listening to all is fine, but for production, you might want
+        to let users choose, or have a more focused scope for privacy.
+
+        android:settingsActivity="com.yourname.scrolltrack.SettingsActivity"
+        If you have a settings activity for your service, you can specify it here.
+    -->
