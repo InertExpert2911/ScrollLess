@@ -1,10 +1,9 @@
 package com.example.scrolltrack
 
 import android.app.AppOpsManager
-// import android.app.Application // Not strictly needed here if MainViewModelFactory handles it
 import android.content.Context
 import android.content.Intent
-import android.content.SharedPreferences // Import SharedPreferences
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.os.Bundle
@@ -23,8 +22,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.CalendarToday // Keep for HistoricalScreen
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material3.*
@@ -40,12 +40,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavController
+import androidx.navigation.NavHostController // Import NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import coil.compose.rememberAsyncImagePainter
+import com.example.scrolltrack.navigation.ScreenRoutes // Import your ScreenRoutes
+import com.example.scrolltrack.ui.historical.HistoricalUsageScreen // Import new screen
 import com.example.scrolltrack.ui.main.AppScrollUiItem
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.ui.main.MainViewModelFactory
@@ -74,20 +80,13 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = true) {
-                val greeting by viewModel.greeting.collectAsStateWithLifecycle()
-                val selectedDateString by viewModel.selectedDate.collectAsStateWithLifecycle()
-                val appScrollItems by viewModel.aggregatedScrollDataForSelectedDate.collectAsStateWithLifecycle()
-                val totalScrollUnits by viewModel.totalScrollForSelectedDate.collectAsStateWithLifecycle()
-                val totalUsageTimeFormatted by viewModel.totalUsageTimeFormatted.collectAsStateWithLifecycle()
-                val scrollDistance by viewModel.scrollDistanceFormatted.collectAsStateWithLifecycle()
-
-                MainScreenLayout(
-                    greeting = greeting,
-                    selectedDate = selectedDateString,
-                    onDateSelected = { dateMillis -> viewModel.updateSelectedDate(dateMillis) },
-                    isAccessibilityServiceEnabled = isAccessibilityEnabledState,
+                val navController = rememberNavController()
+                AppNavigationHost( // Call the NavHost container
+                    navController = navController,
+                    viewModel = viewModel,
+                    isAccessibilityEnabledState = isAccessibilityEnabledState,
+                    isUsageStatsGrantedState = isUsageStatsGrantedState,
                     onEnableAccessibilityClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
-                    isUsageStatsPermissionGranted = isUsageStatsGrantedState,
                     onEnableUsageStatsClick = {
                         try {
                             startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
@@ -95,12 +94,7 @@ class MainActivity : ComponentActivity() {
                             Log.e(TAG, "Error opening usage access settings", e)
                             startActivity(Intent(Settings.ACTION_SETTINGS))
                         }
-                    },
-                    totalUsageTime = totalUsageTimeFormatted,
-                    totalScrollUnits = totalScrollUnits,
-                    scrollDistanceKm = scrollDistance.first,
-                    scrollDistanceMiles = scrollDistance.second,
-                    appScrollData = appScrollItems
+                    }
                 )
             }
         }
@@ -121,13 +115,11 @@ class MainActivity : ComponentActivity() {
         if (isUsageStatsGrantedState) {
             Log.i(TAG, "Usage stats permission is granted.")
             if (::viewModel.isInitialized) {
-                viewModel.refreshUsageTimeForCurrentDate() // Refresh current day's usage time
-
-                // Check if historical backfill has been done
+                viewModel.refreshUsageTimeForCurrentDate()
                 val backfillDone = appPrefs.getBoolean(KEY_HISTORICAL_BACKFILL_DONE, false)
                 if (!backfillDone) {
                     Log.i(TAG, "Performing initial historical data backfill.")
-                    viewModel.performHistoricalUsageDataBackfill(10) // Fetch last 10 days
+                    viewModel.performHistoricalUsageDataBackfill(10)
                     appPrefs.edit().putBoolean(KEY_HISTORICAL_BACKFILL_DONE, true).apply()
                 }
             }
@@ -136,7 +128,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ... (isAccessibilityServiceEnabled and hasUsageStatsPermission functions remain the same) ...
     private fun isAccessibilityServiceEnabled(context: Context, serviceClass: Class<*>): Boolean {
         val accessibilityEnabled = Settings.Secure.getInt(context.applicationContext.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0)
         if (accessibilityEnabled == 0) return false
@@ -166,16 +157,57 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// --- Composable Functions (MainScreenLayout, SummaryMetricCard, PermissionRow, AppScrollItemEntry, Previews) ---
-// These remain the same as in the previous response (main_activity_kt_v11_ui_polish)
-// Ensure they are included below this MainActivity class.
-// For brevity, I'm not repeating them here.
+@Composable
+fun AppNavigationHost(
+    navController: NavHostController, // Changed NavController to NavHostController
+    viewModel: MainViewModel,
+    isAccessibilityEnabledState: Boolean,
+    isUsageStatsGrantedState: Boolean,
+    onEnableAccessibilityClick: () -> Unit,
+    onEnableUsageStatsClick: () -> Unit
+) {
+    NavHost(navController = navController, startDestination = ScreenRoutes.TODAY_SUMMARY) {
+        composable(ScreenRoutes.TODAY_SUMMARY) {
+            // Collect states needed for TodaySummaryScreen
+            val greeting by viewModel.greeting.collectAsStateWithLifecycle()
+            // For TodaySummaryScreen, selectedDate is always today,
+            // but we might still get it from viewModel if it defaults to today
+            // and other screens can change it.
+            // For simplicity here, we assume the ViewModel's default selectedDate is "today".
+            val appScrollItems by viewModel.aggregatedScrollDataForSelectedDate.collectAsStateWithLifecycle()
+            val totalScrollUnits by viewModel.totalScrollForSelectedDate.collectAsStateWithLifecycle()
+            val totalUsageTimeFormatted by viewModel.totalUsageTimeFormatted.collectAsStateWithLifecycle()
+            val scrollDistance by viewModel.scrollDistanceFormatted.collectAsStateWithLifecycle()
+
+            TodaySummaryScreen(
+                greeting = greeting,
+                isAccessibilityServiceEnabled = isAccessibilityEnabledState,
+                onEnableAccessibilityClick = onEnableAccessibilityClick,
+                isUsageStatsPermissionGranted = isUsageStatsGrantedState,
+                onEnableUsageStatsClick = onEnableUsageStatsClick,
+                totalUsageTime = totalUsageTimeFormatted,
+                totalScrollUnits = totalScrollUnits,
+                scrollDistanceKm = scrollDistance.first,
+                scrollDistanceMiles = scrollDistance.second,
+                appScrollData = appScrollItems,
+                onNavigateToHistoricalUsage = {
+                    navController.navigate(ScreenRoutes.HISTORICAL_USAGE)
+                }
+            )
+        }
+        composable(ScreenRoutes.HISTORICAL_USAGE) {
+            HistoricalUsageScreen(
+                navController = navController,
+                viewModel = viewModel // Pass the same ViewModel for now
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainScreenLayout(
+fun TodaySummaryScreen( // Renamed from MainScreenLayout
     greeting: String,
-    selectedDate: String,
-    onDateSelected: (Long) -> Unit,
     isAccessibilityServiceEnabled: Boolean,
     onEnableAccessibilityClick: () -> Unit,
     isUsageStatsPermissionGranted: Boolean,
@@ -185,19 +217,9 @@ fun MainScreenLayout(
     scrollDistanceKm: String,
     scrollDistanceMiles: String,
     appScrollData: List<AppScrollUiItem>,
+    onNavigateToHistoricalUsage: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showDatePickerDialog by remember { mutableStateOf(false) }
-    val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = remember(selectedDate) {
-            DateUtil.parseDateString(selectedDate)?.time ?: System.currentTimeMillis()
-        },
-        selectableDates = object : SelectableDates {
-            override fun isSelectableDate(utcTimeMillis: Long): Boolean =
-                utcTimeMillis <= System.currentTimeMillis()
-        }
-    )
-
     val accessibilityStatusColor = if (isAccessibilityServiceEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
     val accessibilityStatusTextDisplay = "Accessibility: ${if (isAccessibilityServiceEnabled) "Enabled" else "Disabled"}"
 
@@ -208,17 +230,10 @@ fun MainScreenLayout(
         topBar = {
             TopAppBar(
                 title = { Text(greeting, style = MaterialTheme.typography.headlineSmall) },
-                actions = {
-                    TextButton(onClick = { showDatePickerDialog = true }) {
-                        Text(selectedDate, style = MaterialTheme.typography.titleSmall)
-                        Spacer(Modifier.width(4.dp))
-                        Icon(Icons.Filled.CalendarToday, contentDescription = "Select Date")
-                    }
-                },
+                // No date picker action here anymore
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
@@ -260,14 +275,16 @@ fun MainScreenLayout(
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 SummaryMetricCard(
-                    title = "Phone Usage",
+                    title = "Phone Usage Today", // Clarified title
                     value = totalUsageTime,
                     icon = Icons.Filled.BarChart,
                     iconTint = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onNavigateToHistoricalUsage() } // Click to navigate
                 )
                 SummaryMetricCard(
-                    title = "Digital Scroll",
+                    title = "Scroll Distance Today", // Clarified title
                     value = "$scrollDistanceKm\n$scrollDistanceMiles",
                     icon = Icons.Filled.Insights,
                     iconTint = MaterialTheme.colorScheme.tertiary,
@@ -277,7 +294,7 @@ fun MainScreenLayout(
             }
             if (totalScrollUnits > 0) {
                 Text(
-                    text = "Scroll Units: $totalScrollUnits",
+                    text = "Today's Scroll Units: $totalScrollUnits", // Clarified
                     style = MaterialTheme.typography.labelSmall,
                     textAlign = TextAlign.End,
                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp, end = 8.dp),
@@ -286,7 +303,7 @@ fun MainScreenLayout(
             }
 
             Spacer(modifier = Modifier.height(20.dp))
-            Text("App Breakdown for $selectedDate", style = MaterialTheme.typography.titleMedium)
+            Text("Today's App Scroll Breakdown:", style = MaterialTheme.typography.titleMedium) // Clarified
             Divider(modifier = Modifier.padding(top = 4.dp, bottom = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
             if (appScrollData.isEmpty()) {
@@ -296,7 +313,7 @@ fun MainScreenLayout(
                         .fillMaxWidth(), contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        "No scroll data recorded for $selectedDate.\nTry scrolling in some apps!",
+                        "No scroll data recorded for today.\nTry scrolling in some apps!",
                         style = MaterialTheme.typography.bodyMedium,
                         textAlign = TextAlign.Center,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -310,23 +327,14 @@ fun MainScreenLayout(
                 }
             }
         }
-
-        if (showDatePickerDialog) {
-            DatePickerDialog(
-                onDismissRequest = { showDatePickerDialog = false },
-                confirmButton = {
-                    TextButton(onClick = {
-                        datePickerState.selectedDateMillis?.let { onDateSelected(it) }
-                        showDatePickerDialog = false
-                    }) { Text("OK") }
-                },
-                dismissButton = { TextButton(onClick = { showDatePickerDialog = false }) { Text("Cancel") } }
-            ) {
-                DatePicker(state = datePickerState)
-            }
-        }
     }
 }
+
+
+// --- SummaryMetricCard, PermissionRow, AppScrollItemEntry Composables ---
+// (These should be the same as the versions from main_activity_kt_v11_ui_polish)
+// For brevity, I'm not re-pasting them here, but ensure they are in your file.
+// Make sure they are defined below or in a separate file and imported.
 
 @Composable
 fun SummaryMetricCard(
@@ -414,7 +422,7 @@ fun PermissionRow(
 fun AppScrollItemEntry(appData: AppScrollUiItem, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
-        shape = MaterialTheme.shapes.medium,
+        shape = MaterialTheme.shapes.medium, // Use themed shape
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         elevation = CardDefaults.cardElevation(1.dp)
     ) {
@@ -427,7 +435,7 @@ fun AppScrollItemEntry(appData: AppScrollUiItem, modifier: Modifier = Modifier) 
         ) {
             Image(
                 painter = rememberAsyncImagePainter(
-                    model = appData.icon ?: R.mipmap.ic_launcher_round
+                    model = appData.icon ?: R.mipmap.ic_launcher_round // Fallback icon
                 ),
                 contentDescription = "${appData.appName} icon",
                 modifier = Modifier
@@ -462,14 +470,13 @@ fun AppScrollItemEntry(appData: AppScrollUiItem, modifier: Modifier = Modifier) 
     }
 }
 
-@Preview(showBackground = true, name = "Main Screen - Dark Theme")
+
+@Preview(showBackground = true, name = "Today Summary Screen - Dark")
 @Composable
-fun MainScreenLayoutDarkPreview() {
+fun TodaySummaryScreenDarkPreview() { // Renamed Preview
     ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = false) {
-        MainScreenLayout(
+        TodaySummaryScreen(
             greeting = "Good Evening ✨",
-            selectedDate = "2025-05-23",
-            onDateSelected = {},
             isAccessibilityServiceEnabled = true,
             onEnableAccessibilityClick = {},
             isUsageStatsPermissionGranted = true,
@@ -480,30 +487,9 @@ fun MainScreenLayoutDarkPreview() {
             scrollDistanceMiles = "1.52 miles",
             appScrollData = listOf(
                 AppScrollUiItem("yt", "YouTube", null, 149234, "com.google.android.youtube"),
-                AppScrollUiItem("chrome", "Chrome", null, 82351, "com.android.chrome"),
-                AppScrollUiItem("settings", "Settings", null, 15621, "com.android.settings")
-            )
-        )
-    }
-}
-
-@Preview(showBackground = true, name = "Main Screen - Light Theme (Dynamic Off)")
-@Composable
-fun MainScreenLayoutLightPreview() {
-    ScrollTrackTheme(darkThemeUserPreference = false, dynamicColor = false) {
-        MainScreenLayout(
-            greeting = "Good Morning ☀️",
-            selectedDate = "2025-05-23",
-            onDateSelected = {},
-            isAccessibilityServiceEnabled = false,
-            onEnableAccessibilityClick = {},
-            isUsageStatsPermissionGranted = false,
-            onEnableUsageStatsClick = {},
-            totalUsageTime = "N/A",
-            totalScrollUnits = 0L,
-            scrollDistanceKm = "0.00 km",
-            scrollDistanceMiles = "0.00 miles",
-            appScrollData = emptyList()
+                AppScrollUiItem("chrome", "Chrome", null, 82351, "com.android.chrome")
+            ),
+            onNavigateToHistoricalUsage = {}
         )
     }
 }
