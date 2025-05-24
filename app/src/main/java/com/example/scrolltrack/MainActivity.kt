@@ -24,7 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.CalendarToday // Keep for HistoricalScreen
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material3.*
@@ -45,13 +45,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
-import androidx.navigation.NavHostController // Import NavHostController
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import coil.compose.rememberAsyncImagePainter
-import com.example.scrolltrack.navigation.ScreenRoutes // Import your ScreenRoutes
-import com.example.scrolltrack.ui.historical.HistoricalUsageScreen // Import new screen
+import com.example.scrolltrack.navigation.ScreenRoutes // Ensure this path is correct
+import com.example.scrolltrack.ui.historical.HistoricalUsageScreen // Ensure this path is correct
 import com.example.scrolltrack.ui.main.AppScrollUiItem
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.ui.main.MainViewModelFactory
@@ -79,11 +79,11 @@ class MainActivity : ComponentActivity() {
         viewModel = ViewModelProvider(this, viewModelFactory)[MainViewModel::class.java]
 
         setContent {
-            ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = true) {
+            ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = true) { // Using updated theme call
                 val navController = rememberNavController()
-                AppNavigationHost( // Call the NavHost container
+                AppNavigationHost(
                     navController = navController,
-                    viewModel = viewModel,
+                    viewModel = viewModel, // Pass the initialized viewModel
                     isAccessibilityEnabledState = isAccessibilityEnabledState,
                     isUsageStatsGrantedState = isUsageStatsGrantedState,
                     onEnableAccessibilityClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
@@ -115,7 +115,7 @@ class MainActivity : ComponentActivity() {
         if (isUsageStatsGrantedState) {
             Log.i(TAG, "Usage stats permission is granted.")
             if (::viewModel.isInitialized) {
-                viewModel.refreshUsageTimeForCurrentDate()
+                viewModel.refreshDataForToday()
                 val backfillDone = appPrefs.getBoolean(KEY_HISTORICAL_BACKFILL_DONE, false)
                 if (!backfillDone) {
                     Log.i(TAG, "Performing initial historical data backfill.")
@@ -159,7 +159,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AppNavigationHost(
-    navController: NavHostController, // Changed NavController to NavHostController
+    navController: NavHostController,
     viewModel: MainViewModel,
     isAccessibilityEnabledState: Boolean,
     isUsageStatsGrantedState: Boolean,
@@ -168,16 +168,11 @@ fun AppNavigationHost(
 ) {
     NavHost(navController = navController, startDestination = ScreenRoutes.TODAY_SUMMARY) {
         composable(ScreenRoutes.TODAY_SUMMARY) {
-            // Collect states needed for TodaySummaryScreen
             val greeting by viewModel.greeting.collectAsStateWithLifecycle()
-            // For TodaySummaryScreen, selectedDate is always today,
-            // but we might still get it from viewModel if it defaults to today
-            // and other screens can change it.
-            // For simplicity here, we assume the ViewModel's default selectedDate is "today".
-            val appScrollItems by viewModel.aggregatedScrollDataForSelectedDate.collectAsStateWithLifecycle()
-            val totalScrollUnits by viewModel.totalScrollForSelectedDate.collectAsStateWithLifecycle()
-            val totalUsageTimeFormatted by viewModel.totalUsageTimeFormatted.collectAsStateWithLifecycle()
-            val scrollDistance by viewModel.scrollDistanceFormatted.collectAsStateWithLifecycle()
+            val appScrollItems by viewModel.aggregatedScrollDataToday.collectAsStateWithLifecycle()
+            val totalScrollUnits by viewModel.totalScrollToday.collectAsStateWithLifecycle()
+            val totalUsageTimeFormatted by viewModel.totalPhoneUsageTodayFormatted.collectAsStateWithLifecycle()
+            val scrollDistance by viewModel.scrollDistanceTodayFormatted.collectAsStateWithLifecycle()
 
             TodaySummaryScreen(
                 greeting = greeting,
@@ -198,7 +193,7 @@ fun AppNavigationHost(
         composable(ScreenRoutes.HISTORICAL_USAGE) {
             HistoricalUsageScreen(
                 navController = navController,
-                viewModel = viewModel // Pass the same ViewModel for now
+                viewModel = viewModel // Pass the same ViewModel instance
             )
         }
     }
@@ -206,7 +201,7 @@ fun AppNavigationHost(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TodaySummaryScreen( // Renamed from MainScreenLayout
+fun TodaySummaryScreen(
     greeting: String,
     isAccessibilityServiceEnabled: Boolean,
     onEnableAccessibilityClick: () -> Unit,
@@ -230,7 +225,6 @@ fun TodaySummaryScreen( // Renamed from MainScreenLayout
         topBar = {
             TopAppBar(
                 title = { Text(greeting, style = MaterialTheme.typography.headlineSmall) },
-                // No date picker action here anymore
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
                     titleContentColor = MaterialTheme.colorScheme.onSurface
@@ -275,16 +269,16 @@ fun TodaySummaryScreen( // Renamed from MainScreenLayout
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 SummaryMetricCard(
-                    title = "Phone Usage Today", // Clarified title
+                    title = "Phone Usage Today",
                     value = totalUsageTime,
                     icon = Icons.Filled.BarChart,
                     iconTint = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier
                         .weight(1f)
-                        .clickable { onNavigateToHistoricalUsage() } // Click to navigate
+                        .clickable { onNavigateToHistoricalUsage() }
                 )
                 SummaryMetricCard(
-                    title = "Scroll Distance Today", // Clarified title
+                    title = "Scroll Distance Today",
                     value = "$scrollDistanceKm\n$scrollDistanceMiles",
                     icon = Icons.Filled.Insights,
                     iconTint = MaterialTheme.colorScheme.tertiary,
@@ -294,7 +288,7 @@ fun TodaySummaryScreen( // Renamed from MainScreenLayout
             }
             if (totalScrollUnits > 0) {
                 Text(
-                    text = "Today's Scroll Units: $totalScrollUnits", // Clarified
+                    text = "Today's Scroll Units: $totalScrollUnits",
                     style = MaterialTheme.typography.labelSmall,
                     textAlign = TextAlign.End,
                     modifier = Modifier.fillMaxWidth().padding(top = 4.dp, end = 8.dp),
@@ -303,7 +297,7 @@ fun TodaySummaryScreen( // Renamed from MainScreenLayout
             }
 
             Spacer(modifier = Modifier.height(20.dp))
-            Text("Today's App Scroll Breakdown:", style = MaterialTheme.typography.titleMedium) // Clarified
+            Text("Today's App Scroll Breakdown:", style = MaterialTheme.typography.titleMedium)
             Divider(modifier = Modifier.padding(top = 4.dp, bottom = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
             if (appScrollData.isEmpty()) {
@@ -329,12 +323,6 @@ fun TodaySummaryScreen( // Renamed from MainScreenLayout
         }
     }
 }
-
-
-// --- SummaryMetricCard, PermissionRow, AppScrollItemEntry Composables ---
-// (These should be the same as the versions from main_activity_kt_v11_ui_polish)
-// For brevity, I'm not re-pasting them here, but ensure they are in your file.
-// Make sure they are defined below or in a separate file and imported.
 
 @Composable
 fun SummaryMetricCard(
@@ -422,7 +410,7 @@ fun PermissionRow(
 fun AppScrollItemEntry(appData: AppScrollUiItem, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
-        shape = MaterialTheme.shapes.medium, // Use themed shape
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
         elevation = CardDefaults.cardElevation(1.dp)
     ) {
@@ -435,7 +423,7 @@ fun AppScrollItemEntry(appData: AppScrollUiItem, modifier: Modifier = Modifier) 
         ) {
             Image(
                 painter = rememberAsyncImagePainter(
-                    model = appData.icon ?: R.mipmap.ic_launcher_round // Fallback icon
+                    model = appData.icon ?: R.mipmap.ic_launcher_round
                 ),
                 contentDescription = "${appData.appName} icon",
                 modifier = Modifier
@@ -447,7 +435,7 @@ fun AppScrollItemEntry(appData: AppScrollUiItem, modifier: Modifier = Modifier) 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = appData.appName,
-                    style = MaterialTheme.typography.titleMedium, // Prominent app name
+                    style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -470,10 +458,9 @@ fun AppScrollItemEntry(appData: AppScrollUiItem, modifier: Modifier = Modifier) 
     }
 }
 
-
 @Preview(showBackground = true, name = "Today Summary Screen - Dark")
 @Composable
-fun TodaySummaryScreenDarkPreview() { // Renamed Preview
+fun TodaySummaryScreenDarkPreview() {
     ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = false) {
         TodaySummaryScreen(
             greeting = "Good Evening ✨",
@@ -487,7 +474,8 @@ fun TodaySummaryScreenDarkPreview() { // Renamed Preview
             scrollDistanceMiles = "1.52 miles",
             appScrollData = listOf(
                 AppScrollUiItem("yt", "YouTube", null, 149234, "com.google.android.youtube"),
-                AppScrollUiItem("chrome", "Chrome", null, 82351, "com.android.chrome")
+                AppScrollUiItem("chrome", "Chrome", null, 82351, "com.android.chrome"),
+                AppScrollUiItem("settings", "Settings", null, 15621, "com.android.settings")
             ),
             onNavigateToHistoricalUsage = {}
         )

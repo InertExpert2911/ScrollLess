@@ -7,20 +7,18 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.util.Log
-import com.example.scrolltrack.db.DailyAppUsageDao
+import com.example.scrolltrack.db.DailyAppUsageDao // Ensure this is imported
 import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.db.ScrollSessionDao
 import com.example.scrolltrack.db.ScrollSessionRecord
 import com.example.scrolltrack.util.DateUtil
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.Date
 
 class ScrollDataRepositoryImpl(
-    private val scrollSessionDao: ScrollSessionDao, // Assuming you'll add dailyAppUsageDao here
-    private val dailyAppUsageDao: DailyAppUsageDao, // Added DAO for usage stats
+    private val scrollSessionDao: ScrollSessionDao,
+    private val dailyAppUsageDao: DailyAppUsageDao, // Make sure this is passed in constructor
     private val application: Application
 ) : ScrollDataRepository {
 
@@ -37,6 +35,11 @@ class ScrollDataRepositoryImpl(
 
     override fun getAllSessions(): Flow<List<ScrollSessionRecord>> {
         return scrollSessionDao.getAllSessionsFlow()
+    }
+
+    // New method implementation
+    override fun getDailyUsageRecordsForDate(dateString: String): Flow<List<DailyAppUsageRecord>> {
+        return dailyAppUsageDao.getUsageForDate(dateString)
     }
 
     override suspend fun getTotalUsageTimeMillisForDate(dateString: String): Long? {
@@ -84,32 +87,28 @@ class ScrollDataRepositoryImpl(
             }
         } catch (e: Exception) {
             Log.e(TAG_REPO, "Error calculating total usage stats for $dateString", e)
-            return null // Return null on error
+            return null
         }
         return totalFilteredUsageTime
     }
 
-    override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean {
         val usageStatsManager =
             application.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
                 ?: run {
                     Log.e(TAG_REPO, "UsageStatsManager not available for backfill.")
-                    return@withContext false
+                    return false
                 }
 
         Log.i(TAG_REPO, "Starting historical app usage data backfill for the last $numberOfDays days.")
-        val calendar = Calendar.getInstance()
         val recordsToInsert = mutableListOf<DailyAppUsageRecord>()
 
-        for (i in 0 until numberOfDays) { // 0 is today, 1 is yesterday, etc.
+        for (i in 0 until numberOfDays) {
             val targetCalendar = Calendar.getInstance()
-            targetCalendar.add(Calendar.DAY_OF_YEAR, -i) // Go back i days
-
+            targetCalendar.add(Calendar.DAY_OF_YEAR, -i)
             val dateString = DateUtil.formatDate(targetCalendar.time)
             val dayStartTime = DateUtil.getStartOfDayMillis(dateString)
             val dayEndTime = DateUtil.getEndOfDayMillis(dateString)
-
-            Log.d(TAG_REPO, "Backfilling data for date: $dateString (Range: ${Date(dayStartTime)} to ${Date(dayEndTime)})")
 
             try {
                 val dailyUsageStatsList: List<UsageStats>? =
@@ -122,54 +121,35 @@ class ScrollDataRepositoryImpl(
                 if (dailyUsageStatsList != null && dailyUsageStatsList.isNotEmpty()) {
                     for (usageStats in dailyUsageStatsList) {
                         if (usageStats.totalTimeInForeground > 0) {
-                            val packageName = usageStats.packageName
-                            if (packageName == application.packageName) continue // Skip own app
-
-                            try {
-                                val appInfo: ApplicationInfo = packageManager.getApplicationInfo(packageName, 0)
-                                if ((appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0) &&
-                                    (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP == 0)) {
-                                    continue // Skip base system apps
-                                }
-                                if (packageManager.getLaunchIntentForPackage(packageName) == null) {
-                                    continue // Skip non-launchable apps
-                                }
-
-                                recordsToInsert.add(
-                                    DailyAppUsageRecord(
-                                        packageName = packageName,
-                                        dateString = dateString,
-                                        usageTimeMillis = usageStats.totalTimeInForeground,
-                                        lastUpdatedTimestamp = System.currentTimeMillis() // Mark as updated now
-                                    )
+                            // No filtering here for raw storage, filtering happens when calculating total or displaying
+                            recordsToInsert.add(
+                                DailyAppUsageRecord(
+                                    packageName = usageStats.packageName,
+                                    dateString = dateString,
+                                    usageTimeMillis = usageStats.totalTimeInForeground,
+                                    lastUpdatedTimestamp = System.currentTimeMillis()
                                 )
-                            } catch (e: PackageManager.NameNotFoundException) {
-                                // Log.w(TAG_REPO, "Package not found during backfill: $packageName for date $dateString")
-                            }
+                            )
                         }
                     }
-                } else {
-                    Log.d(TAG_REPO, "No usage stats found for $dateString during backfill.")
                 }
-            } catch (e: SecurityException) {
-                Log.e(TAG_REPO, "SecurityException during backfill for $dateString. Permission might have been revoked.", e)
-                // Potentially stop or skip this day
             } catch (e: Exception) {
-                Log.e(TAG_REPO, "Error fetching usage stats during backfill for $dateString", e)
+                Log.e(TAG_REPO, "Error fetching or processing usage stats during backfill for $dateString", e)
+                // Decide if one day's error should stop the whole backfill or just skip the day
             }
         }
 
         if (recordsToInsert.isNotEmpty()) {
             try {
-                dailyAppUsageDao.insertAllUsage(recordsToInsert)
+                dailyAppUsageDao.insertAllUsage(recordsToInsert) // Use the correct DAO
                 Log.i(TAG_REPO, "Successfully inserted/updated ${recordsToInsert.size} historical usage records.")
             } catch (e: Exception) {
                 Log.e(TAG_REPO, "Error inserting historical usage records into database.", e)
-                return@withContext false
+                return false
             }
         } else {
-            Log.i(TAG_REPO, "No new historical usage records to insert.")
+            Log.i(TAG_REPO, "No new historical usage records to insert from backfill.")
         }
-        return@withContext true
+        return true
     }
 }

@@ -3,6 +3,7 @@ package com.example.scrolltrack.data
 // Assuming AppScrollData is in this 'data' package
 // If it's in 'db', change the import accordingly.
 // import com.example.scrolltrack.db.AppScrollData
+import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.db.ScrollSessionRecord
 import kotlinx.coroutines.flow.Flow
 
@@ -38,4 +39,10 @@ interface ScrollDataRepository {
      * @return True if successful, false otherwise.
      */
     suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean
+
+    /**
+     * Retrieves all raw DailyAppUsageRecord entries for a specific date.
+     * The ViewModel will then map these to UI items, including fetching app names/icons.
+     */
+    fun getDailyUsageRecordsForDate(dateString: String): Flow<List<DailyAppUsageRecord>> // New method
 }
