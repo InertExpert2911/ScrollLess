@@ -75,8 +75,26 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.AccessibilityNew
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.HourglassEmpty
+// import androidx.compose.material3.HorizontalDivider // Ensure this stays commented if not used
+import androidx.compose.ui.platform.LocalContext
+// import androidx.compose.ui.platform.LocalContentColor // REMOVING this import
+import android.app.Application // For Preview
+import com.example.scrolltrack.data.ScrollDataRepositoryImpl // For Preview
+import com.example.scrolltrack.db.ScrollSessionDao
+import com.example.scrolltrack.db.DailyAppUsageDao
+import com.example.scrolltrack.db.ScrollSessionRecord
+import com.example.scrolltrack.db.DailyAppUsageRecord
+import com.example.scrolltrack.data.AppScrollData // For ScrollSessionDao mock
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+import androidx.compose.material.icons.filled.Brightness2
+import androidx.compose.material.icons.filled.WbSunny
+import com.example.scrolltrack.ui.theme.CaveatFontFamily
 
-// import androidx.compose.ui.platform.LocalContentColor
+// Constants for theme variants to be used by the Switch logic
+// Moved to top level for accessibility by ThemeModeSwitch
+private const val THEME_LIGHT = "light"
+private const val THEME_OLED_DARK = "oled_dark"
 
 class MainActivity : ComponentActivity() {
 
@@ -89,6 +107,8 @@ class MainActivity : ComponentActivity() {
     private companion object {
         const val PREFS_APP_SETTINGS = "ScrollTrackAppSettings"
         const val KEY_HISTORICAL_BACKFILL_DONE = "historical_backfill_done"
+        const val KEY_SELECTED_THEME = "selected_theme_variant"
+        const val DEFAULT_THEME = THEME_OLED_DARK
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -99,7 +119,8 @@ class MainActivity : ComponentActivity() {
         viewModel = ViewModelProvider(this, viewModelFactory)[MainViewModel::class.java]
 
         setContent {
-            ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = true) {
+            val selectedTheme by viewModel.selectedThemeVariant.collectAsStateWithLifecycle()
+            ScrollTrackTheme(themeVariant = selectedTheme, dynamicColor = false) {
                 val navController = rememberNavController()
                 AppNavigationHost(
                     navController = navController,
@@ -198,6 +219,7 @@ fun AppNavigationHost(
             val topWeeklyApp by viewModel.topUsedAppLast7Days.collectAsStateWithLifecycle()
 
             TodaySummaryScreen(
+                viewModel = viewModel,
                 greeting = greeting,
                 isAccessibilityServiceEnabled = isAccessibilityEnabledState,
                 onEnableAccessibilityClick = onEnableAccessibilityClick,
@@ -228,10 +250,11 @@ fun AppNavigationHost(
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalAnimationApi::class)
 @Composable
 fun TodaySummaryScreen(
+    viewModel: MainViewModel,
     greeting: String,
     isAccessibilityServiceEnabled: Boolean,
-    onEnableAccessibilityClick: () -> Unit,
     isUsageStatsPermissionGranted: Boolean,
+    onEnableAccessibilityClick: () -> Unit,
     onEnableUsageStatsClick: () -> Unit,
     totalUsageTime: String,
     totalUsageTimeMillis: Long,
@@ -254,14 +277,27 @@ fun TodaySummaryScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
-            .padding(top = 40.dp, start = 16.dp, end = 16.dp, bottom = 16.dp)
+            .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 16.dp)
     ) {
-        Text(
-            text = greeting,
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(horizontal = 8.dp)
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 8.dp)
+                .padding(top = 24.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = greeting,
+                style = MaterialTheme.typography.headlineMedium.copy(fontFamily = CaveatFontFamily),
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            ThemeModeSwitch(
+                currentThemeVariant = viewModel.selectedThemeVariant.collectAsStateWithLifecycle().value,
+                onThemeChange = viewModel::updateThemeVariant
+            )
+        }
+
         Text(
             text = "Manage your daily digital habits.",
             style = MaterialTheme.typography.titleSmall,
@@ -325,22 +361,16 @@ fun TodaySummaryScreen(
         ScrollStatsCard(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 8.dp),
+                .padding(horizontal = 4.dp),
             scrollDistanceKm = scrollDistanceKm,
             scrollDistanceMiles = scrollDistanceMiles,
             totalScrollUnits = totalScrollUnits
         )
 
-        Spacer(modifier = Modifier.height(20.dp))
         Text(
             text = "Today's App Scroll Breakdown:",
             style = MaterialTheme.typography.titleMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
             modifier = Modifier.padding(start = 8.dp)
-        )
-        Divider(
-            modifier = Modifier
-                .padding(horizontal = 8.dp, vertical = 12.dp)
-                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
         )
 
         if (appScrollData.isEmpty()) {
@@ -406,7 +436,7 @@ fun PermissionRequestCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.Top) {
@@ -449,7 +479,10 @@ fun PhoneUsageCard(
             .fillMaxHeight()
             .clickable { onNavigateToHistoricalUsage() },
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
@@ -462,8 +495,8 @@ fun PhoneUsageCard(
             Icon(Icons.Filled.PhoneAndroid, contentDescription = "Phone Usage", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp).padding(bottom = 8.dp))
             Text(
                 text = "PHONE USAGE (Today)",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(8.dp))
@@ -479,7 +512,7 @@ fun PhoneUsageCard(
             Text(
                 text = "View Details",
                 style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.onPrimaryContainer
             )
         }
     }
@@ -493,7 +526,10 @@ fun TopWeeklyAppCard(
     Card(
         modifier = modifier.fillMaxHeight(),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
@@ -520,14 +556,14 @@ fun TopWeeklyAppCard(
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "${topApp.formattedUsageTime} (Last 7 Days)",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
                     textAlign = TextAlign.Center
                 )
             } else {
@@ -535,19 +571,19 @@ fun TopWeeklyAppCard(
                     Icons.Filled.HourglassEmpty,
                     contentDescription = "No top app data",
                     modifier = Modifier.size(36.dp).padding(bottom = 8.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
                 )
                 Text(
                     text = "Top Weekly App",
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
                      textAlign = TextAlign.Center
                 )
                  Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "No data yet",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
                     textAlign = TextAlign.Center
                 )
             }
@@ -565,7 +601,10 @@ fun ScrollStatsCard(
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
@@ -578,21 +617,21 @@ fun ScrollStatsCard(
             Icon(Icons.Filled.TrendingUp, contentDescription = "Scroll Stats", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(32.dp).padding(bottom = 8.dp))
             Text(
                 text = "SCROLL STATS (Today)",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "$scrollDistanceKm / $scrollDistanceMiles",
-                style = MaterialTheme.typography.titleLarge.copy(color = MaterialTheme.colorScheme.onSurface),
+                style = MaterialTheme.typography.titleLarge.copy(color = MaterialTheme.colorScheme.onPrimaryContainer),
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = "$totalScrollUnits units",
-                style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold),
                 textAlign = TextAlign.Center
             )
         }
@@ -655,8 +694,34 @@ fun AppScrollItemEntry(appData: AppScrollUiItem, modifier: Modifier = Modifier) 
 @Preview(showBackground = true, name = "Today Summary - Permissions Needed")
 @Composable
 fun TodaySummaryScreenPermissionsNeededPreview() {
-    ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = false) {
+    val context = LocalContext.current
+    val app = context.applicationContext as Application
+
+    // Create dummy DAOs for preview
+    val dummyScrollSessionDao = object : ScrollSessionDao {
+        override fun getAllSessionsFlow(): Flow<List<ScrollSessionRecord>> = flowOf(emptyList())
+        override suspend fun insertSession(session: ScrollSessionRecord) {}
+        override fun getTotalScrollForDate(dateString: String): Flow<Long?> = flowOf(0L)
+        override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> = flowOf(emptyList())
+        override suspend fun getAllSessions(): List<ScrollSessionRecord> = emptyList()
+        override suspend fun getTotalScrollForAppOnDate(pkgName: String, dateString: String): Long? = null
+    }
+    val dummyDailyAppUsageDao = object : DailyAppUsageDao {
+        override fun getUsageForDate(dateString: String): Flow<List<DailyAppUsageRecord>> = flowOf(emptyList())
+        override fun getUsageRecordsForDateRange(startDateString: String, endDateString: String): Flow<List<DailyAppUsageRecord>> = flowOf(emptyList())
+        override suspend fun insertOrUpdateUsage(dailyAppUsageRecord: DailyAppUsageRecord) {}
+        override suspend fun insertAllUsage(records: List<DailyAppUsageRecord>) {}
+        override suspend fun clearAllUsageData() {}
+        override suspend fun getSpecificAppUsageForDate(packageName: String, dateString: String): DailyAppUsageRecord? = null
+        override fun getTotalUsageTimeMillisForDate(dateString: String): Flow<Long?> = flowOf(0L)
+        override suspend fun deleteOldUsageData(timestampMillis: Long): Int = 0
+    }
+
+    val fakeRepo = ScrollDataRepositoryImpl(dummyScrollSessionDao, dummyDailyAppUsageDao, app)
+    val fakeViewModel = MainViewModel(fakeRepo, app)
+    ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) { 
         TodaySummaryScreen(
+            viewModel = fakeViewModel, 
             greeting = "Good Morning! ☀️",
             isAccessibilityServiceEnabled = false,
             onEnableAccessibilityClick = {},
@@ -677,7 +742,32 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
 @Preview(showBackground = true, name = "Today Summary - All Granted - Top App")
 @Composable
 fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
-    ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = false) {
+    val context = LocalContext.current
+    val app = context.applicationContext as Application
+
+    // Create dummy DAOs for preview (can share the same dummy implementations)
+    val dummyScrollSessionDao = object : ScrollSessionDao {
+        override fun getAllSessionsFlow(): Flow<List<ScrollSessionRecord>> = flowOf(emptyList())
+        override suspend fun insertSession(session: ScrollSessionRecord) {}
+        override fun getTotalScrollForDate(dateString: String): Flow<Long?> = flowOf(0L)
+        override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> = flowOf(emptyList())
+        override suspend fun getAllSessions(): List<ScrollSessionRecord> = emptyList()
+        override suspend fun getTotalScrollForAppOnDate(pkgName: String, dateString: String): Long? = null
+    }
+    val dummyDailyAppUsageDao = object : DailyAppUsageDao {
+        override fun getUsageForDate(dateString: String): Flow<List<DailyAppUsageRecord>> = flowOf(emptyList())
+        override fun getUsageRecordsForDateRange(startDateString: String, endDateString: String): Flow<List<DailyAppUsageRecord>> = flowOf(emptyList())
+        override suspend fun insertOrUpdateUsage(dailyAppUsageRecord: DailyAppUsageRecord) {}
+        override suspend fun insertAllUsage(records: List<DailyAppUsageRecord>) {}
+        override suspend fun clearAllUsageData() {}
+        override suspend fun getSpecificAppUsageForDate(packageName: String, dateString: String): DailyAppUsageRecord? = null
+        override fun getTotalUsageTimeMillisForDate(dateString: String): Flow<Long?> = flowOf(0L)
+        override suspend fun deleteOldUsageData(timestampMillis: Long): Int = 0
+    }
+
+    val fakeRepo = ScrollDataRepositoryImpl(dummyScrollSessionDao, dummyDailyAppUsageDao, app)
+    val fakeViewModel = MainViewModel(fakeRepo, app)
+    ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) { 
         val exampleTimeMillis = (2.75 * 60 * 60 * 1000).toLong()
         val topAppExample = AppUsageUiItem(
             id = "com.example.topapp",
@@ -688,6 +778,7 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
             packageName = "com.example.topapp"
         )
         TodaySummaryScreen(
+            viewModel = fakeViewModel,
             greeting = "Good Evening 👍",
             isAccessibilityServiceEnabled = true,
             onEnableAccessibilityClick = {},
@@ -710,7 +801,7 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
 @Preview(showBackground = true, name = "Top Weekly App Card - With Data")
 @Composable
 fun TopWeeklyAppCardPreview() {
-    ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = false) {
+    ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) {
         val topAppExample = AppUsageUiItem(
             id = "com.example.topapp",
             appName = "Social Media Pro",
@@ -728,9 +819,34 @@ fun TopWeeklyAppCardPreview() {
 @Preview(showBackground = true, name = "Top Weekly App Card - No Data")
 @Composable
 fun TopWeeklyAppCardNoDataPreview() {
-    ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = false) {
+    ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) {
          Box(modifier = Modifier.padding(16.dp).width(200.dp).height(180.dp)) {
             TopWeeklyAppCard(topApp = null, modifier = Modifier.fillMaxSize())
         }
     }
+}
+
+@Composable
+fun ThemeModeSwitch(
+    currentThemeVariant: String,
+    onThemeChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isDarkMode = currentThemeVariant != THEME_LIGHT // Now THEME_LIGHT should be resolved
+
+    Switch(
+        modifier = modifier,
+        checked = isDarkMode,
+        onCheckedChange = {
+            val newTheme = if (it) THEME_OLED_DARK else THEME_LIGHT // THEME_OLED_DARK and THEME_LIGHT should be resolved
+            onThemeChange(newTheme)
+        },
+        thumbContent = {
+            Icon(
+                imageVector = if (isDarkMode) Icons.Filled.Brightness2 else Icons.Filled.WbSunny,
+                contentDescription = if (isDarkMode) "Dark Mode" else "Light Mode",
+                modifier = Modifier.size(SwitchDefaults.IconSize)
+            )
+        }
+    )
 }

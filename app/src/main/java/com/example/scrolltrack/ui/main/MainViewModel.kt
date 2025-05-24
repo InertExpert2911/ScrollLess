@@ -23,6 +23,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar // For date calculations
 
+// Constants for SharedPreferences (can be moved to a companion object or a separate file if preferred)
+private const val PREFS_APP_SETTINGS = "ScrollTrackAppSettings"
+private const val KEY_SELECTED_THEME = "selected_theme_variant"
+private const val THEME_LIGHT = "light"
+private const val THEME_DARK = "dark"
+private const val THEME_OLED_DARK = "oled_dark"
+private const val DEFAULT_THEME = THEME_OLED_DARK
+
 // Data class for Scroll UI (remains the same)
 data class AppScrollUiItem(
     val id: String,
@@ -47,6 +55,27 @@ class MainViewModel(
     private val repository: ScrollDataRepository,
     private val application: Application
 ) : ViewModel() {
+
+    private val appPrefs = application.getSharedPreferences(PREFS_APP_SETTINGS, Context.MODE_PRIVATE)
+
+    // --- Theme Management ---
+    private val _selectedThemeVariant = MutableStateFlow(DEFAULT_THEME)
+    val selectedThemeVariant: StateFlow<String> = _selectedThemeVariant.asStateFlow()
+
+    init {
+        // Load saved theme or use default
+        val savedTheme = appPrefs.getString(KEY_SELECTED_THEME, DEFAULT_THEME) ?: DEFAULT_THEME
+        _selectedThemeVariant.value = savedTheme
+        Log.d("MainViewModel", "Initial theme loaded: $savedTheme")
+    }
+
+    fun updateThemeVariant(newVariant: String) {
+        if (newVariant != _selectedThemeVariant.value) {
+            _selectedThemeVariant.value = newVariant
+            appPrefs.edit().putString(KEY_SELECTED_THEME, newVariant).apply()
+            Log.d("MainViewModel", "Theme updated and saved: $newVariant")
+        }
+    }
 
     private val _todayDateString = DateUtil.getCurrentDateString() // Fixed for "today's" data
 

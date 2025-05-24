@@ -24,6 +24,14 @@ val InterFontFamily = FontFamily(
     // You specify the weight you want, and the renderer selects it from the variable font.
 )
 
+// Define the Caveat variable font family
+// Make sure you have 'caveat_variable.ttf' in res/font/
+val CaveatFontFamily = FontFamily(
+    Font(R.font.caveat_variable, FontWeight.Normal), // Caveat is often used at normal or bold
+    Font(R.font.caveat_variable, FontWeight.Bold)
+    // Add other weights if your variable font file for Caveat supports them and you need them.
+)
+
 // Set of Material typography styles using Inter font
 // You can customize these further based on Material 3 type scale guidelines.
 val Typography = Typography(
