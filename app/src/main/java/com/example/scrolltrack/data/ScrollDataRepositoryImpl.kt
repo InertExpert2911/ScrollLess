@@ -42,6 +42,11 @@ class ScrollDataRepositoryImpl(
         return dailyAppUsageDao.getUsageForDate(dateString)
     }
 
+    // Implementation for the missing method
+    override fun getUsageRecordsForDateRange(startDateString: String, endDateString: String): Flow<List<DailyAppUsageRecord>> {
+        return dailyAppUsageDao.getUsageRecordsForDateRange(startDateString, endDateString)
+    }
+
     override suspend fun updateTodayAppUsageStats(): Boolean {
         val usageStatsManager =
             application.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager

@@ -21,6 +21,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Calendar // For date calculations
 
 // Data class for Scroll UI (remains the same)
 data class AppScrollUiItem(
@@ -58,36 +59,33 @@ class MainViewModel(
         .stateIn(viewModelScope, SharingStarted.Eagerly, "Hello! 👋")
 
     // --- Helper function to filter and map DailyAppUsageRecords to AppUsageUiItems ---
+    private suspend fun processSingleUsageRecordToUiItem(record: DailyAppUsageRecord): AppUsageUiItem? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val pm = application.packageManager
+                val appInfo = pm.getApplicationInfo(record.packageName, 0)
+                AppUsageUiItem(
+                    id = record.packageName,
+                    appName = pm.getApplicationLabel(appInfo).toString(),
+                    icon = pm.getApplicationIcon(record.packageName),
+                    usageTimeMillis = record.usageTimeMillis,
+                    formattedUsageTime = DateUtil.formatDuration(record.usageTimeMillis),
+                    packageName = record.packageName
+                )
+            } catch (e: PackageManager.NameNotFoundException) {
+                Log.w("MainViewModel", "Package info not found for usage item ${record.packageName}, creating fallback UI item.")
+                AppUsageUiItem(record.packageName, record.packageName.substringAfterLast('.', record.packageName), null, record.usageTimeMillis, DateUtil.formatDuration(record.usageTimeMillis), record.packageName)
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error processing usage app data for ${record.packageName}", e)
+                null
+            }
+        }
+    }
+    
     private suspend fun processUsageRecords(records: List<DailyAppUsageRecord>): List<AppUsageUiItem> {
         return withContext(Dispatchers.IO) {
             records.mapNotNull { record ->
-                try {
-                    val pm = application.packageManager
-                    val appInfo = pm.getApplicationInfo(record.packageName, 0)
-                    // Basic filtering: ignore self and non-launchable system apps (similar to before)
-                    if (record.packageName == application.packageName) return@mapNotNull null
-                    if ((appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0) &&
-                        (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP == 0) &&
-                        pm.getLaunchIntentForPackage(record.packageName) == null) {
-                        return@mapNotNull null
-                    }
-
-                    AppUsageUiItem(
-                        id = record.packageName,
-                        appName = pm.getApplicationLabel(appInfo).toString(),
-                        icon = pm.getApplicationIcon(record.packageName),
-                        usageTimeMillis = record.usageTimeMillis,
-                        formattedUsageTime = DateUtil.formatDuration(record.usageTimeMillis),
-                        packageName = record.packageName
-                    )
-                } catch (e: PackageManager.NameNotFoundException) {
-                    Log.w("MainViewModel", "Package info not found for usage item ${record.packageName}, creating fallback UI item.")
-                    // Fallback for apps that might have been uninstalled but data exists
-                    AppUsageUiItem(record.packageName, record.packageName.substringAfterLast('.', record.packageName), null, record.usageTimeMillis, DateUtil.formatDuration(record.usageTimeMillis), record.packageName)
-                } catch (e: Exception) {
-                    Log.e("MainViewModel", "Error processing usage app data for ${record.packageName}", e)
-                    null
-                }
+                processSingleUsageRecordToUiItem(record) // Use the refactored single item processor
             }.sortedByDescending { it.usageTimeMillis }
         }
     }
@@ -150,6 +148,43 @@ class MainViewModel(
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "Loading...")
 
 
+    // --- Top Used App in Last 7 Days ---
+    val topUsedAppLast7Days: StateFlow<AppUsageUiItem?> = flow {
+        val calendar = Calendar.getInstance()
+        val endDateString = DateUtil.formatDate(calendar.timeInMillis) // Today
+        calendar.add(Calendar.DAY_OF_YEAR, -6) // Go back 6 days to make it a 7-day range including today
+        val startDateString = DateUtil.formatDate(calendar.timeInMillis)
+
+        repository.getUsageRecordsForDateRange(startDateString, endDateString)
+            .map { dailyRecords ->
+                if (dailyRecords.isEmpty()) {
+                    emit(null)
+                    return@map
+                }
+                val aggregatedUsage = dailyRecords
+                    .groupBy { it.packageName }
+                    .mapValues { entry -> entry.value.sumOf { it.usageTimeMillis } }
+                    .maxByOrNull { it.value }
+
+                if (aggregatedUsage != null) {
+                    val topAppPackageName = aggregatedUsage.key
+                    val totalTime = aggregatedUsage.value
+                    val representativeRecord = DailyAppUsageRecord(
+                        packageName = topAppPackageName,
+                        dateString = endDateString,
+                        usageTimeMillis = totalTime
+                    )
+                    emit(processSingleUsageRecordToUiItem(representativeRecord))
+                } else {
+                    emit(null)
+                }
+            }.catch { e ->
+                Log.e("MainViewModel", "Error fetching or processing top used app for last 7 days", e)
+                emit(null)
+            }.collect() // Collect the inner flow
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+
     // Helper to map ScrollData to ScrollUiItem
     private suspend fun mapToAppScrollUiItems(appScrollDataList: List<AppScrollData>): List<AppScrollUiItem> {
         return withContext(Dispatchers.IO) {
@@ -157,16 +192,19 @@ class MainViewModel(
                 try {
                     val pm = application.packageManager
                     val appInfo = pm.getApplicationInfo(appData.packageName, 0)
+                    // NO EXPLICIT FILTERING HERE
                     AppScrollUiItem(
                         id = appData.packageName,
                         appName = pm.getApplicationLabel(appInfo).toString(),
                         icon = pm.getApplicationIcon(appData.packageName),
-                        totalScroll = appData.totalScroll,
+                        totalScroll = appData.totalScroll, // This should be mapped to a relevant field in AppScrollUiItem if it's different from AppUsageUiItem
                         packageName = appData.packageName
+                        // Note: AppScrollUiItem currently has totalScroll: Long. AppUsageUiItem has usageTimeMillis. This mapping might need adjustment
+                        // For now, assuming AppScrollUiItem structure is intended for scroll display and the data source is correct.
                     )
                 } catch (e: PackageManager.NameNotFoundException) {
                     Log.w("MainViewModel", "Package info not found for scroll item ${appData.packageName}, creating fallback UI item.")
-                    AppScrollUiItem(appData.packageName, appData.packageName.substringAfterLast('.', appData.packageName), null, appData.totalScroll, appData.packageName)
+                    AppScrollUiItem(appData.packageName, appData.packageName.substringAfterLast('.', appData.packageName), null, appData.totalScroll, appData.packageName) // Fallback with totalScroll as a placeholder for a time field if needed
                 } catch (e: Exception) {
                     Log.e("MainViewModel", "Error processing scroll app data for ${appData.packageName}", e)
                     null

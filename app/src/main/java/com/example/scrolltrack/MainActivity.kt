@@ -33,9 +33,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-// import androidx.compose.ui.graphics.vector.ImageVector // Not used
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-// import androidx.compose.ui.platform.LocalContext // Not used
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,6 +52,7 @@ import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.historical.HistoricalUsageScreen
 import com.example.scrolltrack.ui.main.AppScrollUiItem
+import com.example.scrolltrack.ui.main.AppUsageUiItem
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.ui.main.MainViewModelFactory
 import com.example.scrolltrack.ui.theme.ScrollTrackTheme
@@ -66,6 +66,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.AccessibilityNew
+import androidx.compose.material.icons.filled.QueryStats
+import androidx.compose.material.icons.filled.HourglassEmpty
+
+// import androidx.compose.ui.platform.LocalContentColor
 
 class MainActivity : ComponentActivity() {
 
@@ -184,6 +195,7 @@ fun AppNavigationHost(
             val totalUsageTimeFormatted by viewModel.totalPhoneUsageTodayFormatted.collectAsStateWithLifecycle()
             val totalUsageTimeMillis: Long by viewModel.totalPhoneUsageTodayMillis.collectAsStateWithLifecycle()
             val scrollDistance by viewModel.scrollDistanceTodayFormatted.collectAsStateWithLifecycle()
+            val topWeeklyApp by viewModel.topUsedAppLast7Days.collectAsStateWithLifecycle()
 
             TodaySummaryScreen(
                 greeting = greeting,
@@ -193,6 +205,7 @@ fun AppNavigationHost(
                 onEnableUsageStatsClick = onEnableUsageStatsClick,
                 totalUsageTime = totalUsageTimeFormatted,
                 totalUsageTimeMillis = totalUsageTimeMillis,
+                topWeeklyApp = topWeeklyApp,
                 totalScrollUnits = totalScrollUnits,
                 scrollDistanceKm = scrollDistance.first,
                 scrollDistanceMiles = scrollDistance.second,
@@ -212,7 +225,7 @@ fun AppNavigationHost(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalAnimationApi::class)
 @Composable
 fun TodaySummaryScreen(
     greeting: String,
@@ -222,6 +235,7 @@ fun TodaySummaryScreen(
     onEnableUsageStatsClick: () -> Unit,
     totalUsageTime: String,
     totalUsageTimeMillis: Long,
+    topWeeklyApp: AppUsageUiItem?,
     totalScrollUnits: Long,
     scrollDistanceKm: String,
     scrollDistanceMiles: String,
@@ -229,12 +243,6 @@ fun TodaySummaryScreen(
     onNavigateToHistoricalUsage: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val accessibilityStatusColor = if (isAccessibilityServiceEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-    val accessibilityStatusTextDisplay = "Accessibility: ${if (isAccessibilityServiceEnabled) "Enabled" else "Disabled"}"
-
-    val usageStatsStatusColor = if (isUsageStatsPermissionGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-    val usageStatsStatusTextDisplay = "Usage Access: ${if (isUsageStatsPermissionGranted) "Granted" else "Denied"}"
-
     val phoneUsageColor = when {
         totalUsageTimeMillis <= 2.5 * 60 * 60 * 1000 -> UsageStatusGreen
         totalUsageTimeMillis <= 5 * 60 * 60 * 1000 -> UsageStatusOrange
@@ -246,11 +254,11 @@ fun TodaySummaryScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
-            .padding(top = 32.dp, start = 16.dp, end = 16.dp, bottom = 16.dp)
+            .padding(top = 40.dp, start = 16.dp, end = 16.dp, bottom = 16.dp)
     ) {
         Text(
             text = greeting,
-            style = MaterialTheme.typography.headlineLarge,
+            style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.padding(horizontal = 8.dp)
         )
@@ -258,34 +266,41 @@ fun TodaySummaryScreen(
             text = "Manage your daily digital habits.",
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 8.dp, bottom = 20.dp)
+            modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
         )
 
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
-            shape = MaterialTheme.shapes.large,
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        AnimatedVisibility(
+            visible = !isAccessibilityServiceEnabled,
+            enter = fadeIn(),
+            exit = fadeOut()
         ) {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                PermissionRow(
-                    statusText = accessibilityStatusTextDisplay,
-                    statusColor = accessibilityStatusColor,
-                    buttonText = "Settings",
-                    onButtonClick = onEnableAccessibilityClick,
-                    showButton = !isAccessibilityServiceEnabled
-                )
-                Divider(Modifier.padding(vertical = 8.dp).background(MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)))
-                PermissionRow(
-                    statusText = usageStatsStatusTextDisplay,
-                    statusColor = usageStatsStatusColor,
-                    buttonText = "Settings",
-                    onButtonClick = onEnableUsageStatsClick,
-                    showButton = !isUsageStatsPermissionGranted
-                )
-            }
+            PermissionRequestCard(
+                leadingIcon = { Icon(Icons.Filled.AccessibilityNew, contentDescription = "Accessibility Service Icon", modifier = Modifier.size(28.dp)) },
+                title = "Enable Accessibility Service",
+                description = "Required to track scrolls & calculate distance in other apps.",
+                buttonText = "Open Settings",
+                onButtonClick = onEnableAccessibilityClick,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+            )
+        }
+
+        AnimatedVisibility(
+            visible = !isUsageStatsPermissionGranted,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            PermissionRequestCard(
+                leadingIcon = { Icon(Icons.Filled.QueryStats, contentDescription = "Usage Access Icon", modifier = Modifier.size(28.dp)) },
+                title = "Grant Usage Access",
+                description = "Needed to show your phone usage time and app breakdown.",
+                buttonText = "Grant Access",
+                onButtonClick = onEnableUsageStatsClick,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+            )
+        }
+        
+        if (!isAccessibilityServiceEnabled || !isUsageStatsPermissionGranted) {
+            Spacer(modifier = Modifier.height(8.dp))
         }
 
         Row(
@@ -301,13 +316,20 @@ fun TodaySummaryScreen(
                 usageTimeColor = phoneUsageColor,
                 onNavigateToHistoricalUsage = onNavigateToHistoricalUsage
             )
-            ScrollStatsCard(
+            TopWeeklyAppCard(
                 modifier = Modifier.weight(1f),
-                scrollDistanceKm = scrollDistanceKm,
-                scrollDistanceMiles = scrollDistanceMiles,
-                totalScrollUnits = totalScrollUnits
+                topApp = topWeeklyApp
             )
         }
+
+        ScrollStatsCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp, vertical = 8.dp),
+            scrollDistanceKm = scrollDistanceKm,
+            scrollDistanceMiles = scrollDistanceMiles,
+            totalScrollUnits = totalScrollUnits
+        )
 
         Spacer(modifier = Modifier.height(20.dp))
         Text(
@@ -353,6 +375,69 @@ fun TodaySummaryScreen(
 }
 
 @Composable
+fun PermissionRequestCard(
+    leadingIcon: (@Composable () -> Unit)?,
+    title: String,
+    description: String,
+    buttonText: String,
+    onButtonClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    ElevatedCard(
+        modifier = modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+        ),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (leadingIcon != null) {
+                Box(modifier = Modifier.padding(end = 16.dp)) {
+                    leadingIcon()
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.Top) {
+                    Icon(
+                        imageVector = Icons.Filled.Info,
+                        contentDescription = "Information",
+                        modifier = Modifier.padding(end = 8.dp, top = 2.dp).size(16.dp),
+                    )
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                FilledTonalButton(
+                    onClick = onButtonClick,
+                    modifier = Modifier.align(Alignment.End),
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    ),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text(buttonText, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun PhoneUsageCard(
     modifier: Modifier = Modifier,
     totalUsageTime: String,
@@ -364,8 +449,8 @@ fun PhoneUsageCard(
             .fillMaxHeight()
             .clickable { onNavigateToHistoricalUsage() },
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier
@@ -376,7 +461,7 @@ fun PhoneUsageCard(
         ) {
             Icon(Icons.Filled.PhoneAndroid, contentDescription = "Phone Usage", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp).padding(bottom = 8.dp))
             Text(
-                text = "PHONE USAGE",
+                text = "PHONE USAGE (Today)",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -401,6 +486,76 @@ fun PhoneUsageCard(
 }
 
 @Composable
+fun TopWeeklyAppCard(
+    modifier: Modifier = Modifier,
+    topApp: AppUsageUiItem?
+) {
+    Card(
+        modifier = modifier.fillMaxHeight(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            if (topApp != null) {
+                Image(
+                    painter = rememberAsyncImagePainter(
+                        model = topApp.icon ?: R.mipmap.ic_launcher_round
+                    ),
+                    contentDescription = "${topApp.appName} icon",
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .padding(bottom = 8.dp),
+                    contentScale = ContentScale.Fit
+                )
+                Text(
+                    text = topApp.appName,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "${topApp.formattedUsageTime} (Last 7 Days)",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+            } else {
+                Icon(
+                    Icons.Filled.HourglassEmpty,
+                    contentDescription = "No top app data",
+                    modifier = Modifier.size(36.dp).padding(bottom = 8.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "Top Weekly App",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                     textAlign = TextAlign.Center
+                )
+                 Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "No data yet",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun ScrollStatsCard(
     modifier: Modifier = Modifier,
     scrollDistanceKm: String,
@@ -408,10 +563,10 @@ fun ScrollStatsCard(
     totalScrollUnits: Long
 ) {
     Card(
-        modifier = modifier.fillMaxHeight(),
+        modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier
@@ -422,7 +577,7 @@ fun ScrollStatsCard(
         ) {
             Icon(Icons.Filled.TrendingUp, contentDescription = "Scroll Stats", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(32.dp).padding(bottom = 8.dp))
             Text(
-                text = "SCROLL STATS",
+                text = "SCROLL STATS (Today)",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
@@ -439,46 +594,6 @@ fun ScrollStatsCard(
                 text = "$totalScrollUnits units",
                 style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
                 textAlign = TextAlign.Center
-            )
-        }
-    }
-}
-
-@Composable
-fun PermissionRow(
-    statusText: String,
-    statusColor: Color,
-    buttonText: String,
-    onButtonClick: () -> Unit,
-    showButton: Boolean,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = statusText,
-            style = MaterialTheme.typography.labelLarge,
-            color = statusColor,
-            modifier = Modifier.weight(1f).padding(end = 8.dp)
-        )
-        if (showButton) {
-            Button(
-                onClick = onButtonClick,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                Text(buttonText, color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelMedium)
-            }
-        } else {
-            Icon(
-                imageVector = Icons.Filled.CheckCircle,
-                contentDescription = "Permission Granted",
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(28.dp)
             )
         }
     }
@@ -537,28 +652,85 @@ fun AppScrollItemEntry(appData: AppScrollUiItem, modifier: Modifier = Modifier) 
     }
 }
 
-@Preview(showBackground = true, name = "Today Summary Screen - Dark - Vibrant")
+@Preview(showBackground = true, name = "Today Summary - Permissions Needed")
 @Composable
-fun TodaySummaryScreenDarkPreviewVibrant() {
+fun TodaySummaryScreenPermissionsNeededPreview() {
     ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = false) {
-        val exampleTimeMillis = (7 * 60 * 60 * 1000 + 18 * 60 * 1000).toLong()
         TodaySummaryScreen(
-            greeting = "Good Evening ✨",
+            greeting = "Good Morning! ☀️",
             isAccessibilityServiceEnabled = false,
+            onEnableAccessibilityClick = {},
+            isUsageStatsPermissionGranted = false,
+            onEnableUsageStatsClick = {},
+            totalUsageTime = "0m",
+            totalUsageTimeMillis = 0L,
+            topWeeklyApp = null,
+            totalScrollUnits = 0L,
+            scrollDistanceKm = "0.00 km",
+            scrollDistanceMiles = "0.00 miles",
+            appScrollData = emptyList(),
+            onNavigateToHistoricalUsage = {}
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Today Summary - All Granted - Top App")
+@Composable
+fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
+    ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = false) {
+        val exampleTimeMillis = (2.75 * 60 * 60 * 1000).toLong()
+        val topAppExample = AppUsageUiItem(
+            id = "com.example.topapp",
+            appName = "Social Butterfly",
+            icon = null,
+            usageTimeMillis = (10 * 60 * 60 * 1000).toLong(),
+            formattedUsageTime = "10h 0m",
+            packageName = "com.example.topapp"
+        )
+        TodaySummaryScreen(
+            greeting = "Good Evening 👍",
+            isAccessibilityServiceEnabled = true,
             onEnableAccessibilityClick = {},
             isUsageStatsPermissionGranted = true,
             onEnableUsageStatsClick = {},
-            totalUsageTime = "7h 18m",
+            totalUsageTime = "2h 45m",
             totalUsageTimeMillis = exampleTimeMillis,
-            totalScrollUnits = 249194L,
-            scrollDistanceKm = "2.45 km",
-            scrollDistanceMiles = "1.52 miles",
+            topWeeklyApp = topAppExample,
+            totalScrollUnits = 13106L,
+            scrollDistanceKm = "1.23 km",
+            scrollDistanceMiles = "0.76 miles",
             appScrollData = listOf(
-                AppScrollUiItem("yt", "YouTube", null, 149234, "com.google.android.youtube"),
-                AppScrollUiItem("chrome", "Chrome", null, 82351, "com.android.chrome"),
-                AppScrollUiItem("settings", "Settings", null, 15621, "com.android.settings")
+                AppScrollUiItem("settings", "Settings", null, 7294, "com.android.settings")
             ),
             onNavigateToHistoricalUsage = {}
         )
+    }
+}
+
+@Preview(showBackground = true, name = "Top Weekly App Card - With Data")
+@Composable
+fun TopWeeklyAppCardPreview() {
+    ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = false) {
+        val topAppExample = AppUsageUiItem(
+            id = "com.example.topapp",
+            appName = "Social Media Pro",
+            icon = null, 
+            usageTimeMillis = (15 * 60 * 60 * 1000).toLong(),
+            formattedUsageTime = "15h 0m",
+            packageName = "com.example.topapp"
+        )
+        Box(modifier = Modifier.padding(16.dp).width(200.dp).height(180.dp)) {
+             TopWeeklyAppCard(topApp = topAppExample, modifier = Modifier.fillMaxSize())
+        }
+    }
+}
+
+@Preview(showBackground = true, name = "Top Weekly App Card - No Data")
+@Composable
+fun TopWeeklyAppCardNoDataPreview() {
+    ScrollTrackTheme(darkThemeUserPreference = true, dynamicColor = false) {
+         Box(modifier = Modifier.padding(16.dp).width(200.dp).height(180.dp)) {
+            TopWeeklyAppCard(topApp = null, modifier = Modifier.fillMaxSize())
+        }
     }
 }

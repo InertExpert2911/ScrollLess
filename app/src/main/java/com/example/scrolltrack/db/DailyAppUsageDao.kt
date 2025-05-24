@@ -56,6 +56,13 @@ interface DailyAppUsageDao {
     fun getTotalUsageTimeMillisForDate(dateString: String): Flow<Long?>
 
     /**
+     * Retrieves all app usage records within a specific date range.
+     * Returns a Flow for reactive updates.
+     */
+    @Query("SELECT * FROM daily_app_usage WHERE date_string BETWEEN :startDateString AND :endDateString")
+    fun getUsageRecordsForDateRange(startDateString: String, endDateString: String): Flow<List<DailyAppUsageRecord>>
+
+    /**
      * Deletes all usage records older than a given timestamp.
      * Useful for data pruning.
      * @param timestampMillis The timestamp (milliseconds since epoch). Records with lastUpdatedTimestamp < this will be deleted.
