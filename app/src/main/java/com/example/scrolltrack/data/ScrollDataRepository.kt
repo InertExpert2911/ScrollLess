@@ -45,4 +45,10 @@ interface ScrollDataRepository {
      * The ViewModel will then map these to UI items, including fetching app names/icons.
      */
     fun getDailyUsageRecordsForDate(dateString: String): Flow<List<DailyAppUsageRecord>> // New method
+
+    /**
+     * Fetches and stores app usage stats specifically for the current day.
+     * @return True if successful, false otherwise.
+     */
+    suspend fun updateTodayAppUsageStats(): Boolean
 }

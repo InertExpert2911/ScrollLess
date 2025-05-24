@@ -186,6 +186,7 @@ fun AppNavigationHost(
                 scrollDistanceMiles = scrollDistance.second,
                 appScrollData = appScrollItems,
                 onNavigateToHistoricalUsage = {
+                    viewModel.resetSelectedDateToToday()
                     navController.navigate(ScreenRoutes.HISTORICAL_USAGE)
                 }
             )

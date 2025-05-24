@@ -59,41 +59,45 @@ class MainViewModel(
     // --- Helper function to filter and map DailyAppUsageRecords to AppUsageUiItems ---
     private suspend fun processUsageRecords(records: List<DailyAppUsageRecord>): List<AppUsageUiItem> {
         return withContext(Dispatchers.IO) {
-            records.filter { record ->
-                if (record.packageName == application.packageName) return@filter false
-                try {
-                    val appInfo = application.packageManager.getApplicationInfo(record.packageName, 0)
-                    if ((appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0) &&
-                        (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP == 0)) {
+            records
+                /*  // Temporarily commented out for debugging - START
+                .filter { record ->
+                    if (record.packageName == application.packageName) return@filter false
+                    try {
+                        val appInfo = application.packageManager.getApplicationInfo(record.packageName, 0)
+                        if ((appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0) &&
+                            (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP == 0)) {
+                            return@filter false
+                        }
+                        if (application.packageManager.getLaunchIntentForPackage(record.packageName) == null) {
+                            return@filter false
+                        }
+                    } catch (e: PackageManager.NameNotFoundException) {
                         return@filter false
                     }
-                    if (application.packageManager.getLaunchIntentForPackage(record.packageName) == null) {
-                        return@filter false
+                    true
+                }
+                */ // Temporarily commented out for debugging - END
+                .mapNotNull { record ->
+                    try {
+                        val pm = application.packageManager
+                        val appInfo = pm.getApplicationInfo(record.packageName, 0)
+                        AppUsageUiItem(
+                            id = record.packageName,
+                            appName = pm.getApplicationLabel(appInfo).toString(),
+                            icon = pm.getApplicationIcon(record.packageName),
+                            usageTimeMillis = record.usageTimeMillis,
+                            formattedUsageTime = DateUtil.formatDuration(record.usageTimeMillis),
+                            packageName = record.packageName
+                        )
+                    } catch (e: PackageManager.NameNotFoundException) {
+                        Log.w("MainViewModel", "Package info not found for usage item ${record.packageName}")
+                        AppUsageUiItem(record.packageName, record.packageName.substringAfterLast('.'), null, record.usageTimeMillis, DateUtil.formatDuration(record.usageTimeMillis), record.packageName)
+                    } catch (e: Exception) {
+                        Log.e("MainViewModel", "Error processing usage app data for ${record.packageName}", e)
+                        null
                     }
-                } catch (e: PackageManager.NameNotFoundException) {
-                    return@filter false
-                }
-                true
-            }.mapNotNull { record ->
-                try {
-                    val pm = application.packageManager
-                    val appInfo = pm.getApplicationInfo(record.packageName, 0)
-                    AppUsageUiItem(
-                        id = record.packageName,
-                        appName = pm.getApplicationLabel(appInfo).toString(),
-                        icon = pm.getApplicationIcon(record.packageName),
-                        usageTimeMillis = record.usageTimeMillis,
-                        formattedUsageTime = DateUtil.formatDuration(record.usageTimeMillis),
-                        packageName = record.packageName
-                    )
-                } catch (e: PackageManager.NameNotFoundException) {
-                    Log.w("MainViewModel", "Package info not found for usage item ${record.packageName}")
-                    AppUsageUiItem(record.packageName, record.packageName.substringAfterLast('.'), null, record.usageTimeMillis, DateUtil.formatDuration(record.usageTimeMillis), record.packageName)
-                } catch (e: Exception) {
-                    Log.e("MainViewModel", "Error processing usage app data for ${record.packageName}", e)
-                    null
-                }
-            }.sortedByDescending { it.usageTimeMillis }
+                }.sortedByDescending { it.usageTimeMillis }
         }
     }
 
@@ -198,6 +202,11 @@ class MainViewModel(
         }
     }
 
+    fun resetSelectedDateToToday() {
+        Log.d("MainViewModel", "Resetting selectedDateForHistory to today: $_todayDateString")
+        _selectedDateForHistory.value = _todayDateString
+    }
+
     fun refreshDataForToday() { // Renamed for clarity
         viewModelScope.launch {
             // This primarily serves to re-trigger the _todayDateString dependent flows if needed,
@@ -205,7 +214,13 @@ class MainViewModel(
             // Since our "today" flows are based on a fixed _todayDateString and repository Flows,
             // they will update when the underlying database changes.
             // This log confirms the refresh was called.
-            Log.d("MainViewModel", "Explicit refresh for today's data triggered. Data should re-compose if changed in DB.")
+            Log.d("MainViewModel", "Explicit refresh for today's data triggered. Attempting to update today's stats in DB.")
+            val success = repository.updateTodayAppUsageStats()
+            if (success) {
+                Log.d("MainViewModel", "Successfully updated today's app usage stats in the database.")
+            } else {
+                Log.w("MainViewModel", "Failed to update today's app usage stats in the database.")
+            }
             // If you had a non-Flow data source for today, you'd re-fetch it here.
             // For example, if getTotalUsageTimeMillisForDate was not a flow:
             // val usageMillis = repository.getTotalUsageTimeMillisForDate(_todayDateString)
