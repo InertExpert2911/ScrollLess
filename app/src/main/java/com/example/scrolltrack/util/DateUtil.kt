@@ -82,20 +82,20 @@ object DateUtil {
      */
     fun formatDuration(millis: Long): String {
         if (millis < 0) return "N/A" // Invalid duration
-        if (millis < TimeUnit.MINUTES.toMillis(1)) return "< 1m" // Less than a minute
+        if (millis < TimeUnit.MINUTES.toMillis(1)) return "< 1min" // Less than a minute
 
         val hours = TimeUnit.MILLISECONDS.toHours(millis)
         val minutes = TimeUnit.MILLISECONDS.toMinutes(millis) % TimeUnit.HOURS.toMinutes(1)
         // val seconds = TimeUnit.MILLISECONDS.toSeconds(millis) % TimeUnit.MINUTES.toSeconds(1) // Optional: include seconds
 
         return when {
-            hours > 0 -> String.format(Locale.getDefault(), "%dh %02dm", hours, minutes)
+            hours > 0 -> String.format(Locale.getDefault(), "%dhr %02dmin", hours, minutes)
             // If you want to show seconds when hours is 0:
-            // minutes > 0 -> String.format(Locale.getDefault(), "%02dm %02ds", minutes, seconds)
-            minutes > 0 -> String.format(Locale.getDefault(), "%dm", minutes)
+            // minutes > 0 -> String.format(Locale.getDefault(), "%02dmin %02ds", minutes, seconds)
+            minutes > 0 -> String.format(Locale.getDefault(), "%dmin", minutes)
             // If you want to show seconds when minutes is also 0:
             // else -> String.format(Locale.getDefault(), "%ds", seconds)
-            else -> "< 1m" // Fallback for very short durations already handled, but good to have else
+            else -> "< 1min" // Fallback for very short durations already handled, but good to have else
         }
     }
 }

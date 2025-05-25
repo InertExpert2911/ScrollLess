@@ -237,8 +237,7 @@ fun AppNavigationHost(
                 totalUsageTimeMillis = totalUsageTimeMillis,
                 topWeeklyApp = topWeeklyApp,
                 totalScrollUnits = totalScrollUnits,
-                scrollDistanceKm = scrollDistance.first,
-                scrollDistanceMiles = scrollDistance.second,
+                scrollDistanceMeters = scrollDistance.first,
                 appScrollData = appScrollItems,
                 onNavigateToHistoricalUsage = {
                     viewModel.resetSelectedDateToToday()
@@ -287,8 +286,7 @@ fun TodaySummaryScreen(
     totalUsageTimeMillis: Long,
     topWeeklyApp: AppUsageUiItem?,
     totalScrollUnits: Long,
-    scrollDistanceKm: String,
-    scrollDistanceMiles: String,
+    scrollDistanceMeters: String,
     appScrollData: List<AppScrollUiItem>,
     onNavigateToHistoricalUsage: () -> Unit,
     onNavigateToAppDetail: (String) -> Unit,
@@ -393,8 +391,7 @@ fun TodaySummaryScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 4.dp),
-            scrollDistanceKm = scrollDistanceKm,
-            scrollDistanceMiles = scrollDistanceMiles,
+            scrollDistanceMeters = scrollDistanceMeters,
             totalScrollUnits = totalScrollUnits
         )
 
@@ -633,8 +630,7 @@ fun TopWeeklyAppCard(
 @Composable
 fun ScrollStatsCard(
     modifier: Modifier = Modifier,
-    scrollDistanceKm: String,
-    scrollDistanceMiles: String,
+    scrollDistanceMeters: String,
     totalScrollUnits: Long
 ) {
     Card(
@@ -662,7 +658,7 @@ fun ScrollStatsCard(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "$scrollDistanceKm / $scrollDistanceMiles",
+                text = scrollDistanceMeters,
                 style = MaterialTheme.typography.titleLarge.copy(color = MaterialTheme.colorScheme.onPrimaryContainer),
                 textAlign = TextAlign.Center,
                 maxLines = 1,
@@ -777,8 +773,7 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
             totalUsageTimeMillis = 0L,
             topWeeklyApp = null,
             totalScrollUnits = 0L,
-            scrollDistanceKm = "0.00 km",
-            scrollDistanceMiles = "0.00 miles",
+            scrollDistanceMeters = "0 m",
             appScrollData = emptyList(),
             onNavigateToHistoricalUsage = {},
             onNavigateToAppDetail = {}
@@ -837,8 +832,7 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
             totalUsageTimeMillis = exampleTimeMillis,
             topWeeklyApp = topAppExample,
             totalScrollUnits = 13106L,
-            scrollDistanceKm = "1.23 km",
-            scrollDistanceMiles = "0.76 miles",
+            scrollDistanceMeters = "1,230 m",
             appScrollData = listOf(
                 AppScrollUiItem("settings", "Settings", null, 7294, "com.android.settings")
             ),

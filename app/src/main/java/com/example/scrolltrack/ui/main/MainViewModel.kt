@@ -215,7 +215,7 @@ class MainViewModel(
     val scrollDistanceTodayFormatted: StateFlow<Pair<String, String>> =
         totalScrollToday.map {
             ConversionUtil.formatScrollDistance(it, application.applicationContext)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0.00 km" to "0.00 miles")
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0 m" to "0.00 miles")
 
 
     // --- Data for HISTORICAL USAGE SCREEN (Reacts to _selectedDateForHistory) ---

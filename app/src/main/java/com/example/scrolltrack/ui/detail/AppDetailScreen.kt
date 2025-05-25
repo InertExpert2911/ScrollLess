@@ -51,6 +51,11 @@ import androidx.compose.ui.input.pointer.consumeAllChanges
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalContext
+import com.example.scrolltrack.util.ConversionUtil
+import java.text.NumberFormat
+import kotlin.math.roundToInt
+import android.content.Context
 
 // Constant for swipe threshold
 private const val SWIPE_THRESHOLD_DP = 50 // Adjust as needed
@@ -307,6 +312,7 @@ fun UsageBarScrollLineChart(
 ) {
     val textMeasurer = rememberTextMeasurer()
     var selectedBarIndex by remember { mutableStateOf<Int?>(null) }
+    val context = LocalContext.current
 
     // Reset selectedBarIndex if periodType is DAILY, or if data/period changes
     LaunchedEffect(periodType, data) {
@@ -335,6 +341,18 @@ fun UsageBarScrollLineChart(
     // This should provide a contrasting color for text on inverseSurface.
     val tooltipActualTextColor = MaterialTheme.colorScheme.surface
     val tooltipTextStyle = MaterialTheme.typography.bodySmall.copy(color = tooltipActualTextColor)
+
+    // Calculate tooltip scroll text within composable scope
+    val tooltipScrollText by remember(selectedBarIndex, data, periodType, context) {
+        derivedStateOf {
+            if ((periodType == ChartPeriodType.WEEKLY || periodType == ChartPeriodType.MONTHLY) && selectedBarIndex != null && selectedBarIndex!! < data.size) {
+                val selectedData = data[selectedBarIndex!!]
+                ConversionUtil.formatScrollDistance(selectedData.scrollUnits, context).first
+            } else {
+                "" // Default empty string when no tooltip or not applicable
+            }
+        }
+    }
 
     Canvas(
         modifier = modifier.pointerInput(periodType, data) { // Include periodType in key
@@ -545,7 +563,7 @@ fun UsageBarScrollLineChart(
 
         for (i in 0..yLabelCount) {
             val value = minScrollUnits + (i.toFloat() / yLabelCount) * (maxScrollUnits - minScrollUnits)
-            val labelText = formatScrollForAxis(value, maxScrollUnits)
+            val labelText = formatScrollForAxis(value, maxScrollUnits, context)
             val textLayoutResult = textMeasurer.measure(buildAnnotatedString { append(labelText) }, style = axisLabelTextStyle)
             val labelY = topMargin + chartHeight - (i.toFloat() / yLabelCount) * chartHeight
             // Draw grid line
@@ -571,7 +589,7 @@ fun UsageBarScrollLineChart(
             val selectedData = data[selectedBarIndex!!]
 
             val usageText = formatMillisToHoursMinutesSeconds(selectedData.usageTimeMillis)
-            val scrollText = formatScrollForAxis(selectedData.scrollUnits.toFloat(), selectedData.scrollUnits) 
+            val scrollText = tooltipScrollText
 
             val usageTextLayout = textMeasurer.measure(buildAnnotatedString{ append(usageText) }, style = tooltipTextStyle)
             val scrollTextLayout = textMeasurer.measure(buildAnnotatedString{ append(scrollText) }, style = tooltipTextStyle)
@@ -659,38 +677,60 @@ fun getDayOfWeekLetter(dateString: String): String {
     }
 }
 
-fun formatScrollForAxis(value: Float, maxValueHint: Long): String {
-    if (abs(value) < 0.1f) return "0 px" // Handle near-zero values more robustly
-    // If the value is small (e.g. < 10) and has a significant fractional part, show one decimal.
-    // Otherwise, round to the nearest whole number.
-    return if (value != 0f && abs(value) < 10f && (value % 1.0f != 0.0f && abs(value % 1.0f) > 0.05f) ) {
-        String.format(Locale.US, "%.1f px", value)
-    } else {
-        String.format(Locale.US, "%.0f px", round(value))
+fun formatScrollForAxis(value: Float, maxValueHint: Long, context: Context): String {
+    if (value == 0f) return "0 m"
+
+    val displayMetrics = context.resources.displayMetrics
+    val dpi = displayMetrics.ydpi
+    if (dpi <= 0f) return "N/A"
+
+    val inchesScrolled = value.toDouble() / dpi
+    val metersScrolled = inchesScrolled / 39.3701 // INCHES_PER_METER
+
+    val numberFormat = NumberFormat.getNumberInstance(Locale.getDefault())
+
+    return when {
+        metersScrolled.compareTo(10000.0) >= 0 -> { // 10km+
+            numberFormat.maximumFractionDigits = 1
+            numberFormat.format(metersScrolled / 1000.0) + " km"
+        }
+        metersScrolled.compareTo(1000.0) >= 0 -> { // 1km - 9.999km
+            numberFormat.maximumFractionDigits = 1
+            numberFormat.format(metersScrolled / 1000.0) + " km" // Use "km" directly
+        }
+        metersScrolled.compareTo(1.0) >= 0 -> {
+            numberFormat.maximumFractionDigits = 0
+            numberFormat.format(metersScrolled) + " m"
+        }
+        metersScrolled.compareTo(0.0) > 0 -> { // Between 0 and 1 meter
+            numberFormat.maximumFractionDigits = 1 // e.g., 0.5 m
+            numberFormat.format(metersScrolled) + " m"
+        }
+        else -> "0 m" // For negative or very small values effectively zero
     }
 }
 
 fun formatMillisToHoursOrMinutes(millis: Long): String {
-    if (millis < 0) return "0m"
+    if (millis < 0) return "0min"
     val hours = TimeUnit.MILLISECONDS.toHours(millis)
     val minutes = TimeUnit.MILLISECONDS.toMinutes(millis) % 60
 
     return when {
-        hours > 0 -> String.format("%dh", hours)
-        minutes > 0 -> String.format("%dm", minutes)
-        else -> "0m"
+        hours > 0 -> String.format("%dhr", hours)
+        minutes > 0 -> String.format("%dmin", minutes)
+        else -> "0min"
     }
 }
 
 fun formatMillisToHoursMinutesSeconds(millis: Long): String {
-    if (millis < 0) return "0s"
+    if (millis < 0) return "0sec"
     val hours = TimeUnit.MILLISECONDS.toHours(millis)
     val minutes = TimeUnit.MILLISECONDS.toMinutes(millis) % 60
     val seconds = TimeUnit.MILLISECONDS.toSeconds(millis) % 60
 
     return when {
-        hours > 0 -> String.format("%dh %dm", hours, minutes)
-        minutes > 0 -> String.format("%dm %ds", minutes, seconds)
-        else -> String.format("%ds", seconds)
+        hours > 0 -> String.format("%dhr %02dmin", hours, minutes) // Keep 02d for minutes when with hours
+        minutes > 0 -> String.format("%dmin %02dsec", minutes, seconds) // Keep 02d for seconds when with minutes
+        else -> String.format("%dsec", seconds)
     }
 } 

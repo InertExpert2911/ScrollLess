@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.DisplayMetrics
 import android.util.Log
 import kotlin.math.roundToInt
+import java.text.NumberFormat // Added for comma separation
+import java.util.Locale // Added for Locale
 
 object ConversionUtil {
     // Constants for conversion
@@ -12,13 +14,31 @@ object ConversionUtil {
     private const val INCHES_PER_MILE = 63360.0
 
     /**
+     * Formats a distance in meters into a string with comma separation and " m" suffix.
+     * If the distance is >= 10,000m, it formats it as kilometers (e.g., "12.34 km").
+     */
+    private fun formatMeters(meters: Double): String {
+        val numberFormat = NumberFormat.getNumberInstance(Locale.getDefault())
+        return if (meters >= METERS_PER_KILOMETER * 10) { // 10,000 meters
+            numberFormat.maximumFractionDigits = 2
+            numberFormat.format(meters / METERS_PER_KILOMETER) + " km"
+        } else {
+            numberFormat.maximumFractionDigits = 0 // No decimals for meters usually, unless very small
+            if (meters < 1 && meters > 0) {
+                 numberFormat.maximumFractionDigits = 2 // Show decimals for less than 1 meter
+            }
+            numberFormat.format(meters) + " m"
+        }
+    }
+
+    /**
      * Converts scroll units (approximated as pixels) to estimated physical distance.
      * @param scrollUnits The total accumulated scroll units.
      * @param context Context to access display metrics.
-     * @return Pair<Kilometers String, Miles String> e.g., ("1.23 km", "0.76 miles")
+     * @return Pair<Formatted Meters String, Formatted Miles String> e.g., ("1,234 m", "0.76 miles")
      */
     fun formatScrollDistance(scrollUnits: Long, context: Context): Pair<String, String> {
-        if (scrollUnits <= 0) return "0.00 km" to "0.00 miles"
+        if (scrollUnits <= 0) return "0 m" to "0.00 miles"
 
         val displayMetrics: DisplayMetrics = context.resources.displayMetrics
         // Using ydpi as a primary reference for vertical scrolling,
@@ -26,16 +46,17 @@ object ConversionUtil {
         val dpi = displayMetrics.ydpi
         if (dpi <= 0f) { // ydpi is float
             Log.w("ConversionUtil", "Invalid DPI detected: $dpi. Cannot calculate distance.")
-            return "N/A km" to "N/A miles"
+            return "N/A m" to "N/A miles"
         }
 
         val inchesScrolled = scrollUnits.toDouble() / dpi
         val metersScrolled = inchesScrolled / INCHES_PER_METER
-
-        val kilometers = metersScrolled / METERS_PER_KILOMETER
         val miles = inchesScrolled / INCHES_PER_MILE
 
-        return String.format("%.2f km", kilometers) to String.format("%.2f miles", miles)
+        val formattedMeters = formatMeters(metersScrolled)
+        val formattedMiles = String.format(Locale.getDefault(), "%.2f miles", miles) // Keep miles calculation
+
+        return formattedMeters to formattedMiles
     }
 
     /**
