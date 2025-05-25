@@ -43,8 +43,10 @@ class ScrollDataRepositoryImpl(
         return dailyAppUsageDao.getUsageForDate(dateString)
     }
 
-    // Implementation for the missing method
-    override fun getUsageRecordsForDateRange(startDateString: String, endDateString: String): Flow<List<DailyAppUsageRecord>> {
+    // Fetches all daily usage records within a given date range.
+    override suspend fun getUsageRecordsForDateRange(startDateString: String, endDateString: String): Flow<List<DailyAppUsageRecord>> {
+        // This should query the DAO for records between startDateString and endDateString (inclusive)
+        // Example: return dailyAppUsageDao.getUsageRecordsForDateRange(startDateString, endDateString)
         return dailyAppUsageDao.getUsageRecordsForDateRange(startDateString, endDateString)
     }
 
@@ -219,6 +221,20 @@ class ScrollDataRepositoryImpl(
     // --- Methods for App Detail Screen Chart Data ---
     override suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord> {
         return dailyAppUsageDao.getUsageForPackageAndDates(packageName, dateStrings)
+    }
+
+    override suspend fun getSpecificAppUsageForDate(packageName: String, dateString: String): DailyAppUsageRecord? {
+        // TODO: Implement actual database query using your DAO
+        // Example: return dailyAppUsageDao.getSpecificAppUsageForDate(packageName, dateString)
+        Log.d("ScrollDataRepositoryImpl", "getSpecificAppUsageForDate for $packageName on $dateString - NOT IMPLEMENTED")
+        return null
+    }
+
+    override suspend fun getTotalScrollForAppOnDate(packageName: String, dateString: String): Long? {
+        // TODO: Implement actual database query using your DAO to get scroll for a specific app on a specific date
+        // Example: return scrollSessionDao.getTotalScrollForAppOnDate(packageName, dateString)
+        Log.d("ScrollDataRepositoryImpl", "getTotalScrollForAppOnDate for $packageName on $dateString - NOT IMPLEMENTED")
+        return null
     }
 
     override suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate> {
