@@ -138,6 +138,9 @@ class MainViewModel(
     private val _appDetailWeekNumberDisplay = MutableStateFlow<String?>(null)
     val appDetailWeekNumberDisplay: StateFlow<String?> = _appDetailWeekNumberDisplay.asStateFlow()
 
+    private val _appDetailFocusedScrollDisplay = MutableStateFlow("0 m") // New StateFlow for scroll
+    val appDetailFocusedScrollDisplay: StateFlow<String> = _appDetailFocusedScrollDisplay.asStateFlow()
+
     // --- Greeting ---
     val greeting: StateFlow<String> = flow { emit(GreetingUtil.getGreeting()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, "Hello! 👋")
@@ -393,6 +396,7 @@ class MainViewModel(
             // Reset summary fields
             _appDetailFocusedUsageDisplay.value = "..."
             _appDetailFocusedPeriodDisplay.value = "Loading..."
+            _appDetailFocusedScrollDisplay.value = "..." // Reset scroll display
             _appDetailComparisonText.value = null
             _appDetailWeekNumberDisplay.value = null
             _appDetailPeriodDescriptionText.value = null
@@ -435,7 +439,8 @@ class MainViewModel(
                 ChartPeriodType.DAILY -> {
                     val focusedDayData = currentCombinedData.find { it.date == referenceDate }
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(focusedDayData?.usageTimeMillis ?: 0L)
-                    _appDetailPeriodDescriptionText.value = "USAGE ON SELECTED DAY"
+                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(focusedDayData?.scrollUnits ?: 0L, application).first
+                    _appDetailPeriodDescriptionText.value = "USAGE & SCROLL ON SELECTED DAY"
                     
                     val sdf = SimpleDateFormat("EEE, MMM d", Locale.getDefault())
                     _appDetailFocusedPeriodDisplay.value = sdf.format(calendar.time)
@@ -443,9 +448,11 @@ class MainViewModel(
                     _appDetailComparisonText.value = null // No comparison for daily
                 }
                 ChartPeriodType.WEEKLY -> {
-                    val currentPeriodAverage = calculateAverageUsage(currentCombinedData)
-                    _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverage)
-                    _appDetailPeriodDescriptionText.value = "DAILY AVERAGE THIS WEEK"
+                    val currentPeriodAverageUsage = calculateAverageUsage(currentCombinedData)
+                    val currentPeriodAverageScroll = calculateAverageScroll(currentCombinedData)
+                    _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageUsage)
+                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(currentPeriodAverageScroll, application).first
+                    _appDetailPeriodDescriptionText.value = "DAILY AVERAGES THIS WEEK"
 
                     val (startOfWeekStr, endOfWeekStr) = getPeriodDisplayStrings(period, referenceDate, includeYear = false)
                     _appDetailFocusedPeriodDisplay.value = "$startOfWeekStr - $endOfWeekStr"
@@ -454,16 +461,18 @@ class MainViewModel(
                     val (prevWeekDateStrings, _) = calculatePreviousPeriodDateStrings(period, referenceDate)
                     if (prevWeekDateStrings.isNotEmpty()) {
                         val prevWeekUsageRecords = repository.getUsageForPackageAndDates(packageName, prevWeekDateStrings)
-                        val prevWeekAverage = calculateAverageUsageFromRecords(prevWeekUsageRecords)
-                        updateComparisonText(currentPeriodAverage, prevWeekAverage, "last week")
+                        val prevWeekAverageUsage = calculateAverageUsageFromRecords(prevWeekUsageRecords)
+                        updateComparisonText(currentPeriodAverageUsage, prevWeekAverageUsage, "last week")
                     } else {
                          _appDetailComparisonText.value = "No data for comparison"
                     }
                 }
                 ChartPeriodType.MONTHLY -> {
-                    val currentPeriodAverage = calculateAverageUsage(currentCombinedData)
-                    _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverage)
-                    _appDetailPeriodDescriptionText.value = "DAILY AVERAGE THIS MONTH"
+                    val currentPeriodAverageUsage = calculateAverageUsage(currentCombinedData)
+                    val currentPeriodAverageScroll = calculateAverageScroll(currentCombinedData)
+                    _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageUsage)
+                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(currentPeriodAverageScroll, application).first
+                    _appDetailPeriodDescriptionText.value = "DAILY AVERAGES THIS MONTH"
 
                     val sdf = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
                     _appDetailFocusedPeriodDisplay.value = sdf.format(calendar.time)
@@ -472,8 +481,8 @@ class MainViewModel(
                     val (prevMonthDateStrings, _) = calculatePreviousPeriodDateStrings(period, referenceDate)
                      if (prevMonthDateStrings.isNotEmpty()) {
                         val prevMonthUsageRecords = repository.getUsageForPackageAndDates(packageName, prevMonthDateStrings)
-                        val prevMonthAverage = calculateAverageUsageFromRecords(prevMonthUsageRecords)
-                        updateComparisonText(currentPeriodAverage, prevMonthAverage, "last month")
+                        val prevMonthAverageUsage = calculateAverageUsageFromRecords(prevMonthUsageRecords)
+                        updateComparisonText(currentPeriodAverageUsage, prevMonthAverageUsage, "last month")
                     } else {
                          _appDetailComparisonText.value = "No data for comparison"
                     }
@@ -489,6 +498,11 @@ class MainViewModel(
     private fun calculateAverageUsage(data: List<AppDailyDetailData>): Long {
         if (data.isEmpty()) return 0L
         return data.sumOf { it.usageTimeMillis } / data.size
+    }
+
+    private fun calculateAverageScroll(data: List<AppDailyDetailData>): Long { // New function for average scroll
+        if (data.isEmpty()) return 0L
+        return data.sumOf { it.scrollUnits } / data.size
     }
 
     private fun calculateAverageUsageFromRecords(data: List<DailyAppUsageRecord>): Long {
@@ -515,7 +529,6 @@ class MainViewModel(
         }
          _appDetailComparisonText.value = "$percentageString vs $periodName"
     }
-
 
     private fun calculatePreviousPeriodDateStrings(period: ChartPeriodType, currentReferenceDateStr: String): Pair<List<String>, String> {
         val calendar = Calendar.getInstance()

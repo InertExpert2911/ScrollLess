@@ -85,6 +85,7 @@ fun AppDetailScreen(
     val comparisonIsPositive by viewModel.appDetailComparisonIsPositive.collectAsStateWithLifecycle()
     val weekNumberDisplay by viewModel.appDetailWeekNumberDisplay.collectAsStateWithLifecycle()
     val periodDescriptionText by viewModel.appDetailPeriodDescriptionText.collectAsStateWithLifecycle()
+    val focusedScrollDisplay by viewModel.appDetailFocusedScrollDisplay.collectAsStateWithLifecycle()
 
     val canNavigateForward by remember(currentPeriodType, currentReferenceDateStr) {
         derivedStateOf {
@@ -207,6 +208,12 @@ fun AppDetailScreen(
                         text = focusedUsageDisplay,
                         style = MaterialTheme.typography.displaySmall,
                         textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = "Scroll: $focusedScrollDisplay",
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.secondary
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
@@ -468,11 +475,20 @@ fun UsageBarScrollLineChart(
         val minScrollUnits = 0L
 
         val barCount = data.size
+        // Calculate barWidth and barSpacing here, before they are used for dots
+        val barWidth: Float
+        val barSpacing: Float
         if (barCount > 0) {
-            val totalBarWidth = chartWidth * 0.8f
-            val barWidth = (totalBarWidth / barCount).coerceAtLeast(2f)
-            val barSpacing = (chartWidth - totalBarWidth) / (barCount + 1).coerceAtLeast(1)
+            val totalBarWidthFactor = 0.8f // Factor of chart width for all bars
+            val totalBarLayoutWidth = chartWidth * totalBarWidthFactor
+            barWidth = (totalBarLayoutWidth / barCount).coerceAtLeast(2f)
+            barSpacing = (chartWidth - totalBarLayoutWidth) / (barCount + 1).coerceAtLeast(1)
+        } else {
+            barWidth = 0f
+            barSpacing = 0f
+        }
 
+        if (barCount > 0) {
             data.forEachIndexed { index, detail ->
                 val barHeightNorm = ((detail.usageTimeMillis - minUsageTime).toFloat() / (maxUsageTime - minUsageTime).coerceAtLeast(1L).toFloat())
                 val barActualHeight = (barHeightNorm * chartHeight).coerceAtLeast(0f)
@@ -483,10 +499,10 @@ fun UsageBarScrollLineChart(
                 val barBottom = topMargin + chartHeight
                 
                 val currentBarColor = when {
-                    periodType == ChartPeriodType.DAILY -> barColor // Daily, always normal color, no interaction
-                    selectedBarIndex == null -> barColor // Weekly/Monthly, No selection, normal color
-                    selectedBarIndex == index -> selectedBarColor // Weekly/Monthly, This bar is selected
-                    else -> barColor.copy(alpha = 0.4f) // Weekly/Monthly, Another bar is selected, fade this one
+                    periodType == ChartPeriodType.DAILY -> barColor
+                    selectedBarIndex == null -> barColor
+                    selectedBarIndex == index -> selectedBarColor
+                    else -> barColor.copy(alpha = 0.4f)
                 }
 
                 drawRoundRect(
@@ -498,19 +514,23 @@ fun UsageBarScrollLineChart(
             }
         }
         
-        val scrollDistancePoints = data.mapIndexed { index, detail ->
-            val x = leftMargin + (chartWidth / (data.size -1 ).coerceAtLeast(1)) * index
-            val scrollRange = (maxScrollUnits - minScrollUnits).coerceAtLeast(1L)
-            val yNorm = if (scrollRange == 0L) 0f else ((detail.scrollUnits - minScrollUnits).toFloat() / scrollRange.toFloat())
-            val y = topMargin + chartHeight - (yNorm * chartHeight)
-            Offset(x, y.coerceIn(topMargin, topMargin + chartHeight))
-        }
-        if (scrollDistancePoints.size > 1) {
-            for (i in 0 until scrollDistancePoints.size - 1) {
-                drawLine(color = scrollDistanceColor, start = scrollDistancePoints[i], end = scrollDistancePoints[i + 1], strokeWidth = 2.5f, cap = StrokeCap.Round)
+        // Adjust scrollDistancePoints to align with bar centers and draw as dots
+        if (barCount > 0) { // Also guard dot drawing with barCount > 0
+            data.forEachIndexed { index, detail ->
+                val barLeft = leftMargin + barSpacing + index * (barWidth + barSpacing)
+                val barCenterX = barLeft + barWidth / 2
+
+                val scrollRange = (maxScrollUnits - minScrollUnits).coerceAtLeast(1L)
+                val yNorm = if (scrollRange == 0L) 0f else ((detail.scrollUnits - minScrollUnits).toFloat() / scrollRange.toFloat())
+                val y = topMargin + chartHeight - (yNorm * chartHeight)
+                val point = Offset(barCenterX, y.coerceIn(topMargin, topMargin + chartHeight))
+
+                drawCircle(
+                    color = scrollDistanceColor,
+                    radius = 4.dp.toPx(), // Slightly larger radius for visibility
+                    center = point
+                )
             }
-        } else if (scrollDistancePoints.isNotEmpty()) {
-            drawCircle(color = scrollDistanceColor, radius = 3f, center = scrollDistancePoints.first())
         }
 
         val xLabelCount = data.size
