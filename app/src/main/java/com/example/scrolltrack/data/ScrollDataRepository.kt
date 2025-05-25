@@ -51,7 +51,7 @@ interface ScrollDataRepository {
      * Retrieves all raw DailyAppUsageRecord entries within a specific date range.
      * The ViewModel will use this to find the top used app over a period.
      */
-    suspend fun getUsageRecordsForDateRange(startDateString: String, endDateString: String): Flow<List<DailyAppUsageRecord>>
+    fun getUsageRecordsForDateRange(startDateString: String, endDateString: String): Flow<List<DailyAppUsageRecord>>
 
     /**
      * Fetches and stores app usage stats specifically for the current day.
@@ -68,7 +68,4 @@ interface ScrollDataRepository {
      * Retrieves aggregated scroll data for a specific package over a list of dates.
      */
     suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate>
-
-    suspend fun getSpecificAppUsageForDate(packageName: String, dateString: String): DailyAppUsageRecord?
-    suspend fun getTotalScrollForAppOnDate(packageName: String, dateString: String): Long?
 }

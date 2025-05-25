@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar // For date calculations
-import java.util.Date // Added import for java.util.Date
 import kotlinx.coroutines.async
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -269,36 +268,6 @@ class MainViewModel(
             }.collect() // Collect the inner flow
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    fun setFocusedDateFromChart(dateString: String) {
-        // This function is called when a bar is tapped in the DAILY chart view
-        // Update the main displayed date and potentially other related data.
-        _currentChartReferenceDate.value = dateString
-
-        Log.d("MainViewModel", "AppDetailScreen: Chart tapped, focused date set to: $dateString for package: ${_appDetailAppName.value}")
-
-        _appDetailAppName.value?.let { packageName ->
-            updateAppDetailSummaryForFocusedDate(packageName, dateString)
-        }
-    }
-
-    private fun updateAppDetailSummaryForFocusedDate(packageName: String, dateString: String) {
-        viewModelScope.launch {
-            val dailyUsageRecord = repository.getSpecificAppUsageForDate(packageName, dateString)
-            // Assuming a method to get scroll for a specific app on a specific date.
-            // If not available, this part needs to be adjusted or scroll can be shown as 0 / N/A for this specific focus.
-            // val scrollRecord = repository.getTotalScrollForAppOnDate(packageName, dateString)
-
-            _appDetailFocusedUsageDisplay.value = dailyUsageRecord?.usageTimeMillis?.let { DateUtil.formatDuration(it) } ?: "0m"
-
-            val calendar = Calendar.getInstance().apply { time = DateUtil.parseDateString(dateString) ?: Date() }
-            _appDetailFocusedPeriodDisplay.value = DateUtil.formatDateForDisplay(calendar.time)
-
-            _appDetailComparisonText.value = null // No comparison when focusing a single day
-            _appDetailPeriodDescriptionText.value = "USAGE ON FOCUSED DAY" // Update title for focused day
-
-            Log.d("MainViewModel", "Updated app detail summary for focused date: $dateString")
-        }
-    }
 
     // Helper to map ScrollData to ScrollUiItem
     private suspend fun mapToAppScrollUiItems(appScrollDataList: List<AppScrollData>): List<AppScrollUiItem> {

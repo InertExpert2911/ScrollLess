@@ -389,8 +389,6 @@ fun TodaySummaryScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
         ScrollStatsCard(
             modifier = Modifier
                 .fillMaxWidth()
@@ -424,6 +422,7 @@ fun TodaySummaryScreen(
         } else {
             LazyColumn(
                 modifier = Modifier
+                    .heightIn(max = 500.dp)
                     .padding(horizontal = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
