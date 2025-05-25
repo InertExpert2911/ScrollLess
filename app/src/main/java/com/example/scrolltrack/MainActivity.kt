@@ -94,6 +94,10 @@ import kotlinx.coroutines.flow.flowOf
 import androidx.compose.material.icons.filled.Brightness2
 import androidx.compose.material.icons.filled.WbSunny
 import com.example.scrolltrack.ui.theme.CaveatFontFamily
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 // Constants for theme variants to be used by the Switch logic
 // Moved to top level for accessibility by ThemeModeSwitch
@@ -760,7 +764,7 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
     }
 
     val fakeRepo = ScrollDataRepositoryImpl(dummyScrollSessionDao, dummyDailyAppUsageDao, app)
-    val fakeViewModel = MainViewModel(fakeRepo, app)
+    val fakeViewModel: MainViewModel = viewModel(factory = MainViewModelFactory(application = app, repositoryOverride = fakeRepo))
     ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) { 
         TodaySummaryScreen(
             viewModel = fakeViewModel, 
@@ -811,7 +815,7 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
     }
 
     val fakeRepo = ScrollDataRepositoryImpl(dummyScrollSessionDao, dummyDailyAppUsageDao, app)
-    val fakeViewModel = MainViewModel(fakeRepo, app)
+    val fakeViewModel: MainViewModel = viewModel(factory = MainViewModelFactory(application = app, repositoryOverride = fakeRepo))
     ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) { 
         val exampleTimeMillis = (2.75 * 60 * 60 * 1000).toLong()
         val topAppExample = AppUsageUiItem(

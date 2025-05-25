@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -22,6 +23,8 @@ import com.example.scrolltrack.R
 import com.example.scrolltrack.ui.main.ChartPeriodType
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.util.DateUtil
+import com.example.scrolltrack.ui.main.AppDailyDetailData
+import com.example.scrolltrack.util.ConversionUtil
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -134,7 +137,7 @@ fun AppDetailScreen(
                 if (chartData.isEmpty()) {
                     Text("Loading chart data...")
                 } else {
-                    Text("Graph Placeholder: ${chartData.size} data points for $packageName. First date: ${chartData.firstOrNull()?.date}, Last date: ${chartData.lastOrNull()?.date}")
+                    Text("Chart temporarily disabled.") // Placeholder text
                 }
             }
         }
@@ -178,7 +181,4 @@ private fun calculateDisplayedDateRange(periodType: ChartPeriodType, referenceDa
     }
 }
 
-// TopAppBar can be extracted if it becomes complex, for now, keep it inline within Scaffold
-// @OptIn(ExperimentalMaterial3Api::class)
-// @Composable
-// fun AppDetailTopAppBar(...) { ... } 
+// AppDetailVicoChart and related composables/classes removed 

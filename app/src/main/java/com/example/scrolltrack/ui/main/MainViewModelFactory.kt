@@ -8,14 +8,16 @@ import com.example.scrolltrack.data.ScrollDataRepositoryImpl
 import com.example.scrolltrack.db.AppDatabase
 
 class MainViewModelFactory(
-    private val application: Application
+    private val application: Application,
+    private val repositoryOverride: ScrollDataRepository? = null // Optional repository override
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(MainViewModel::class.java)) {
-            val database = AppDatabase.getDatabase(application)
-            val repository: ScrollDataRepository = ScrollDataRepositoryImpl(database.scrollSessionDao(), database.dailyAppUsageDao(), application)
+            val repository = repositoryOverride ?: run {
+                val database = AppDatabase.getDatabase(application)
+                ScrollDataRepositoryImpl(database.scrollSessionDao(), database.dailyAppUsageDao(), application)
+            }
             @Suppress("UNCHECKED_CAST")
-            // Pass the application context to MainViewModel as well
             return MainViewModel(repository, application) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

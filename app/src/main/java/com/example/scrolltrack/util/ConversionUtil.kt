@@ -37,4 +37,31 @@ object ConversionUtil {
 
         return String.format("%.2f km", kilometers) to String.format("%.2f miles", miles)
     }
+
+    /**
+     * Converts scroll units (approximated as pixels) to estimated physical distance in kilometers.
+     * This version attempts to use a 'standard' or 'average' DPI if context is not available
+     * or as a fallback, though using actual DPI from context is preferred for accuracy.
+     * For chart data, we might not have context readily available for every data point processing.
+     *
+     * @param scrollUnits The total accumulated scroll units.
+     * @param dpi Device's Dots Per Inch (preferably ydpi for vertical scroll). If null, a default is used.
+     * @return Kilometers as Float.
+     */
+    fun scrollUnitsToKilometersValue(scrollUnits: Long, dpi: Float? = null): Float {
+        if (scrollUnits <= 0) return 0.0f
+
+        val effectiveDpi = dpi ?: 160f // Default DPI (mdpi), adjust as needed or make it a settable default
+
+        if (effectiveDpi <= 0f) {
+            Log.w("ConversionUtil", "Invalid DPI ($effectiveDpi) for scrollUnitsToKilometersValue. Returning 0km.")
+            return 0.0f
+        }
+
+        val inchesScrolled = scrollUnits.toDouble() / effectiveDpi
+        val metersScrolled = inchesScrolled / INCHES_PER_METER
+        val kilometers = metersScrolled / METERS_PER_KILOMETER
+
+        return kilometers.toFloat()
+    }
 }
