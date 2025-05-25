@@ -80,7 +80,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
 
     // Vico Charting Library - REMOVED
-    // implementation(libs.vico.compose)
-    // implementation(libs.vico.compose.m3)
+    // implementation(libs.vico.compose) // Commented out
+    // implementation(libs.vico.compose.m3) // Commented out
 
 }
