@@ -11,6 +11,7 @@ import com.example.scrolltrack.db.DailyAppUsageDao // Ensure this is imported
 import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.db.ScrollSessionDao
 import com.example.scrolltrack.db.ScrollSessionRecord
+import com.example.scrolltrack.db.AppScrollDataPerDate // Import the new data class
 import com.example.scrolltrack.util.DateUtil
 import kotlinx.coroutines.flow.Flow
 import java.util.Calendar
@@ -213,5 +214,14 @@ class ScrollDataRepositoryImpl(
             Log.i(TAG_REPO, "No new historical usage records to insert from backfill.")
         }
         return true
+    }
+
+    // --- Methods for App Detail Screen Chart Data ---
+    override suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord> {
+        return dailyAppUsageDao.getUsageForPackageAndDates(packageName, dateStrings)
+    }
+
+    override suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate> {
+        return scrollSessionDao.getAggregatedScrollForPackageAndDates(packageName, dateStrings)
     }
 }

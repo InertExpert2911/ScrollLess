@@ -5,6 +5,7 @@ package com.example.scrolltrack.data
 // import com.example.scrolltrack.db.AppScrollData
 import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.db.ScrollSessionRecord
+import com.example.scrolltrack.db.AppScrollDataPerDate
 import kotlinx.coroutines.flow.Flow
 
 interface ScrollDataRepository {
@@ -57,4 +58,14 @@ interface ScrollDataRepository {
      * @return True if successful, false otherwise.
      */
     suspend fun updateTodayAppUsageStats(): Boolean
+
+    /**
+     * Retrieves usage records for a specific package over a list of dates.
+     */
+    suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord>
+
+    /**
+     * Retrieves aggregated scroll data for a specific package over a list of dates.
+     */
+    suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate>
 }

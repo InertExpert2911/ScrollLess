@@ -63,6 +63,13 @@ interface DailyAppUsageDao {
     fun getUsageRecordsForDateRange(startDateString: String, endDateString: String): Flow<List<DailyAppUsageRecord>>
 
     /**
+     * Retrieves all app usage records for a specific package name and a list of date strings.
+     * Useful for fetching specific days of data for the app detail chart.
+     */
+    @Query("SELECT * FROM daily_app_usage WHERE package_name = :packageName AND date_string IN (:dateStrings)")
+    suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord>
+
+    /**
      * Deletes all usage records older than a given timestamp.
      * Useful for data pruning.
      * @param timestampMillis The timestamp (milliseconds since epoch). Records with lastUpdatedTimestamp < this will be deleted.

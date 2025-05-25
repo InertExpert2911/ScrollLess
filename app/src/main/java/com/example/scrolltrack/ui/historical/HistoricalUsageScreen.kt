@@ -23,6 +23,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.R
+import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.main.AppUsageUiItem // Ensure this is imported
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.util.DateUtil
@@ -96,7 +97,10 @@ fun HistoricalUsageScreen(
             } else {
                 LazyColumn(modifier = Modifier.weight(1f)) {
                     items(items = appUsageListForSelectedDate, key = { it.id }) { usageItem ->
-                        AppUsageRowItem(usageItem = usageItem) // Renamed for clarity
+                        AppUsageRowItem(
+                            usageItem = usageItem,
+                            onClick = { navController.navigate(ScreenRoutes.appDetailRoute(usageItem.packageName)) }
+                        )
                         Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
                 }
@@ -125,10 +129,15 @@ fun HistoricalUsageScreen(
 }
 
 @Composable
-fun AppUsageRowItem(usageItem: AppUsageUiItem, modifier: Modifier = Modifier) { // Renamed
+fun AppUsageRowItem(
+    usageItem: AppUsageUiItem,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .clickable(onClick = onClick)
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

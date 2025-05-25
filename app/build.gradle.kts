@@ -62,25 +62,21 @@ dependencies {
     implementation(libs.material)
     // ConstraintLayout
     implementation(libs.androidx.constraintlayout)
-    implementation(libs.androidx.room.runtime)
-    // Use ksp for the compiler
-    ksp(libs.androidx.room.compiler)
-    implementation(libs.androidx.room.ktx)
 
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose) // For collectAsStateWithLifecycle
 
-    // Room Database
-    val roomVersion = "2.7.1" // Use the latest stable Room version
-    implementation("androidx.room:room-runtime:$roomVersion")
-    // Annotation processor using KSP
-    ksp("androidx.room:room-compiler:$roomVersion")
-    // Kotlin Extensions and Coroutines support for Room
-    implementation("androidx.room:room-ktx:$roomVersion")
+    // Room Database (using libs aliases - ensure these are defined in libs.versions.toml)
+    implementation(libs.androidx.room.runtime)
+    ksp(libs.androidx.room.compiler)
+    implementation(libs.androidx.room.ktx)
 
+    // Coil for image loading
     implementation(libs.coil.compose)
+    // Extended Material Icons
     implementation(libs.androidx.compose.material.iconsExtended)
+    // Navigation Compose
     implementation(libs.androidx.navigation.compose)
 
 }

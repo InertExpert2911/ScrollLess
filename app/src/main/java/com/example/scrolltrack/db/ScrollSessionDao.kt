@@ -40,4 +40,25 @@ interface ScrollSessionDao {
 
     @Query("SELECT SUM(scroll_amount) FROM scroll_sessions WHERE package_name = :pkgName AND date_string = :dateString")
     suspend fun getTotalScrollForAppOnDate(pkgName: String, dateString: String): Long?
+
+    /**
+     * Retrieves aggregated scroll data (package name, date_string, and sum of scroll_amount)
+     * for a specific package name and a list of date strings.
+     * The date_string is included to help map results back if a date has no scroll data.
+     */
+    @Query("""
+        SELECT package_name as packageName, date_string as date, SUM(scroll_amount) as totalScroll 
+        FROM scroll_sessions 
+        WHERE package_name = :packageName AND date_string IN (:dateStrings) 
+        GROUP BY package_name, date_string
+    """)
+    suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate>
+
 }
+
+// New data class to hold scroll data along with its date, as AppScrollData only has packageName and totalScroll
+data class AppScrollDataPerDate(
+    val packageName: String,
+    val date: String, // YYYY-MM-DD
+    val totalScroll: Long
+)

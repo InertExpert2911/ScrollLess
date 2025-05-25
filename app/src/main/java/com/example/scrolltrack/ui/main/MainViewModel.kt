@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar // For date calculations
+import kotlinx.coroutines.async
 
 // Constants for SharedPreferences (can be moved to a companion object or a separate file if preferred)
 private const val PREFS_APP_SETTINGS = "ScrollTrackAppSettings"
@@ -49,6 +50,18 @@ data class AppUsageUiItem(
     val formattedUsageTime: String,
     val packageName: String
 )
+
+// Data class for combined chart data point for AppDetailScreen
+data class AppDailyDetailData(
+    val date: String, // YYYY-MM-DD
+    val usageTimeMillis: Long,
+    val scrollUnits: Long // Raw scroll units, conversion to distance can happen in UI or later in VM
+)
+
+enum class ChartPeriodType {
+    WEEKLY,
+    MONTHLY
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModel(
@@ -82,6 +95,24 @@ class MainViewModel(
     // --- State for Date Picker and Historical View ---
     private val _selectedDateForHistory = MutableStateFlow(_todayDateString) // Default to today
     val selectedDateForHistory: StateFlow<String> = _selectedDateForHistory.asStateFlow()
+
+    // --- App Detail Screen Specific States ---
+    private val _appDetailAppName = MutableStateFlow<String?>(null)
+    val appDetailAppName: StateFlow<String?> = _appDetailAppName.asStateFlow()
+
+    private val _appDetailAppIcon = MutableStateFlow<Drawable?>(null)
+    val appDetailAppIcon: StateFlow<Drawable?> = _appDetailAppIcon.asStateFlow()
+
+    private val _appDetailChartData = MutableStateFlow<List<AppDailyDetailData>>(emptyList())
+    val appDetailChartData: StateFlow<List<AppDailyDetailData>> = _appDetailChartData.asStateFlow()
+
+    private val _currentChartPeriodType = MutableStateFlow(ChartPeriodType.WEEKLY)
+    val currentChartPeriodType: StateFlow<ChartPeriodType> = _currentChartPeriodType.asStateFlow()
+
+    // Represents the anchor date for the current chart view.
+    // For WEEKLY, it's the last day of the week. For MONTHLY, the first day of the month.
+    private val _currentChartReferenceDate = MutableStateFlow(DateUtil.getCurrentDateString())
+    val currentChartReferenceDate: StateFlow<String> = _currentChartReferenceDate.asStateFlow()
 
     // --- Greeting ---
     val greeting: StateFlow<String> = flow { emit(GreetingUtil.getGreeting()) }
@@ -308,5 +339,111 @@ class MainViewModel(
                 Log.w("MainViewModel", "Historical data backfill failed or had issues.")
             }
         }
+    }
+
+    // Methods for App Detail Screen
+    fun loadAppDetailsInfo(packageName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val pm = application.packageManager
+                val appInfo = pm.getApplicationInfo(packageName, 0)
+                _appDetailAppName.value = pm.getApplicationLabel(appInfo).toString()
+                _appDetailAppIcon.value = pm.getApplicationIcon(packageName)
+            } catch (e: PackageManager.NameNotFoundException) {
+                Log.w("MainViewModel", "App info not found for $packageName in AppDetailScreen")
+                _appDetailAppName.value = packageName // Fallback to package name
+                _appDetailAppIcon.value = null
+            } catch (e: Exception) {
+                Log.e("MainViewModel", "Error loading app info for $packageName", e)
+                _appDetailAppName.value = packageName // Fallback
+                _appDetailAppIcon.value = null
+            }
+        }
+        // When app details are first loaded, also trigger chart data load for the default period
+        loadAppDetailChartData(packageName, _currentChartPeriodType.value, _currentChartReferenceDate.value)
+    }
+
+    fun loadAppDetailChartData(packageName: String, period: ChartPeriodType, referenceDate: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _appDetailChartData.value = emptyList() // Clear previous data / show loading
+            Log.d("MainViewModel", "Loading chart data for $packageName, Period: $period, RefDate: $referenceDate")
+
+            val dateStringsForPeriod = calculateDateStringsForPeriod(period, referenceDate)
+            if (dateStringsForPeriod.isEmpty()) {
+                Log.w("MainViewModel", "Date strings for period resulted in empty list.")
+                return@launch
+            }
+
+            // Correctly launch async tasks within the viewModelScope's context (which is already Dispatchers.IO here)
+            val usageDataDeferred = async { repository.getUsageForPackageAndDates(packageName, dateStringsForPeriod) }
+            val scrollDataDeferred = async { repository.getAggregatedScrollForPackageAndDates(packageName, dateStringsForPeriod) }
+
+            val usageRecords = usageDataDeferred.await()
+            val scrollRecords = scrollDataDeferred.await()
+
+            val usageMap = usageRecords.associateBy({ record -> record.dateString }, { record -> record.usageTimeMillis })
+            val scrollMap = scrollRecords.associateBy({ record -> record.date }, { record -> record.totalScroll })
+
+            val combinedData = dateStringsForPeriod.map {
+                AppDailyDetailData(
+                    date = it,
+                    usageTimeMillis = usageMap[it] ?: 0L,
+                    scrollUnits = scrollMap[it] ?: 0L
+                )
+            }
+            _appDetailChartData.value = combinedData
+            Log.d("MainViewModel", "Chart data loaded: ${combinedData.size} points.")
+        }
+    }
+
+    private fun calculateDateStringsForPeriod(period: ChartPeriodType, referenceDateStr: String): List<String> {
+        val calendar = Calendar.getInstance()
+        DateUtil.parseDateString(referenceDateStr)?.let { calendar.time = it }
+
+        return when (period) {
+            ChartPeriodType.WEEKLY -> {
+                // referenceDateStr is considered the end of the week (e.g., Sunday or today)
+                // We want 7 days ending on referenceDateStr
+                (0..6).map {
+                    val dayCal = Calendar.getInstance().apply { time = calendar.time }
+                    dayCal.add(Calendar.DAY_OF_YEAR, -it)
+                    DateUtil.formatDate(dayCal.time)
+                }.reversed() // ensures chronological order for the chart
+            }
+            ChartPeriodType.MONTHLY -> {
+                // referenceDateStr is any day in the target month.
+                // Set to first day of month for consistency
+                calendar.set(Calendar.DAY_OF_MONTH, 1)
+                val daysInMonth = calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+                (0 until daysInMonth).map {
+                    val dayCal = Calendar.getInstance().apply { time = calendar.time }
+                    dayCal.add(Calendar.DAY_OF_MONTH, it)
+                    DateUtil.formatDate(dayCal.time)
+                }
+            }
+        }
+    }
+
+    fun changeChartPeriod(packageName: String, newPeriod: ChartPeriodType) {
+        if (newPeriod != _currentChartPeriodType.value) {
+            _currentChartPeriodType.value = newPeriod
+            // Reset reference date to today/current month's start when period changes
+            _currentChartReferenceDate.value = DateUtil.getCurrentDateString() 
+            loadAppDetailChartData(packageName, _currentChartPeriodType.value, _currentChartReferenceDate.value)
+        }
+    }
+
+    fun navigateChartDate(packageName: String, direction: Int) { // 1 for next, -1 for previous
+        val currentPeriod = _currentChartPeriodType.value
+        val currentRefDate = _currentChartReferenceDate.value
+        val calendar = Calendar.getInstance()
+        DateUtil.parseDateString(currentRefDate)?.let { calendar.time = it }
+
+        when (currentPeriod) {
+            ChartPeriodType.WEEKLY -> calendar.add(Calendar.WEEK_OF_YEAR, direction)
+            ChartPeriodType.MONTHLY -> calendar.add(Calendar.MONTH, direction)
+        }
+        _currentChartReferenceDate.value = DateUtil.formatDate(calendar.time)
+        loadAppDetailChartData(packageName, currentPeriod, _currentChartReferenceDate.value)
     }
 }

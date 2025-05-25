@@ -48,8 +48,11 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import androidx.navigation.NavType
 import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.navigation.ScreenRoutes
+import com.example.scrolltrack.ui.detail.AppDetailScreen
 import com.example.scrolltrack.ui.historical.HistoricalUsageScreen
 import com.example.scrolltrack.ui.main.AppScrollUiItem
 import com.example.scrolltrack.ui.main.AppUsageUiItem
@@ -85,6 +88,7 @@ import com.example.scrolltrack.db.DailyAppUsageDao
 import com.example.scrolltrack.db.ScrollSessionRecord
 import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.data.AppScrollData // For ScrollSessionDao mock
+import com.example.scrolltrack.db.AppScrollDataPerDate // Added import
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import androidx.compose.material.icons.filled.Brightness2
@@ -235,6 +239,9 @@ fun AppNavigationHost(
                 onNavigateToHistoricalUsage = {
                     viewModel.resetSelectedDateToToday()
                     navController.navigate(ScreenRoutes.HISTORICAL_USAGE)
+                },
+                onNavigateToAppDetail = { packageName ->
+                    navController.navigate(ScreenRoutes.appDetailRoute(packageName))
                 }
             )
         }
@@ -243,6 +250,22 @@ fun AppNavigationHost(
                 navController = navController,
                 viewModel = viewModel
             )
+        }
+        composable(
+            route = ScreenRoutes.APP_DETAIL,
+            arguments = listOf(navArgument("packageName") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val packageName = backStackEntry.arguments?.getString("packageName")
+            if (packageName != null) {
+                AppDetailScreen(
+                    navController = navController,
+                    viewModel = viewModel,
+                    packageName = packageName
+                )
+            } else {
+                // Handle error or navigate back
+                Text("Error: Package name not found.")
+            }
         }
     }
 }
@@ -264,6 +287,7 @@ fun TodaySummaryScreen(
     scrollDistanceMiles: String,
     appScrollData: List<AppScrollUiItem>,
     onNavigateToHistoricalUsage: () -> Unit,
+    onNavigateToAppDetail: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val phoneUsageColor = when {
@@ -354,7 +378,10 @@ fun TodaySummaryScreen(
             )
             TopWeeklyAppCard(
                 modifier = Modifier.weight(1f),
-                topApp = topWeeklyApp
+                topApp = topWeeklyApp,
+                onClick = { packageName ->
+                    onNavigateToAppDetail(packageName)
+                }
             )
         }
 
@@ -396,7 +423,10 @@ fun TodaySummaryScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(items = appScrollData, key = { it.id }) { appItem ->
-                    AppScrollItemEntry(appItem)
+                    AppScrollItemEntry(
+                        appData = appItem,
+                        onClick = { onNavigateToAppDetail(appItem.packageName) }
+                    )
                 }
             }
         }
@@ -521,10 +551,15 @@ fun PhoneUsageCard(
 @Composable
 fun TopWeeklyAppCard(
     modifier: Modifier = Modifier,
-    topApp: AppUsageUiItem?
+    topApp: AppUsageUiItem?,
+    onClick: (String) -> Unit
 ) {
     Card(
-        modifier = modifier.fillMaxHeight(),
+        modifier = modifier
+            .fillMaxHeight()
+            .clickable(enabled = topApp != null) {
+                topApp?.packageName?.let { onClick(it) }
+            },
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -639,9 +674,15 @@ fun ScrollStatsCard(
 }
 
 @Composable
-fun AppScrollItemEntry(appData: AppScrollUiItem, modifier: Modifier = Modifier) {
+fun AppScrollItemEntry(
+    appData: AppScrollUiItem,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
@@ -649,7 +690,6 @@ fun AppScrollItemEntry(appData: AppScrollUiItem, modifier: Modifier = Modifier) 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { /* TODO: Handle item click */ }
                 .padding(horizontal = 12.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -705,6 +745,7 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
         override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> = flowOf(emptyList())
         override suspend fun getAllSessions(): List<ScrollSessionRecord> = emptyList()
         override suspend fun getTotalScrollForAppOnDate(pkgName: String, dateString: String): Long? = null
+        override suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate> = emptyList<AppScrollDataPerDate>()
     }
     val dummyDailyAppUsageDao = object : DailyAppUsageDao {
         override fun getUsageForDate(dateString: String): Flow<List<DailyAppUsageRecord>> = flowOf(emptyList())
@@ -715,6 +756,7 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
         override suspend fun getSpecificAppUsageForDate(packageName: String, dateString: String): DailyAppUsageRecord? = null
         override fun getTotalUsageTimeMillisForDate(dateString: String): Flow<Long?> = flowOf(0L)
         override suspend fun deleteOldUsageData(timestampMillis: Long): Int = 0
+        override suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord> = emptyList()
     }
 
     val fakeRepo = ScrollDataRepositoryImpl(dummyScrollSessionDao, dummyDailyAppUsageDao, app)
@@ -734,7 +776,8 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
             scrollDistanceKm = "0.00 km",
             scrollDistanceMiles = "0.00 miles",
             appScrollData = emptyList(),
-            onNavigateToHistoricalUsage = {}
+            onNavigateToHistoricalUsage = {},
+            onNavigateToAppDetail = {}
         )
     }
 }
@@ -753,6 +796,7 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
         override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> = flowOf(emptyList())
         override suspend fun getAllSessions(): List<ScrollSessionRecord> = emptyList()
         override suspend fun getTotalScrollForAppOnDate(pkgName: String, dateString: String): Long? = null
+        override suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate> = emptyList<AppScrollDataPerDate>()
     }
     val dummyDailyAppUsageDao = object : DailyAppUsageDao {
         override fun getUsageForDate(dateString: String): Flow<List<DailyAppUsageRecord>> = flowOf(emptyList())
@@ -763,6 +807,7 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
         override suspend fun getSpecificAppUsageForDate(packageName: String, dateString: String): DailyAppUsageRecord? = null
         override fun getTotalUsageTimeMillisForDate(dateString: String): Flow<Long?> = flowOf(0L)
         override suspend fun deleteOldUsageData(timestampMillis: Long): Int = 0
+        override suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord> = emptyList()
     }
 
     val fakeRepo = ScrollDataRepositoryImpl(dummyScrollSessionDao, dummyDailyAppUsageDao, app)
@@ -793,7 +838,8 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
             appScrollData = listOf(
                 AppScrollUiItem("settings", "Settings", null, 7294, "com.android.settings")
             ),
-            onNavigateToHistoricalUsage = {}
+            onNavigateToHistoricalUsage = {},
+            onNavigateToAppDetail = {}
         )
     }
 }
@@ -811,7 +857,7 @@ fun TopWeeklyAppCardPreview() {
             packageName = "com.example.topapp"
         )
         Box(modifier = Modifier.padding(16.dp).width(200.dp).height(180.dp)) {
-             TopWeeklyAppCard(topApp = topAppExample, modifier = Modifier.fillMaxSize())
+             TopWeeklyAppCard(topApp = topAppExample, modifier = Modifier.fillMaxSize(), onClick = {})
         }
     }
 }
@@ -821,7 +867,7 @@ fun TopWeeklyAppCardPreview() {
 fun TopWeeklyAppCardNoDataPreview() {
     ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) {
          Box(modifier = Modifier.padding(16.dp).width(200.dp).height(180.dp)) {
-            TopWeeklyAppCard(topApp = null, modifier = Modifier.fillMaxSize())
+            TopWeeklyAppCard(topApp = null, modifier = Modifier.fillMaxSize(), onClick = {})
         }
     }
 }
