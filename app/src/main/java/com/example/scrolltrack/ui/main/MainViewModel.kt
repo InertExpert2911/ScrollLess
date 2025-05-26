@@ -25,6 +25,7 @@ import java.util.Calendar // For date calculations
 import kotlinx.coroutines.async
 import java.text.SimpleDateFormat
 import java.util.Locale
+import kotlin.math.abs
 
 // Palette API Imports
 import android.graphics.Bitmap
@@ -110,6 +111,8 @@ class MainViewModel(
     val selectedDateForHistory: StateFlow<String> = _selectedDateForHistory.asStateFlow()
 
     // --- App Detail Screen Specific States ---
+    private val _appDetailPackageName = MutableStateFlow<String?>(null)
+
     private val _appDetailAppName = MutableStateFlow<String?>(null)
     val appDetailAppName: StateFlow<String?> = _appDetailAppName.asStateFlow()
 
@@ -151,8 +154,15 @@ class MainViewModel(
     private val _appDetailComparisonText = MutableStateFlow<String?>(null)
     val appDetailComparisonText: StateFlow<String?> = _appDetailComparisonText.asStateFlow()
 
-    private val _appDetailComparisonIsPositive = MutableStateFlow(true) // true for green, false for red
-    val appDetailComparisonIsPositive: StateFlow<Boolean> = _appDetailComparisonIsPositive.asStateFlow()
+    // private val _appDetailComparisonIsPositive = MutableStateFlow(true) // true for green, false for red
+    // val appDetailComparisonIsPositive: StateFlow<Boolean> = _appDetailComparisonIsPositive.asStateFlow()
+    // Replaced by ComparisonColorType and ComparisonIconType
+
+    private val _appDetailComparisonIconType = MutableStateFlow(ComparisonIconType.NONE)
+    val appDetailComparisonIconType: StateFlow<ComparisonIconType> = _appDetailComparisonIconType.asStateFlow()
+
+    private val _appDetailComparisonColorType = MutableStateFlow(ComparisonColorType.GREY) // Default to Grey or a suitable default
+    val appDetailComparisonColorType: StateFlow<ComparisonColorType> = _appDetailComparisonColorType.asStateFlow()
 
     private val _appDetailWeekNumberDisplay = MutableStateFlow<String?>(null)
     val appDetailWeekNumberDisplay: StateFlow<String?> = _appDetailWeekNumberDisplay.asStateFlow()
@@ -415,8 +425,9 @@ class MainViewModel(
     // Methods for App Detail Screen
     fun loadAppDetailsInfo(packageName: String) {
         // Reset to default period and date every time this screen is loaded
-        _currentChartPeriodType.value = ChartPeriodType.WEEKLY
-        _currentChartReferenceDate.value = DateUtil.getCurrentDateString()
+        _currentChartPeriodType.value = ChartPeriodType.DAILY // Default to Daily view
+        _currentChartReferenceDate.value = DateUtil.getCurrentDateString() // Anchor to today
+        _appDetailPackageName.value = packageName // This line IS needed to load app-specific data
 
         // Reset palette colors for the new app
         _appDetailAppBarColor.value = null
@@ -565,7 +576,7 @@ class MainViewModel(
                     if (prevWeekDateStrings.isNotEmpty()) {
                         val prevWeekUsageRecords = repository.getUsageForPackageAndDates(packageName, prevWeekDateStrings)
                         val prevWeekAverageUsage = calculateAverageUsageFromRecords(prevWeekUsageRecords)
-                        updateComparisonText(currentPeriodAverageUsage, prevWeekAverageUsage, "last week")
+                        updateComparisonText(currentPeriodAverageUsage, prevWeekAverageUsage, "week")
                     } else {
                          _appDetailComparisonText.value = "No data for comparison"
                     }
@@ -584,7 +595,7 @@ class MainViewModel(
                      if (prevMonthDateStrings.isNotEmpty()) {
                         val prevMonthUsageRecords = repository.getUsageForPackageAndDates(packageName, prevMonthDateStrings)
                         val prevMonthAverageUsage = calculateAverageUsageFromRecords(prevMonthUsageRecords)
-                        updateComparisonText(currentPeriodAverageUsage, prevMonthAverageUsage, "last month")
+                        updateComparisonText(currentPeriodAverageUsage, prevMonthAverageUsage, "month")
                     } else {
                          _appDetailComparisonText.value = "No data for comparison"
                     }
@@ -613,23 +624,41 @@ class MainViewModel(
     }
 
     private fun updateComparisonText(currentAvg: Long, previousAvg: Long, periodName: String) {
+        val currentAvgFormatted = DateUtil.formatDuration(currentAvg) // Removed short = true for now
+
         if (previousAvg == 0L) {
-            _appDetailComparisonText.value = if (currentAvg > 0) "Up from no usage $periodName" else "No usage"
-            _appDetailComparisonIsPositive.value = currentAvg > 0
+            if (currentAvg == 0L) {
+                _appDetailComparisonText.value = "Still no usage" // vs $periodName might be redundant if context is clear
+                _appDetailComparisonIconType.value = ComparisonIconType.NEUTRAL
+                _appDetailComparisonColorType.value = ComparisonColorType.GREY
+            } else {
+                _appDetailComparisonText.value = "$currentAvgFormatted from no usage" // E.g. "1hr 20min from no usage"
+                _appDetailComparisonIconType.value = ComparisonIconType.UP // Indicates increase from zero
+                _appDetailComparisonColorType.value = ComparisonColorType.RED // Increase from zero is bad
+            }
             return
         }
-        val difference = currentAvg - previousAvg
-        val percentageChange = (difference.toDouble() / previousAvg.toDouble()) * 100
 
-        _appDetailComparisonIsPositive.value = percentageChange >= 0
-        val sign = if (percentageChange >= 0) "+" else ""
-        // Only show decimal if it's not a whole number or to avoid -0%
-        val percentageString = if (percentageChange.rem(1).equals(0.0) && percentageChange != 0.0) {
-            String.format(Locale.US, "%s%.0f%%", sign, percentageChange)
-        } else {
-            String.format(Locale.US, "%s%.1f%%", sign, percentageChange)
+        if (currentAvg == previousAvg) {
+            _appDetailComparisonText.value = "Same as last $periodName"
+            _appDetailComparisonIconType.value = ComparisonIconType.NEUTRAL
+            _appDetailComparisonColorType.value = ComparisonColorType.GREY
+            return
         }
-         _appDetailComparisonText.value = "$percentageString vs $periodName"
+
+        val difference = currentAvg - previousAvg
+        val percentageChange = abs((difference.toDouble() / previousAvg.toDouble()) * 100) // Use kotlin.math.abs
+        val percentageString = String.format(Locale.US, "%.0f%%", percentageChange)
+
+        if (currentAvg < previousAvg) { // Decreased usage - GOOD
+            _appDetailComparisonText.value = "${percentageString} less vs last ${periodName}" // Explicitly ensure format
+            _appDetailComparisonIconType.value = ComparisonIconType.DOWN
+            _appDetailComparisonColorType.value = ComparisonColorType.GREEN
+        } else { // Increased usage - BAD
+            _appDetailComparisonText.value = "${percentageString} more vs last ${periodName}" // Explicitly ensure format
+            _appDetailComparisonIconType.value = ComparisonIconType.UP
+            _appDetailComparisonColorType.value = ComparisonColorType.RED
+        }
     }
 
     private fun calculatePreviousPeriodDateStrings(period: ChartPeriodType, currentReferenceDateStr: String): Pair<List<String>, String> {
@@ -670,11 +699,18 @@ class MainViewModel(
                 Pair(sdf.format(calendar.time), "")
             }
             ChartPeriodType.WEEKLY -> {
-                val endOfWeek = calendar.time // referenceDateStr is end of week
-                val endCal = Calendar.getInstance().apply { time = endOfWeek }
-                calendar.add(Calendar.DAY_OF_YEAR, -6)
-                val startOfWeek = calendar.time
+                // First, ensure the calendar is set to the Monday of the week of referenceDateStr
+                DateUtil.parseDateString(referenceDateStr)?.let { calendar.time = it }
+                val currentDayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+                val daysToSubtract = if (currentDayOfWeek == Calendar.SUNDAY) 6 else currentDayOfWeek - Calendar.MONDAY
+                calendar.add(Calendar.DAY_OF_YEAR, -daysToSubtract)
+                val startOfWeek = calendar.time // This is now Monday
+
+                calendar.add(Calendar.DAY_OF_YEAR, 6) // Go to Sunday
+                val endOfWeek = calendar.time // This is now Sunday
+
                 val startCal = Calendar.getInstance().apply { time = startOfWeek }
+                val endCal = Calendar.getInstance().apply { time = endOfWeek }
 
                 val startFormat = monthDayFormat
                 val endFormat = if (startCal.get(Calendar.YEAR) != endCal.get(Calendar.YEAR) || !includeYear) {
@@ -706,32 +742,29 @@ class MainViewModel(
         DateUtil.parseDateString(referenceDateStr)?.let { calendar.time = it }
 
         return when (period) {
-            ChartPeriodType.DAILY -> { // For DAILY, fetch data for the week containing the referenceDateStr
-                // Set calendar to the reference date
+            ChartPeriodType.DAILY, ChartPeriodType.WEEKLY -> {
+                // For both DAILY and WEEKLY, we want the week to start on Monday and end on Sunday.
+                // Set calendar to the reference date first.
                 DateUtil.parseDateString(referenceDateStr)?.let { calendar.time = it }
-                // Find the start of that week (e.g., Monday or Sunday based on Locale)
-                // For simplicity, let's assume Monday is the first day of the week.
-                // Adjust if your locale or definition of week start differs.
-                val firstDayOfWeekConstant = calendar.firstDayOfWeek // Use locale's first day
-                while (calendar.get(Calendar.DAY_OF_WEEK) != firstDayOfWeekConstant) {
-                    calendar.add(Calendar.DAY_OF_YEAR, -1)
-                }
-                // Now calendar is at the start of the week containing referenceDateStr
+
+                // Adjust to Monday of that week.
+                // Note: Calendar.DAY_OF_WEEK is 1 (Sunday) to 7 (Saturday).
+                // We want to set it to Monday.
+                val currentDayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+                // Calculate days to subtract to get to Monday.
+                // If currentDayOfWeek is Sunday (1), subtract 6 (or add 1 then subtract 7).
+                // If currentDayOfWeek is Monday (2), subtract 0.
+                // If currentDayOfWeek is Tuesday (3), subtract 1.
+                // etc.
+                val daysToSubtract = if (currentDayOfWeek == Calendar.SUNDAY) 6 else currentDayOfWeek - Calendar.MONDAY
+                calendar.add(Calendar.DAY_OF_YEAR, -daysToSubtract)
+
+                // Now calendar is at the Monday of the week containing referenceDateStr (or the week of referenceDateStr if weekly).
                 (0..6).map {
                     val dayCal = Calendar.getInstance().apply { time = calendar.time }
                     dayCal.add(Calendar.DAY_OF_YEAR, it)
                     DateUtil.formatDate(dayCal.time)
-                } // This list is already in chronological order
-            }
-            ChartPeriodType.WEEKLY -> {
-                // For WEEKLY, referenceDateStr is considered the end of the week.
-                // We want 7 days ending on referenceDateStr.
-                DateUtil.parseDateString(referenceDateStr)?.let { calendar.time = it } // Ensure calendar is on referenceDateStr
-                (0..6).map {
-                    val dayCal = Calendar.getInstance().apply { time = calendar.time }
-                    dayCal.add(Calendar.DAY_OF_YEAR, -it)
-                    DateUtil.formatDate(dayCal.time)
-                }.reversed() // ensures chronological order for the chart
+                } // This list is already in chronological order: M, T, W, T, F, S, S
             }
             ChartPeriodType.MONTHLY -> {
                 // referenceDateStr is any day in the target month.

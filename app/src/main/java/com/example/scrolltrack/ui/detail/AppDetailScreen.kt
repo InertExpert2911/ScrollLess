@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.HorizontalRule
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -39,6 +40,8 @@ import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.R
 import com.example.scrolltrack.ui.main.AppDailyDetailData
 import com.example.scrolltrack.ui.main.ChartPeriodType
+import com.example.scrolltrack.ui.main.ComparisonColorType
+import com.example.scrolltrack.ui.main.ComparisonIconType
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.util.DateUtil
 import java.text.SimpleDateFormat
@@ -91,7 +94,8 @@ fun AppDetailScreen(
     val focusedUsageDisplay by viewModel.appDetailFocusedUsageDisplay.collectAsStateWithLifecycle()
     val focusedPeriodDisplay by viewModel.appDetailFocusedPeriodDisplay.collectAsStateWithLifecycle()
     val comparisonText by viewModel.appDetailComparisonText.collectAsStateWithLifecycle()
-    val comparisonIsPositive by viewModel.appDetailComparisonIsPositive.collectAsStateWithLifecycle()
+    val comparisonIconType by viewModel.appDetailComparisonIconType.collectAsStateWithLifecycle()
+    val comparisonColorType by viewModel.appDetailComparisonColorType.collectAsStateWithLifecycle()
     val weekNumberDisplay by viewModel.appDetailWeekNumberDisplay.collectAsStateWithLifecycle()
     val periodDescriptionText by viewModel.appDetailPeriodDescriptionText.collectAsStateWithLifecycle()
     val focusedScrollDisplay by viewModel.appDetailFocusedScrollDisplay.collectAsStateWithLifecycle()
@@ -249,31 +253,41 @@ fun AppDetailScreen(
                         }
                     }
                     comparisonText?.let {
-                        val positiveColor = MaterialTheme.colorScheme.primary
-                        val negativeColor = MaterialTheme.colorScheme.error
-                        val currentColor = if (comparisonIsPositive) positiveColor else negativeColor
+                        val (cardContainerColor, cardContentColor) = when (comparisonColorType) {
+                            ComparisonColorType.GREEN -> Color(0xFFC8E6C9) to Color(0xFF388E3C)
+                            ComparisonColorType.RED -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
+                            ComparisonColorType.GREY -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        val iconVector = when (comparisonIconType) {
+                            ComparisonIconType.UP -> Icons.Filled.ArrowUpward
+                            ComparisonIconType.DOWN -> Icons.Filled.ArrowDownward
+                            ComparisonIconType.NEUTRAL -> Icons.Filled.HorizontalRule
+                            ComparisonIconType.NONE -> null
+                        }
 
                         Card(
                             modifier = Modifier.padding(top = 8.dp),
                             shape = MaterialTheme.shapes.medium,
                             colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.7f),
-                                contentColor = currentColor
+                                containerColor = cardContainerColor,
+                                contentColor = cardContentColor
                             )
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = if (comparisonIsPositive) Icons.Filled.ArrowUpward else Icons.Filled.ArrowDownward,
-                                    contentDescription = if (comparisonIsPositive) "Increase" else "Decrease",
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
+                                iconVector?.let {
+                                    Icon(
+                                        imageVector = it,
+                                        contentDescription = "Comparison direction", // More generic description
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                }
                                 Text(
                                     text = it,
-                                    style = MaterialTheme.typography.labelMedium,
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold), // Make text bold
                                 )
                             }
                         }
@@ -579,10 +593,14 @@ fun UsageBarScrollLineChart(
                     ChartPeriodType.WEEKLY -> getDayOfWeekLetter(dateStr)
                     ChartPeriodType.MONTHLY -> {
                         try {
-                            calendar.time = dateParser.parse(dateStr)!!
-                            val dayOfMonth = calendar.get(Calendar.DAY_OF_MONTH)
-                            if (dayOfMonth == 1 || dayOfMonth % 5 == 0 || dayOfMonth == calendar.getActualMaximum(Calendar.DAY_OF_MONTH)) {
-                                SimpleDateFormat("d", Locale.getDefault()).format(calendar.time) // Day number
+                            val dayOfMonth = dateStr.substringAfterLast('-').toInt()
+                            val isLastDay = index == data.size - 1
+                            val isFirstDay = dayOfMonth == 1
+                            val isMultipleOf5 = dayOfMonth % 5 == 0
+                            val isDay30In31DayMonth = dayOfMonth == 30 && data.size == 31
+
+                            if (isFirstDay || isLastDay || (isMultipleOf5 && !isDay30In31DayMonth) ) {
+                                dayOfMonth.toString()
                             } else {
                                 ""
                             }
