@@ -2,6 +2,9 @@ package com.example.scrolltrack
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.Notification
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -12,30 +15,41 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import androidx.core.app.NotificationCompat
+import com.example.scrolltrack.data.ScrollDataRepository
+import com.example.scrolltrack.data.ScrollDataRepositoryImpl
 import com.example.scrolltrack.db.AppDatabase
+import com.example.scrolltrack.db.DailyAppUsageDao
 import com.example.scrolltrack.db.ScrollSessionDao
 import com.example.scrolltrack.db.ScrollSessionRecord
+import com.example.scrolltrack.util.ConversionUtil
+import com.example.scrolltrack.util.DateUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 class ScrollTrackService : AccessibilityService() {
 
     private val TAG = "ScrollTrackService"
     private val SCROLL_THRESHOLD = 5 // Ignore scrolls smaller than this many combined (X+Y) pixels
+    private val SERVICE_NOTIFICATION_ID = 1 // Notification ID for the foreground service
+    // private val NOTIFICATION_UPDATE_INTERVAL_MS = 5 * 60 * 1000L // Removed
 
     // CoroutineScope for database operations
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
 
     private lateinit var scrollSessionDao: ScrollSessionDao
+    private lateinit var dailyAppUsageDao: DailyAppUsageDao
+    private lateinit var dataRepository: ScrollDataRepository
     private lateinit var sharedPreferences: SharedPreferences
+    private lateinit var notificationManager: NotificationManager
+    // private val notificationUpdateHandler = Handler(Looper.getMainLooper()) // Removed
 
     // Session tracking variables
     private var currentAppPackage: String? = null
@@ -93,13 +107,19 @@ class ScrollTrackService : AccessibilityService() {
     override fun onCreate() {
         super.onCreate()
         sharedPreferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
         try {
-            scrollSessionDao = AppDatabase.getDatabase(applicationContext).scrollSessionDao()
-            Log.i(TAG, "ScrollTrackService onCreate: DAO initialized.")
+            val db = AppDatabase.getDatabase(applicationContext)
+            scrollSessionDao = db.scrollSessionDao()
+            dailyAppUsageDao = db.dailyAppUsageDao()
+            dataRepository = ScrollDataRepositoryImpl(scrollSessionDao, dailyAppUsageDao, application)
+
+            Log.i(TAG, "ScrollTrackService onCreate: DAO and Repository initialized.")
             recoverSessionFromPrefs() // Attempt to recover any draft session
         } catch (e: Exception) {
-            Log.e(TAG, "Error initializing DAO in onCreate", e)
-            // Consider how to handle this critical failure - service might not be able to function.
+            Log.e(TAG, "Error initializing DAO/Repository in onCreate", e)
+            // Consider how to handle this critical failure
         }
 
         val filter = IntentFilter().apply {
@@ -112,7 +132,61 @@ class ScrollTrackService : AccessibilityService() {
             registerReceiver(screenStateReceiver, filter)
         }
         Log.i(TAG, "Screen state receiver registered.")
-        // Foreground service notification code removed
+
+        // Initial notification creation
+        updateNotificationTextAndStartForeground()
+        // Log.i(TAG, "Service started in foreground and notification updater scheduled.") // Comment removed
+        Log.i(TAG, "Service started in foreground with initial notification.")
+    }
+
+    private fun updateNotificationTextAndStartForeground() {
+        serviceScope.launch {
+            val todayDateString = DateUtil.getCurrentDateString()
+            var distanceText = "Distance Scrolled: N/A" // This will be the notification's main title
+            var usageText = "Total Usage: N/A"    // This will be the content line below the title
+
+            try {
+                val todayScrollUnits = dataRepository.getTotalScrollForDate(todayDateString).firstOrNull() ?: 0L
+                val formattedDistancePair = ConversionUtil.formatScrollDistance(todayScrollUnits, applicationContext)
+                distanceText = "Distance Scrolled: ${formattedDistancePair.first}"
+            } catch (e: Exception) {
+                Log.e(TAG, "Error fetching scroll data for notification", e)
+            }
+
+            try {
+                val todayUsageMillis = dataRepository.getTotalUsageTimeMillisForDate(todayDateString) ?: 0L
+                usageText = "Total Usage: ${DateUtil.formatDuration(todayUsageMillis)}"
+            } catch (e: Exception) {
+                Log.e(TAG, "Error fetching usage data for notification", e)
+            }
+            
+            withContext(Dispatchers.Main) {
+                // distanceText is the title, usageText is the content.
+                // BigTextStyle will ensure usageText is displayed fully when expanded.
+                val notification = createServiceNotification(titleLine = distanceText, 
+                                                           contentLine = usageText)
+                startForeground(SERVICE_NOTIFICATION_ID, notification)
+            }
+        }
+    }
+
+    private fun createServiceNotification(titleLine: String, contentLine: String): Notification { 
+        val notificationIntent = Intent(this, MainActivity::class.java)
+        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, pendingIntentFlags)
+
+        return NotificationCompat.Builder(this, ScrollTrackApplication.SERVICE_NOTIFICATION_CHANNEL_ID)
+            .setContentTitle(titleLine)      // "Distance Scrolled: X m"
+            .setContentText(contentLine)     // "Total Usage: Y hr Z min"
+            .setStyle(NotificationCompat.BigTextStyle().bigText(contentLine)) // Ensures full contentLine is visible when expanded
+            .setSmallIcon(R.drawable.ic_launcher_foreground) 
+            .setContentIntent(pendingIntent)
+            .setOngoing(false) // Remains dismissable
+            .build()
     }
 
     override fun onServiceConnected() {
@@ -159,7 +233,7 @@ class ScrollTrackService : AccessibilityService() {
                             TAG,
                             "Scroll in $eventPackageName ($currentAppActivity): Delta(X:$deltaX,Y:$deltaY), Added:$totalDelta, SessionTotal:$currentAppScrollAccumulator"
                         )
-                        scheduleSharedPrefsWrite() // Schedule a draft save
+                        scheduleSharedPrefsWrite()
                     }
                 }
             }
@@ -181,7 +255,7 @@ class ScrollTrackService : AccessibilityService() {
                 } else if (eventPackageName != null && eventPackageName == currentAppPackage && eventClassName != null && eventClassName != currentAppActivity) {
                     Log.d(TAG, "Activity/Window change within $currentAppPackage: from $currentAppActivity to $eventClassName")
                     currentAppActivity = eventClassName
-                    scheduleSharedPrefsWrite() // Update draft if activity context changes
+                    scheduleSharedPrefsWrite()
                 }
             }
         }
@@ -199,7 +273,7 @@ class ScrollTrackService : AccessibilityService() {
         currentSessionStartTime = startTime
         Log.i(TAG, "NEW SESSION: App: $currentAppPackage, Activity: $currentAppActivity at $startTime. Accumulator reset.")
         // Initial draft save for the new session (optional, could wait for first scroll)
-        // saveDraftToPrefs() // Consider if this is needed immediately or only after first scroll/activity
+        // saveDraftToPrefs() // Comment and call removed
     }
 
     private fun finalizeAndSaveCurrentSession(sessionEndTime: Long, reason: String) {
@@ -226,7 +300,7 @@ class ScrollTrackService : AccessibilityService() {
                 scrollAmount = amountToSave,
                 sessionStartTime = startTimeToSave,
                 sessionEndTime = sessionEndTime,
-                date = getCurrentDateString(startTimeToSave),
+                date = DateUtil.formatDate(startTimeToSave),
                 sessionEndReason = reason
             )
             Log.i(TAG, "SESSION END ($reason): App: $pkgToSave, Activity: $activityToSave, Scroll: $amountToSave. Saving.")
@@ -243,11 +317,6 @@ class ScrollTrackService : AccessibilityService() {
             Log.i(TAG, "SESSION END ($reason): App: $pkgToSave, Activity: $activityToSave. No scroll data to save (Amount: $amountToSave). Clearing any draft.")
             clearDraftFromPrefs() // Clear any existing draft for this package if it wasn't saved
         }
-    }
-
-    private fun getCurrentDateString(timestamp: Long): String {
-        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        return dateFormat.format(Date(timestamp))
     }
 
     private fun scheduleSharedPrefsWrite() {
@@ -291,8 +360,8 @@ class ScrollTrackService : AccessibilityService() {
                     packageName = draftPkg,
                     scrollAmount = draftScroll,
                     sessionStartTime = draftStartTime,
-                    sessionEndTime = draftLastUpdate, // Use last SharedPreferences update as an approximate end time
-                    date = getCurrentDateString(draftStartTime),
+                    sessionEndTime = draftLastUpdate,
+                    date = DateUtil.formatDate(draftStartTime),
                     sessionEndReason = SessionEndReason.RECOVERED_DRAFT
                 )
                 serviceScope.launch {
@@ -333,6 +402,7 @@ class ScrollTrackService : AccessibilityService() {
 
     override fun onDestroy() {
         Log.i(TAG, "Service destroying. Attempting to save final pending data & cleaning up.")
+        // notificationUpdateHandler.removeCallbacks(notificationUpdateRunnable) // Removed
         // Before finalizing, make one last attempt to write current state to prefs,
         // in case finalizeAndSaveCurrentSession's DB write fails and service is killed.
         if (currentAppPackage != null && currentAppScrollAccumulator > 0 && currentSessionStartTime > 0) {
@@ -350,7 +420,7 @@ class ScrollTrackService : AccessibilityService() {
         pendingSharedPrefsWrite?.let { sharedPrefsHandler.removeCallbacks(it) }
         serviceJob.cancel()
         Log.i(TAG, "Service scope cancelled.")
-        // stopForeground code removed
+        stopForeground(STOP_FOREGROUND_REMOVE) // Use STOP_FOREGROUND_REMOVE to remove the notification
         super.onDestroy()
     }
 }

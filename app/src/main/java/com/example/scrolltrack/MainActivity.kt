@@ -1,11 +1,13 @@
 package com.example.scrolltrack
 
+import android.Manifest
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
-// import android.content.pm.PackageManager // Re-evaluate if needed elsewhere, not directly by this file's Composables
-// import android.graphics.drawable.Drawable // Re-evaluate if needed by AppScrollUiItem if icon was handled here
+import android.content.pm.PackageManager
+// import android.graphics.drawable.Drawable // Retaining for now, might be used by App*UiItem previews or direct composable later
+import android.os.Build
 import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
@@ -94,9 +96,10 @@ import kotlinx.coroutines.flow.flowOf
 import androidx.compose.material.icons.filled.Brightness2
 import androidx.compose.material.icons.filled.WbSunny
 import com.example.scrolltrack.ui.theme.CaveatFontFamily
-import androidx.compose.ui.unit.dp
+// import androidx.compose.ui.unit.dp // Duplicate import, already imported earlier
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+// import androidx.lifecycle.compose.collectAsStateWithLifecycle // Duplicate import
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 // Constants for theme variants to be used by the Switch logic
@@ -117,6 +120,7 @@ class MainActivity : ComponentActivity() {
         const val KEY_HISTORICAL_BACKFILL_DONE = "historical_backfill_done"
         const val KEY_SELECTED_THEME = "selected_theme_variant"
         const val DEFAULT_THEME = THEME_OLED_DARK
+        const val NOTIFICATION_PERMISSION_REQUEST_CODE = 123
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -125,6 +129,11 @@ class MainActivity : ComponentActivity() {
 
         val viewModelFactory = MainViewModelFactory(application)
         viewModel = ViewModelProvider(this, viewModelFactory)[MainViewModel::class.java]
+
+        // Request notification permission if on Android 13+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requestNotificationPermission()
+        }
 
         setContent {
             val selectedTheme by viewModel.selectedThemeVariant.collectAsStateWithLifecycle()
@@ -153,6 +162,16 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         updateAccessibilityServiceStatus()
         updateUsageStatsPermissionStatus()
+        // Check notification permission status on resume as well, in case it changed
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Optionally, update UI or state based on notification permission status here
+            // For now, just logging if it's granted or not.
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
+                Log.i(TAG, "Notification permission is granted.")
+            } else {
+                Log.i(TAG, "Notification permission is NOT granted.")
+            }
+        }
     }
 
     private fun updateAccessibilityServiceStatus() {
@@ -205,6 +224,38 @@ class MainActivity : ComponentActivity() {
             mode == AppOpsManager.MODE_ALLOWED
         } else false
     }
+
+    // --- Notification Permission Handling (Android 13+) ---
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                // Permission is not granted, request it.
+                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST_CODE)
+            } else {
+                // Permission has already been granted
+                Log.i(TAG, "Notification permission already granted.")
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when (requestCode) {
+            NOTIFICATION_PERMISSION_REQUEST_CODE -> {
+                if ((grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)) {
+                    // Notification Permission Granted
+                    Log.i(TAG, "Notification permission granted by user.")
+                } else {
+                    // Notification Permission Denied
+                    Log.w(TAG, "Notification permission denied by user.")
+                    // Optionally, show a rationale or guide the user to settings
+                }
+                return
+            }
+            // Handle other permission requests if any
+        }
+    }
+    // --- End Notification Permission Handling ---
 }
 
 @Composable

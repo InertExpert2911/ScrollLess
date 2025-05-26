@@ -4,7 +4,6 @@ import android.app.Application
 import android.app.usage.UsageStats
 import android.app.usage.UsageStatsManager
 import android.content.Context
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.util.Log
 import com.example.scrolltrack.db.DailyAppUsageDao // Ensure this is imported
@@ -116,9 +115,9 @@ class ScrollDataRepositoryImpl(
         val startTime = DateUtil.getStartOfDayMillis(dateString)
         val endTime = DateUtil.getEndOfDayMillis(dateString)
 
-        Log.d(TAG_REPO, "Querying UsageStats from: ${Date(startTime)} to: ${Date(endTime)} for filtered usage time on $dateString.")
+        Log.d(TAG_REPO, "Querying UsageStats from: ${Date(startTime)} to: ${Date(endTime)} for NON-FILTERED total usage time on $dateString.")
 
-        var totalFilteredUsageTime: Long = 0
+        var totalRawUsageTime: Long = 0
         try {
             val usageStatsList: List<UsageStats>? =
                 usageStatsManager.queryUsageStats(
@@ -130,29 +129,16 @@ class ScrollDataRepositoryImpl(
             if (usageStatsList != null && usageStatsList.isNotEmpty()) {
                 for (usageStats in usageStatsList) {
                     if (usageStats.totalTimeInForeground > 0) {
-                        val packageName = usageStats.packageName
-                        if (packageName == application.packageName) continue
-                        try {
-                            val appInfo: ApplicationInfo = packageManager.getApplicationInfo(packageName, 0)
-                            if ((appInfo.flags and ApplicationInfo.FLAG_SYSTEM != 0) &&
-                                (appInfo.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP == 0)) {
-                                continue
-                            }
-                            if (packageManager.getLaunchIntentForPackage(packageName) == null) {
-                                continue
-                            }
-                            totalFilteredUsageTime += usageStats.totalTimeInForeground
-                        } catch (e: PackageManager.NameNotFoundException) {
-                            // Log.w(TAG_REPO, "Package info not found during total calculation: $packageName for date $dateString")
-                        }
+                        totalRawUsageTime += usageStats.totalTimeInForeground
                     }
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG_REPO, "Error calculating total usage stats for $dateString", e)
+            Log.e(TAG_REPO, "Error calculating raw total usage stats for $dateString", e)
             return null
         }
-        return totalFilteredUsageTime
+        Log.d(TAG_REPO, "Total NON-FILTERED usage time for $dateString: $totalRawUsageTime ms")
+        return totalRawUsageTime
     }
 
     override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean {
@@ -184,7 +170,6 @@ class ScrollDataRepositoryImpl(
                 if (dailyUsageStatsList != null && dailyUsageStatsList.isNotEmpty()) {
                     for (usageStats in dailyUsageStatsList) {
                         if (usageStats.totalTimeInForeground > 0) {
-                            // No filtering here for raw storage, filtering happens when calculating total or displaying
                             recordsToInsert.add(
                                 DailyAppUsageRecord(
                                     packageName = usageStats.packageName,
@@ -198,13 +183,12 @@ class ScrollDataRepositoryImpl(
                 }
             } catch (e: Exception) {
                 Log.e(TAG_REPO, "Error fetching or processing usage stats during backfill for $dateString", e)
-                // Decide if one day's error should stop the whole backfill or just skip the day
             }
         }
 
         if (recordsToInsert.isNotEmpty()) {
             try {
-                dailyAppUsageDao.insertAllUsage(recordsToInsert) // Use the correct DAO
+                dailyAppUsageDao.insertAllUsage(recordsToInsert)
                 Log.i(TAG_REPO, "Successfully inserted/updated ${recordsToInsert.size} historical usage records.")
             } catch (e: Exception) {
                 Log.e(TAG_REPO, "Error inserting historical usage records into database.", e)

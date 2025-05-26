@@ -25,13 +25,11 @@ import java.util.Calendar // For date calculations
 import kotlinx.coroutines.async
 import java.text.SimpleDateFormat
 import java.util.Locale
-import kotlin.math.roundToInt
 
 // Constants for SharedPreferences (can be moved to a companion object or a separate file if preferred)
 private const val PREFS_APP_SETTINGS = "ScrollTrackAppSettings"
 private const val KEY_SELECTED_THEME = "selected_theme_variant"
 private const val THEME_LIGHT = "light"
-private const val THEME_DARK = "dark"
 private const val THEME_OLED_DARK = "oled_dark"
 private const val DEFAULT_THEME = THEME_OLED_DARK
 
@@ -190,20 +188,22 @@ class MainViewModel(
     // --- Data for TODAY'S SUMMARY (Main Screen) ---
     val todaysAppUsageUiList: StateFlow<List<AppUsageUiItem>> =
         repository.getDailyUsageRecordsForDate(_todayDateString)
-            .map { records -> processUsageRecords(records) } // Simplified from flatMapLatest if processUsageRecords is not returning a Flow
+            .map { records -> processUsageRecords(records) } 
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
-    val totalPhoneUsageTodayFormatted: StateFlow<String> =
-        todaysAppUsageUiList.map { appUsageList ->
-            val totalMillis = appUsageList.sumOf { it.usageTimeMillis }
-            formatTotalUsageTime(totalMillis)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "Loading...")
+    // New version using repository.getTotalUsageTimeMillisForDate directly for consistency
+    val totalPhoneUsageTodayMillis: StateFlow<Long> = flow {
+        // Emit initial loading state or a sensible default if desired, though repository flow handles nulls.
+        // This will emit whenever the underlying repository call would emit if it were a direct flow.
+        // However, getTotalUsageTimeMillisForDate is a suspend fun. We need to call it appropriately.
+        // For a one-shot fetch that updates a StateFlow, or if it were a Flow from repo:
+        emit(repository.getTotalUsageTimeMillisForDate(_todayDateString) ?: 0L)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
 
-    // Added StateFlow for total phone usage in milliseconds for today
-    val totalPhoneUsageTodayMillis: StateFlow<Long> = 
-        todaysAppUsageUiList.map { appUsageList ->
-            appUsageList.sumOf { it.usageTimeMillis }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
+    val totalPhoneUsageTodayFormatted: StateFlow<String> =
+        totalPhoneUsageTodayMillis.map {
+            formatTotalUsageTime(it) // formatTotalUsageTime already handles null and 0L
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "Loading...")
 
     val aggregatedScrollDataToday: StateFlow<List<AppScrollUiItem>> =
         repository.getAggregatedScrollDataForDate(_todayDateString)
@@ -342,10 +342,6 @@ class MainViewModel(
             } else {
                 Log.w("MainViewModel", "Failed to update today's app usage stats in the database.")
             }
-            // If you had a non-Flow data source for today, you'd re-fetch it here.
-            // For example, if getTotalUsageTimeMillisForDate was not a flow:
-            // val usageMillis = repository.getTotalUsageTimeMillisForDate(_todayDateString)
-            // _totalPhoneUsageTodayFormatted.value = formatTotalUsageTime(usageMillis) // If it was a simple MutableStateFlow
         }
     }
 
