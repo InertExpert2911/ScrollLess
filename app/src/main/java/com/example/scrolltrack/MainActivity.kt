@@ -55,6 +55,7 @@ import androidx.navigation.NavType
 import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.detail.AppDetailScreen
+import com.example.scrolltrack.ui.detail.ScrollDetailScreen
 import com.example.scrolltrack.ui.historical.HistoricalUsageScreen
 import com.example.scrolltrack.ui.main.AppScrollUiItem
 import com.example.scrolltrack.ui.main.AppUsageUiItem
@@ -101,6 +102,10 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 // import androidx.lifecycle.compose.collectAsStateWithLifecycle // Duplicate import
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.filled.CheckCircle
 
 // Constants for theme variants to be used by the Switch logic
 // Moved to top level for accessibility by ThemeModeSwitch
@@ -238,7 +243,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
+    @Suppress("DEPRECATION")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         when (requestCode) {
             NOTIFICATION_PERMISSION_REQUEST_CODE -> {
@@ -267,8 +277,8 @@ fun AppNavigationHost(
     onEnableAccessibilityClick: () -> Unit,
     onEnableUsageStatsClick: () -> Unit
 ) {
-    NavHost(navController = navController, startDestination = ScreenRoutes.TODAY_SUMMARY) {
-        composable(ScreenRoutes.TODAY_SUMMARY) {
+    NavHost(navController = navController, startDestination = ScreenRoutes.TodaySummary.route) {
+        composable(ScreenRoutes.TodaySummary.route) {
             val greeting by viewModel.greeting.collectAsStateWithLifecycle()
             val appScrollItems by viewModel.aggregatedScrollDataToday.collectAsStateWithLifecycle()
             val totalScrollUnits by viewModel.totalScrollToday.collectAsStateWithLifecycle()
@@ -278,6 +288,7 @@ fun AppNavigationHost(
             val topWeeklyApp by viewModel.topUsedAppLast7Days.collectAsStateWithLifecycle()
 
             TodaySummaryScreen(
+                navController = navController,
                 viewModel = viewModel,
                 greeting = greeting,
                 isAccessibilityServiceEnabled = isAccessibilityEnabledState,
@@ -292,21 +303,21 @@ fun AppNavigationHost(
                 appScrollData = appScrollItems,
                 onNavigateToHistoricalUsage = {
                     viewModel.resetSelectedDateToToday()
-                    navController.navigate(ScreenRoutes.HISTORICAL_USAGE)
+                    navController.navigate(ScreenRoutes.HistoricalUsageRoute.route)
                 },
                 onNavigateToAppDetail = { packageName ->
-                    navController.navigate(ScreenRoutes.appDetailRoute(packageName))
+                    navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(packageName))
                 }
             )
         }
-        composable(ScreenRoutes.HISTORICAL_USAGE) {
+        composable(ScreenRoutes.HistoricalUsageRoute.route) {
             HistoricalUsageScreen(
                 navController = navController,
                 viewModel = viewModel
             )
         }
         composable(
-            route = ScreenRoutes.APP_DETAIL,
+            route = ScreenRoutes.AppDetailRoute.route,
             arguments = listOf(navArgument("packageName") { type = NavType.StringType })
         ) { backStackEntry ->
             val packageName = backStackEntry.arguments?.getString("packageName")
@@ -321,12 +332,28 @@ fun AppNavigationHost(
                 Text("Error: Package name not found.")
             }
         }
+        composable(
+            route = ScreenRoutes.ScrollDetailRoute.route,
+            arguments = listOf(navArgument("date") { type = NavType.StringType })
+        ) {
+            backStackEntry ->
+            val date = backStackEntry.arguments?.getString("date")
+            if (date != null) {
+                ScrollDetailScreen(
+                    navController = navController,
+                    initialSelectedDate = date
+                )
+            } else {
+                Text("Error: Date not found for Scroll Detail.")
+            }
+        }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalAnimationApi::class)
 @Composable
 fun TodaySummaryScreen(
+    navController: NavHostController,
     viewModel: MainViewModel,
     greeting: String,
     isAccessibilityServiceEnabled: Boolean,
@@ -443,45 +470,13 @@ fun TodaySummaryScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 4.dp),
             scrollDistanceMeters = scrollDistanceMeters,
-            totalScrollUnits = totalScrollUnits
+            totalScrollUnits = totalScrollUnits,
+            onClick = {
+                val todayDate = viewModel.getTodayDateString()
+                navController.navigate(ScreenRoutes.ScrollDetailRoute.createRoute(todayDate))
+            }
         )
 
-        Text(
-            text = "Today's App Scroll Breakdown:",
-            style = MaterialTheme.typography.titleMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
-            modifier = Modifier.padding(start = 8.dp)
-        )
-
-        if (appScrollData.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(150.dp)
-                    .padding(horizontal = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    "No scroll data recorded today.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .heightIn(max = 500.dp)
-                    .padding(horizontal = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(items = appScrollData, key = { it.id }) { appItem ->
-                    AppScrollItemEntry(
-                        appData = appItem,
-                        onClick = { onNavigateToAppDetail(appItem.packageName) }
-                    )
-                }
-            }
-        }
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
@@ -682,16 +677,19 @@ fun TopWeeklyAppCard(
 fun ScrollStatsCard(
     modifier: Modifier = Modifier,
     scrollDistanceMeters: String,
-    totalScrollUnits: Long
+    totalScrollUnits: Long,
+    onClick: () -> Unit
 ) {
-    Card(
-        modifier = modifier.fillMaxWidth(),
+    ElevatedCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
+        colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)
     ) {
         Column(
             modifier = Modifier
@@ -700,7 +698,7 @@ fun ScrollStatsCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(Icons.Filled.TrendingUp, contentDescription = "Scroll Stats", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(32.dp).padding(bottom = 8.dp))
+            Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = "Scroll Stats", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(32.dp).padding(bottom = 8.dp))
             Text(
                 text = "SCROLL STATS (Today)",
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
@@ -814,6 +812,7 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
     val fakeViewModel: MainViewModel = viewModel(factory = MainViewModelFactory(application = app, repositoryOverride = fakeRepo))
     ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) { 
         TodaySummaryScreen(
+            navController = rememberNavController(),
             viewModel = fakeViewModel, 
             greeting = "Good Morning! ☀️",
             isAccessibilityServiceEnabled = false,
@@ -873,6 +872,7 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
             packageName = "com.example.topapp"
         )
         TodaySummaryScreen(
+            navController = rememberNavController(),
             viewModel = fakeViewModel,
             greeting = "Good Evening 👍",
             isAccessibilityServiceEnabled = true,

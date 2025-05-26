@@ -1,4 +1,4 @@
-package com.example.scrolltrack.ui.historical
+package com.example.scrolltrack.ui.detail
 
 import android.graphics.drawable.Drawable
 import androidx.compose.foundation.Image
@@ -16,38 +16,47 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
-import com.example.scrolltrack.R
-import com.example.scrolltrack.navigation.ScreenRoutes
-import com.example.scrolltrack.ui.main.AppUsageUiItem // Ensure this is imported
+import com.example.scrolltrack.R // For fallback icon
+import com.example.scrolltrack.navigation.ScreenRoutes // For potential navigation from item
+import com.example.scrolltrack.ui.main.AppScrollUiItem
 import com.example.scrolltrack.ui.main.MainViewModel
+import com.example.scrolltrack.ui.main.MainViewModelFactory
+import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HistoricalUsageScreen(
+fun ScrollDetailScreen(
     navController: NavController,
-    viewModel: MainViewModel,
-    modifier: Modifier = Modifier
+    initialSelectedDate: String,
+    viewModel: MainViewModel = viewModel(factory = MainViewModelFactory(LocalContext.current.applicationContext as android.app.Application))
 ) {
-    // Collect states specific to the historical view from the ViewModel
-    val selectedDateString by viewModel.selectedDateForHistory.collectAsStateWithLifecycle()
-    val totalUsageTimeForSelectedDate by viewModel.totalUsageTimeForSelectedDateHistoryFormatted.collectAsStateWithLifecycle()
-    val appUsageListForSelectedDate by viewModel.dailyAppUsageForSelectedDateHistory.collectAsStateWithLifecycle()
+    LaunchedEffect(initialSelectedDate) {
+        DateUtil.parseDateString(initialSelectedDate)?.time?.let {
+            viewModel.updateSelectedDateForScrollDetail(it)
+        }
+    }
+
+    val selectedDateString by viewModel.selectedDateForScrollDetail.collectAsState()
+    val scrollData by viewModel.aggregatedScrollDataForSelectedDate.collectAsState()
+    val context = LocalContext.current
 
     var showDatePickerDialog by remember { mutableStateOf(false) }
     val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = remember(selectedDateString) {
+        initialSelectedDateMillis = remember(selectedDateString) { // React to changes in selectedDateString
             DateUtil.parseDateString(selectedDateString)?.time ?: System.currentTimeMillis()
         },
         selectableDates = object : SelectableDates {
             override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                return utcTimeMillis <= System.currentTimeMillis()
+                return utcTimeMillis <= System.currentTimeMillis() // Allow selection up to today
             }
         }
     )
@@ -55,7 +64,7 @@ fun HistoricalUsageScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Historical Usage") },
+                title = { Text("Scroll Breakdown") }, // Simplified title
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
@@ -63,45 +72,42 @@ fun HistoricalUsageScreen(
                 },
                 actions = {
                     TextButton(onClick = { showDatePickerDialog = true }) {
-                        Text(selectedDateString) // Display the selected date for history
+                        Text(selectedDateString) 
                         Spacer(Modifier.width(4.dp))
                         Icon(Icons.Filled.CalendarToday, "Select Date")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant, // Match HistoricalUsageScreen
                     titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             )
-        },
-        modifier = modifier
-    ) { innerPadding ->
+        }
+    ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(paddingValues)
+                .padding(horizontal = 16.dp, vertical = 8.dp) // Adjusted padding
         ) {
-            Text(
-                "Total Usage on $selectedDateString: $totalUsageTimeForSelectedDate",
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
-
-            if (appUsageListForSelectedDate.isEmpty()) {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Text("No usage data found for $selectedDateString.")
+            if (scrollData.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("No scroll data recorded for $selectedDateString.")
                 }
             } else {
-                LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(items = appUsageListForSelectedDate, key = { it.id }) { usageItem ->
-                        AppUsageRowItem(
-                            usageItem = usageItem,
-                            onClick = { navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(usageItem.packageName)) }
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(items = scrollData, key = { it.id }) { appItem ->
+                        AppScrollDetailItemEntry(
+                            appItem = appItem,
+                            // Pass context for ConversionUtil
+                            formattedDistance = ConversionUtil.formatScrollDistance(appItem.totalScroll, context).first,
+                            onClick = { navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(appItem.packageName)) }
                         )
-                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
                 }
             }
@@ -113,7 +119,7 @@ fun HistoricalUsageScreen(
                 confirmButton = {
                     TextButton(onClick = {
                         datePickerState.selectedDateMillis?.let {
-                            viewModel.updateSelectedDateForHistory(it) // Call the correct update function
+                            viewModel.updateSelectedDateForScrollDetail(it)
                         }
                         showDatePickerDialog = false
                     }) { Text("OK") }
@@ -129,8 +135,9 @@ fun HistoricalUsageScreen(
 }
 
 @Composable
-fun AppUsageRowItem(
-    usageItem: AppUsageUiItem,
+fun AppScrollDetailItemEntry(
+    appItem: AppScrollUiItem,
+    formattedDistance: String, // Now passed in
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
@@ -143,9 +150,9 @@ fun AppUsageRowItem(
     ) {
         Image(
             painter = rememberAsyncImagePainter(
-                model = usageItem.icon ?: R.mipmap.ic_launcher_round
+                model = appItem.icon ?: R.mipmap.ic_launcher_round // Fallback icon
             ),
-            contentDescription = "${usageItem.appName} icon",
+            contentDescription = "${appItem.appName} icon",
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape),
@@ -154,13 +161,13 @@ fun AppUsageRowItem(
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = usageItem.appName,
+                text = appItem.appName,
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
-                text = usageItem.packageName,
+                text = "${appItem.totalScroll} units", // Display raw units
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
@@ -169,9 +176,10 @@ fun AppUsageRowItem(
         }
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = usageItem.formattedUsageTime,
+            text = formattedDistance, // Display formatted distance (e.g., "123 m")
             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.primary
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.End
         )
     }
-}
+} 

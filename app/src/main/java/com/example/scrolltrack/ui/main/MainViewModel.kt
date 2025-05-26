@@ -102,6 +102,9 @@ class MainViewModel(
 
     private val _todayDateString = DateUtil.getCurrentDateString() // Fixed for "today's" data
 
+    // Public getter for today's date string
+    fun getTodayDateString(): String = _todayDateString
+
     // --- State for Date Picker and Historical View ---
     private val _selectedDateForHistory = MutableStateFlow(_todayDateString) // Default to today
     val selectedDateForHistory: StateFlow<String> = _selectedDateForHistory.asStateFlow()
@@ -252,6 +255,33 @@ class MainViewModel(
             formatTotalUsageTime(totalMillis)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "Loading...")
 
+    // --- Data for SCROLL DETAIL SCREEN ---
+    private val _selectedDateForScrollDetail = MutableStateFlow(getTodayDateString()) // Default to today
+    val selectedDateForScrollDetail: StateFlow<String> = _selectedDateForScrollDetail.asStateFlow()
+
+    val aggregatedScrollDataForSelectedDate: StateFlow<List<AppScrollUiItem>> =
+        _selectedDateForScrollDetail.flatMapLatest { dateString ->
+            Log.d("MainViewModel", "ScrollDetail: Loading aggregated scroll data for date: $dateString")
+            repository.getAggregatedScrollDataForDate(dateString)
+                .map { appScrollDataList -> 
+                    Log.d("MainViewModel", "ScrollDetail: Received ${appScrollDataList.size} raw scroll items for $dateString")
+                    val uiItems = mapToAppScrollUiItems(appScrollDataList)
+                    Log.d("MainViewModel", "ScrollDetail: Mapped to ${uiItems.size} UI scroll items for $dateString")
+                    uiItems
+                 }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
+
+    // Function to update the selected date for the scroll detail screen
+    fun updateSelectedDateForScrollDetail(dateMillis: Long) {
+        val newDateString = DateUtil.formatDate(dateMillis)
+        Log.d("MainViewModel", "ScrollDetail: Updating selected date to $newDateString (from $dateMillis)")
+        if (_selectedDateForScrollDetail.value != newDateString) {
+            _selectedDateForScrollDetail.value = newDateString
+        } else {
+            Log.d("MainViewModel", "ScrollDetail: Selected date $newDateString is already set.")
+        }
+    }
+    // --- End Data for SCROLL DETAIL SCREEN ---
 
     // --- Top Used App in Last 7 Days ---
     val topUsedAppLast7Days: StateFlow<AppUsageUiItem?> = flow {
