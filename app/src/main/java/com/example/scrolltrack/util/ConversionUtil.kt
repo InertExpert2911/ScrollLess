@@ -54,7 +54,7 @@ object ConversionUtil {
         val miles = inchesScrolled / INCHES_PER_MILE
 
         val formattedMeters = formatMeters(metersScrolled)
-        val formattedMiles = String.format(Locale.getDefault(), "%.2f miles", miles) // Keep miles calculation
+        val formattedMiles = String.format(Locale.getDefault(), "%.2f miles", miles)
 
         return formattedMeters to formattedMiles
     }

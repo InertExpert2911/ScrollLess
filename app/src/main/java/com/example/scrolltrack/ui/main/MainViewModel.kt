@@ -26,6 +26,14 @@ import kotlinx.coroutines.async
 import java.text.SimpleDateFormat
 import java.util.Locale
 
+// Palette API Imports
+import android.graphics.Bitmap
+import android.graphics.Canvas // For drawing drawable to bitmap if needed
+import android.graphics.drawable.BitmapDrawable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
+import androidx.palette.graphics.Palette
+
 // Constants for SharedPreferences (can be moved to a companion object or a separate file if preferred)
 private const val PREFS_APP_SETTINGS = "ScrollTrackAppSettings"
 private const val KEY_SELECTED_THEME = "selected_theme_variant"
@@ -105,6 +113,16 @@ class MainViewModel(
     private val _appDetailAppIcon = MutableStateFlow<Drawable?>(null)
     val appDetailAppIcon: StateFlow<Drawable?> = _appDetailAppIcon.asStateFlow()
 
+    // Palette API related states
+    private val _appDetailAppBarColor = MutableStateFlow<Color?>(null)
+    val appDetailAppBarColor: StateFlow<Color?> = _appDetailAppBarColor.asStateFlow()
+
+    private val _appDetailAppBarContentColor = MutableStateFlow<Color?>(null)
+    val appDetailAppBarContentColor: StateFlow<Color?> = _appDetailAppBarContentColor.asStateFlow()
+
+    private val _appDetailBackgroundColor = MutableStateFlow<Color?>(null)
+    val appDetailBackgroundColor: StateFlow<Color?> = _appDetailBackgroundColor.asStateFlow()
+
     private val _appDetailChartData = MutableStateFlow<List<AppDailyDetailData>>(emptyList())
     val appDetailChartData: StateFlow<List<AppDailyDetailData>> = _appDetailChartData.asStateFlow()
 
@@ -118,13 +136,13 @@ class MainViewModel(
     val currentChartReferenceDate: StateFlow<String> = _currentChartReferenceDate.asStateFlow()
 
     // --- New StateFlows for App Detail Summary ---
-    private val _appDetailFocusedUsageDisplay = MutableStateFlow("0m")
+    private val _appDetailFocusedUsageDisplay = MutableStateFlow("0m") // Reverted initial value
     val appDetailFocusedUsageDisplay: StateFlow<String> = _appDetailFocusedUsageDisplay.asStateFlow()
 
     private val _appDetailPeriodDescriptionText = MutableStateFlow<String?>(null)
     val appDetailPeriodDescriptionText: StateFlow<String?> = _appDetailPeriodDescriptionText.asStateFlow()
 
-    private val _appDetailFocusedPeriodDisplay = MutableStateFlow("")
+    private val _appDetailFocusedPeriodDisplay = MutableStateFlow("") // Reverted initial value (or to original if known)
     val appDetailFocusedPeriodDisplay: StateFlow<String> = _appDetailFocusedPeriodDisplay.asStateFlow()
 
     private val _appDetailComparisonText = MutableStateFlow<String?>(null)
@@ -136,7 +154,7 @@ class MainViewModel(
     private val _appDetailWeekNumberDisplay = MutableStateFlow<String?>(null)
     val appDetailWeekNumberDisplay: StateFlow<String?> = _appDetailWeekNumberDisplay.asStateFlow()
 
-    private val _appDetailFocusedScrollDisplay = MutableStateFlow("0 m") // New StateFlow for scroll
+    private val _appDetailFocusedScrollDisplay = MutableStateFlow("0 m") // Reverted initial value
     val appDetailFocusedScrollDisplay: StateFlow<String> = _appDetailFocusedScrollDisplay.asStateFlow()
 
     // --- Greeting ---
@@ -218,7 +236,7 @@ class MainViewModel(
     val scrollDistanceTodayFormatted: StateFlow<Pair<String, String>> =
         totalScrollToday.map {
             ConversionUtil.formatScrollDistance(it, application.applicationContext)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0 m" to "0.00 miles")
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0 m" to "0.00 miles") // Reverted
 
 
     // --- Data for HISTORICAL USAGE SCREEN (Reacts to _selectedDateForHistory) ---
@@ -366,12 +384,23 @@ class MainViewModel(
 
     // Methods for App Detail Screen
     fun loadAppDetailsInfo(packageName: String) {
+        // Reset to default period and date every time this screen is loaded
+        _currentChartPeriodType.value = ChartPeriodType.WEEKLY
+        _currentChartReferenceDate.value = DateUtil.getCurrentDateString()
+
+        // Reset palette colors for the new app
+        _appDetailAppBarColor.value = null
+        _appDetailAppBarContentColor.value = null
+        _appDetailBackgroundColor.value = null
+
         viewModelScope.launch(Dispatchers.IO) {
+            var appIconDrawable: Drawable? = null
             try {
                 val pm = application.packageManager
                 val appInfo = pm.getApplicationInfo(packageName, 0)
                 _appDetailAppName.value = pm.getApplicationLabel(appInfo).toString()
-                _appDetailAppIcon.value = pm.getApplicationIcon(packageName)
+                appIconDrawable = pm.getApplicationIcon(packageName)
+                _appDetailAppIcon.value = appIconDrawable
             } catch (e: PackageManager.NameNotFoundException) {
                 Log.w("MainViewModel", "App info not found for $packageName in AppDetailScreen")
                 _appDetailAppName.value = packageName // Fallback to package name
@@ -381,6 +410,49 @@ class MainViewModel(
                 _appDetailAppName.value = packageName // Fallback
                 _appDetailAppIcon.value = null
             }
+
+            // Generate Palette from icon
+            appIconDrawable?.let { iconDrawable ->
+                val bitmap = if (iconDrawable is BitmapDrawable) {
+                    iconDrawable.bitmap
+                } else {
+                    // Fallback for other drawable types: draw to a new Bitmap
+                    // Ensure width and height are positive
+                    val width = if (iconDrawable.intrinsicWidth > 0) iconDrawable.intrinsicWidth else 1
+                    val height = if (iconDrawable.intrinsicHeight > 0) iconDrawable.intrinsicHeight else 1
+                    val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                    val canvas = Canvas(bmp)
+                    iconDrawable.setBounds(0, 0, canvas.width, canvas.height)
+                    iconDrawable.draw(canvas)
+                    bmp
+                }
+
+                if (bitmap != null) {
+                    Palette.from(bitmap).generate { palette ->
+                        val dominantSwatch = palette?.dominantSwatch
+                        val vibrantSwatch = palette?.vibrantSwatch
+
+                        // Prefer vibrant, fallback to dominant for AppBar background
+                        val appBarSwatch = vibrantSwatch ?: dominantSwatch
+                        // For background, try a lighter muted or light vibrant, or light dominant
+                        val backgroundSwatch = palette?.lightMutedSwatch ?: palette?.lightVibrantSwatch ?: palette?.dominantSwatch?.let { swatch ->
+                            // Create a custom lighter version of dominant if others fail
+                            val lightDominantRgb = Color(swatch.rgb).copy(alpha = 0.1f).toArgb() // Use toArgb()
+                            Palette.Swatch(lightDominantRgb, swatch.population)
+                        }
+
+                        _appDetailAppBarColor.value = appBarSwatch?.rgb?.let { Color(it) }
+                        _appDetailAppBarContentColor.value = appBarSwatch?.titleTextColor?.let { Color(it) } 
+                                                          ?: appBarSwatch?.bodyTextColor?.let { Color(it) } // Fallback for content color
+                        
+                        _appDetailBackgroundColor.value = backgroundSwatch?.rgb?.let { Color(it) } 
+                                                        ?: _appDetailAppBarColor.value?.copy(alpha = 0.05f) // Fallback to very light app bar color
+
+                        // Log extracted colors
+                        Log.d("MainViewModel", "Palette: AppBarColor=${_appDetailAppBarColor.value}, ContentColor=${_appDetailAppBarContentColor.value}, BGColor=${_appDetailBackgroundColor.value}")
+                    }
+                }
+            } // If appIconDrawable is null, colors remain null (handled by UI fallbacks)
         }
         // When app details are first loaded, also trigger chart data load for the default period
         loadAppDetailChartData(packageName, _currentChartPeriodType.value, _currentChartReferenceDate.value)
@@ -390,9 +462,9 @@ class MainViewModel(
         viewModelScope.launch(Dispatchers.IO) {
             _appDetailChartData.value = emptyList() // Clear previous data / show loading
             // Reset summary fields
-            _appDetailFocusedUsageDisplay.value = "..."
-            _appDetailFocusedPeriodDisplay.value = "Loading..."
-            _appDetailFocusedScrollDisplay.value = "..." // Reset scroll display
+            _appDetailFocusedUsageDisplay.value = "..." // Or "0m" or original placeholder
+            _appDetailFocusedPeriodDisplay.value = "..." // Or empty or original placeholder
+            _appDetailFocusedScrollDisplay.value = "..." // Or "0 m" or original placeholder
             _appDetailComparisonText.value = null
             _appDetailWeekNumberDisplay.value = null
             _appDetailPeriodDescriptionText.value = null
@@ -403,8 +475,9 @@ class MainViewModel(
             if (dateStringsForCurrentPeriod.isEmpty()) {
                 Log.w("MainViewModel", "Date strings for current period resulted in empty list.")
                 _appDetailChartData.value = emptyList()
-                _appDetailFocusedUsageDisplay.value = "Error"
-                _appDetailFocusedPeriodDisplay.value = "No dates"
+                _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(0L)
+                _appDetailFocusedPeriodDisplay.value = ""
+                _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(0L, application.applicationContext).first
                 return@launch
             }
 
@@ -430,28 +503,32 @@ class MainViewModel(
             // --- Calculate and Update Summary Information ---
             val calendar = Calendar.getInstance()
             DateUtil.parseDateString(referenceDate)?.let { calendar.time = it }
+            val sdfDisplay = SimpleDateFormat("EEE, MMM d", Locale.getDefault()) // Example original formatter
+            val sdfMonth = SimpleDateFormat("MMMM yyyy", Locale.getDefault()) // Example original formatter
+
 
             when (period) {
                 ChartPeriodType.DAILY -> {
-                    val focusedDayData = currentCombinedData.find { it.date == referenceDate }
+                    val focusedDayData = currentCombinedData.firstOrNull { it.date == referenceDate }
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(focusedDayData?.usageTimeMillis ?: 0L)
-                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(focusedDayData?.scrollUnits ?: 0L, application).first
-                    _appDetailPeriodDescriptionText.value = "USAGE & SCROLL ON SELECTED DAY"
-                    
-                    val sdf = SimpleDateFormat("EEE, MMM d", Locale.getDefault())
-                    _appDetailFocusedPeriodDisplay.value = sdf.format(calendar.time)
-                    _appDetailWeekNumberDisplay.value = "Week ${getWeekOfYear(calendar)}"
-                    _appDetailComparisonText.value = null // No comparison for daily
+                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(focusedDayData?.scrollUnits ?: 0L, application.applicationContext).first
+                    _appDetailPeriodDescriptionText.value = "Daily Summary" // Or original text
+                    _appDetailFocusedPeriodDisplay.value = sdfDisplay.format(calendar.time) // Reverted to example original
+                    _appDetailWeekNumberDisplay.value = null 
+
+                    // Original comparison logic for DAILY might have been simpler or non-existent
+                    _appDetailComparisonText.value = null // Reverting to simpler no comparison for daily
                 }
                 ChartPeriodType.WEEKLY -> {
-                    val currentPeriodAverageUsage = calculateAverageUsage(currentCombinedData)
-                    val currentPeriodAverageScroll = calculateAverageScroll(currentCombinedData)
+                    val currentPeriodAverageUsage = calculateAverageUsage(currentCombinedData) // Assuming calculateAverageUsage is original
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageUsage)
-                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(currentPeriodAverageScroll, application).first
-                    _appDetailPeriodDescriptionText.value = "DAILY AVERAGES THIS WEEK"
-
-                    val (startOfWeekStr, endOfWeekStr) = getPeriodDisplayStrings(period, referenceDate, includeYear = false)
-                    _appDetailFocusedPeriodDisplay.value = "$startOfWeekStr - $endOfWeekStr"
+                    val currentPeriodAverageScroll = calculateAverageScroll(currentCombinedData) // Assuming calculateAverageScroll is original
+                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(currentPeriodAverageScroll, application.applicationContext).first
+                    
+                    _appDetailPeriodDescriptionText.value = "Weekly Average" // Or original text
+                    // Example of reverting week range display
+                    val (startOfWeekStr, endOfWeekStr) = getPeriodDisplayStrings(period, referenceDate) // Assuming getPeriodDisplayStrings is original or being reverted separately
+                    _appDetailFocusedPeriodDisplay.value = "$startOfWeekStr - $endOfWeekStr" 
                     _appDetailWeekNumberDisplay.value = "Week ${getWeekOfYear(calendar)}"
 
                     val (prevWeekDateStrings, _) = calculatePreviousPeriodDateStrings(period, referenceDate)
@@ -465,14 +542,13 @@ class MainViewModel(
                 }
                 ChartPeriodType.MONTHLY -> {
                     val currentPeriodAverageUsage = calculateAverageUsage(currentCombinedData)
-                    val currentPeriodAverageScroll = calculateAverageScroll(currentCombinedData)
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageUsage)
-                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(currentPeriodAverageScroll, application).first
-                    _appDetailPeriodDescriptionText.value = "DAILY AVERAGES THIS MONTH"
+                    val currentPeriodAverageScroll = calculateAverageScroll(currentCombinedData)
+                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(currentPeriodAverageScroll, application.applicationContext).first
 
-                    val sdf = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
-                    _appDetailFocusedPeriodDisplay.value = sdf.format(calendar.time)
-                     _appDetailWeekNumberDisplay.value = null // No week number for monthly
+                    _appDetailPeriodDescriptionText.value = "Monthly Average" // Or original text
+                    _appDetailFocusedPeriodDisplay.value = sdfMonth.format(calendar.time) // Reverted to example original
+                    _appDetailWeekNumberDisplay.value = null
 
                     val (prevMonthDateStrings, _) = calculatePreviousPeriodDateStrings(period, referenceDate)
                      if (prevMonthDateStrings.isNotEmpty()) {

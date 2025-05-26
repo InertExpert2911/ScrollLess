@@ -2,11 +2,14 @@ package com.example.scrolltrack.ui.detail
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
@@ -27,6 +30,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -77,6 +81,11 @@ fun AppDetailScreen(
     val chartData by viewModel.appDetailChartData.collectAsStateWithLifecycle()
     val currentPeriodType by viewModel.currentChartPeriodType.collectAsStateWithLifecycle()
     val currentReferenceDateStr by viewModel.currentChartReferenceDate.collectAsStateWithLifecycle()
+
+    // Collect palette colors
+    val appBarColor by viewModel.appDetailAppBarColor.collectAsStateWithLifecycle()
+    val appBarContentColor by viewModel.appDetailAppBarContentColor.collectAsStateWithLifecycle()
+    val screenBackgroundColor by viewModel.appDetailBackgroundColor.collectAsStateWithLifecycle()
 
     // Collect new summary states
     val focusedUsageDisplay by viewModel.appDetailFocusedUsageDisplay.collectAsStateWithLifecycle()
@@ -129,10 +138,15 @@ fun AppDetailScreen(
                                 model = appIcon ?: R.mipmap.ic_launcher_round,
                             ),
                             contentDescription = "$appName icon",
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(40.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = appName ?: packageName)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = appName ?: packageName,
+                            style = MaterialTheme.typography.titleLarge,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 },
                 navigationIcon = {
@@ -141,12 +155,14 @@ fun AppDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                    containerColor = appBarColor ?: MaterialTheme.colorScheme.surfaceVariant,
+                    titleContentColor = appBarContentColor ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                    navigationIconContentColor = appBarContentColor ?: MaterialTheme.colorScheme.onSurfaceVariant,
+                    actionIconContentColor = appBarContentColor ?: MaterialTheme.colorScheme.onSurfaceVariant
                 )
             )
         },
-        modifier = modifier
+        modifier = modifier.background(screenBackgroundColor ?: MaterialTheme.colorScheme.background)
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -233,19 +249,33 @@ fun AppDetailScreen(
                         }
                     }
                     comparisonText?.let {
+                        val positiveColor = MaterialTheme.colorScheme.primary
+                        val negativeColor = MaterialTheme.colorScheme.error
+                        val currentColor = if (comparisonIsPositive) positiveColor else negativeColor
+
                         Card(
                             modifier = Modifier.padding(top = 8.dp),
                             shape = MaterialTheme.shapes.medium,
                             colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.5f),
-                                contentColor = if (comparisonIsPositive) Color(0xFF388E3C) else MaterialTheme.colorScheme.error
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.7f),
+                                contentColor = currentColor
                             )
                         ) {
-                            Text(
-                                text = it,
-                                style = MaterialTheme.typography.labelMedium,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (comparisonIsPositive) Icons.Filled.ArrowUpward else Icons.Filled.ArrowDownward,
+                                    contentDescription = if (comparisonIsPositive) "Increase" else "Decrease",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
                         }
                     }
                 }
@@ -294,7 +324,7 @@ fun AppDetailScreen(
                 contentAlignment = Alignment.Center
             ) {
                 if (chartData.isEmpty()) {
-                    Text("Loading chart data...")
+                    Text("Loading chart data...", style = MaterialTheme.typography.bodyLarge)
                 } else {
                     UsageBarScrollLineChart(
                         modifier = Modifier.fillMaxSize(),
@@ -716,7 +746,7 @@ fun formatScrollForAxis(value: Float, maxValueHint: Long, context: Context): Str
         }
         metersScrolled.compareTo(1000.0) >= 0 -> { // 1km - 9.999km
             numberFormat.maximumFractionDigits = 1
-            numberFormat.format(metersScrolled / 1000.0) + " km" // Use "km" directly
+            numberFormat.format(metersScrolled / 1000.0) + " km"
         }
         metersScrolled.compareTo(1.0) >= 0 -> {
             numberFormat.maximumFractionDigits = 0
@@ -749,8 +779,8 @@ fun formatMillisToHoursMinutesSeconds(millis: Long): String {
     val seconds = TimeUnit.MILLISECONDS.toSeconds(millis) % 60
 
     return when {
-        hours > 0 -> String.format("%dhr %02dmin", hours, minutes) // Keep 02d for minutes when with hours
-        minutes > 0 -> String.format("%dmin %02dsec", minutes, seconds) // Keep 02d for seconds when with minutes
+        hours > 0 -> String.format("%dhr %02dmin", hours, minutes)
+        minutes > 0 -> String.format("%dmin %02dsec", minutes, seconds)
         else -> String.format("%dsec", seconds)
     }
 } 

@@ -82,20 +82,15 @@ object DateUtil {
      */
     fun formatDuration(millis: Long): String {
         if (millis < 0) return "N/A" // Invalid duration
-        if (millis < TimeUnit.MINUTES.toMillis(1)) return "< 1min" // Less than a minute
+        if (millis < TimeUnit.MINUTES.toMillis(1)) return "< 1min" // Less than a minute (reverted to include space)
 
         val hours = TimeUnit.MILLISECONDS.toHours(millis)
         val minutes = TimeUnit.MILLISECONDS.toMinutes(millis) % TimeUnit.HOURS.toMinutes(1)
-        // val seconds = TimeUnit.MILLISECONDS.toSeconds(millis) % TimeUnit.MINUTES.toSeconds(1) // Optional: include seconds
 
         return when {
-            hours > 0 -> String.format(Locale.getDefault(), "%dhr %02dmin", hours, minutes)
-            // If you want to show seconds when hours is 0:
-            // minutes > 0 -> String.format(Locale.getDefault(), "%02dmin %02ds", minutes, seconds)
-            minutes > 0 -> String.format(Locale.getDefault(), "%dmin", minutes)
-            // If you want to show seconds when minutes is also 0:
-            // else -> String.format(Locale.getDefault(), "%ds", seconds)
-            else -> "< 1min" // Fallback for very short durations already handled, but good to have else
+            hours > 0 -> String.format(Locale.getDefault(), "%dhr %02dmin", hours, minutes) // Reverted to include space
+            minutes > 0 -> String.format(Locale.getDefault(), "%dmin", minutes) // This was likely already like this or similar
+            else -> "< 1min" // Reverted to include space
         }
     }
 }
