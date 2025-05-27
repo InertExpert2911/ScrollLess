@@ -29,13 +29,13 @@ import java.util.Locale
 import kotlin.math.abs
 import android.util.LruCache // Import LruCache
 
-// Palette API Imports
-import android.graphics.Bitmap
-import android.graphics.Canvas // For drawing drawable to bitmap if needed
-import android.graphics.drawable.BitmapDrawable
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
-import androidx.palette.graphics.Palette
+// Palette API Imports - REMOVE THESE
+// import android.graphics.Bitmap
+// import android.graphics.Canvas // For drawing drawable to bitmap if needed
+// import android.graphics.drawable.BitmapDrawable
+// import androidx.compose.ui.graphics.Color // Keep for non-Palette use if any, or remove if only for Palette
+// import androidx.compose.ui.graphics.toArgb // Keep for non-Palette use if any, or remove if only for Palette
+// import androidx.palette.graphics.Palette
 
 // Constants for SharedPreferences (can be moved to a companion object or a separate file if preferred)
 private const val PREFS_APP_SETTINGS = "ScrollTrackAppSettings"
@@ -126,15 +126,15 @@ class MainViewModel(
     private val _appDetailAppIcon = MutableStateFlow<Drawable?>(null)
     val appDetailAppIcon: StateFlow<Drawable?> = _appDetailAppIcon.asStateFlow()
 
-    // Palette API related states
-    private val _appDetailAppBarColor = MutableStateFlow<Color?>(null)
-    val appDetailAppBarColor: StateFlow<Color?> = _appDetailAppBarColor.asStateFlow()
+    // Palette API related states - REMOVE THESE
+    // private val _appDetailAppBarColor = MutableStateFlow<Color?>(null)
+    // val appDetailAppBarColor: StateFlow<Color?> = _appDetailAppBarColor.asStateFlow()
 
-    private val _appDetailAppBarContentColor = MutableStateFlow<Color?>(null)
-    val appDetailAppBarContentColor: StateFlow<Color?> = _appDetailAppBarContentColor.asStateFlow()
+    // private val _appDetailAppBarContentColor = MutableStateFlow<Color?>(null)
+    // val appDetailAppBarContentColor: StateFlow<Color?> = _appDetailAppBarContentColor.asStateFlow()
 
-    private val _appDetailBackgroundColor = MutableStateFlow<Color?>(null)
-    val appDetailBackgroundColor: StateFlow<Color?> = _appDetailBackgroundColor.asStateFlow()
+    // private val _appDetailBackgroundColor = MutableStateFlow<Color?>(null)
+    // val appDetailBackgroundColor: StateFlow<Color?> = _appDetailBackgroundColor.asStateFlow()
 
     private val _appDetailChartData = MutableStateFlow<List<AppDailyDetailData>>(emptyList())
     val appDetailChartData: StateFlow<List<AppDailyDetailData>> = _appDetailChartData.asStateFlow()
@@ -463,11 +463,6 @@ class MainViewModel(
         _currentChartReferenceDate.value = DateUtil.getCurrentLocalDateString() // Changed
         _appDetailPackageName.value = packageName // This line IS needed to load app-specific data
 
-        // Reset palette colors for the new app
-        _appDetailAppBarColor.value = null
-        _appDetailAppBarContentColor.value = null
-        _appDetailBackgroundColor.value = null
-
         viewModelScope.launch(Dispatchers.IO) {
             var appIconDrawable: Drawable? = null
             val cachedAppInfo = metadataCache.get(packageName)
@@ -498,49 +493,6 @@ class MainViewModel(
                     // Do not cache on general exception, as it might be a temporary issue.
                 }
             }
-
-            // Generate Palette from icon
-            appIconDrawable?.let { iconDrawable ->
-                val bitmap = if (iconDrawable is BitmapDrawable) {
-                    iconDrawable.bitmap
-                } else {
-                    // Fallback for other drawable types: draw to a new Bitmap
-                    // Ensure width and height are positive
-                    val width = if (iconDrawable.intrinsicWidth > 0) iconDrawable.intrinsicWidth else 1
-                    val height = if (iconDrawable.intrinsicHeight > 0) iconDrawable.intrinsicHeight else 1
-                    val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                    val canvas = Canvas(bmp)
-                    iconDrawable.setBounds(0, 0, canvas.width, canvas.height)
-                    iconDrawable.draw(canvas)
-                    bmp
-                }
-
-                if (bitmap != null) {
-                    Palette.from(bitmap).generate { palette ->
-                        val dominantSwatch = palette?.dominantSwatch
-                        val vibrantSwatch = palette?.vibrantSwatch
-
-                        // Prefer vibrant, fallback to dominant for AppBar background
-                        val appBarSwatch = vibrantSwatch ?: dominantSwatch
-                        // For background, try a lighter muted or light vibrant, or light dominant
-                        val backgroundSwatch = palette?.lightMutedSwatch ?: palette?.lightVibrantSwatch ?: palette?.dominantSwatch?.let { swatch ->
-                            // Create a custom lighter version of dominant if others fail
-                            val lightDominantRgb = Color(swatch.rgb).copy(alpha = 0.1f).toArgb() // Use toArgb()
-                            Palette.Swatch(lightDominantRgb, swatch.population)
-                        }
-
-                        _appDetailAppBarColor.value = appBarSwatch?.rgb?.let { Color(it) }
-                        _appDetailAppBarContentColor.value = appBarSwatch?.titleTextColor?.let { Color(it) } 
-                                                          ?: appBarSwatch?.bodyTextColor?.let { Color(it) } // Fallback for content color
-                        
-                        _appDetailBackgroundColor.value = backgroundSwatch?.rgb?.let { Color(it) } 
-                                                        ?: _appDetailAppBarColor.value?.copy(alpha = 0.05f) // Fallback to very light app bar color
-
-                        // Log extracted colors
-                        Log.d("MainViewModel", "Palette: AppBarColor=${_appDetailAppBarColor.value}, ContentColor=${_appDetailAppBarContentColor.value}, BGColor=${_appDetailBackgroundColor.value}")
-                    }
-                }
-            } // If appIconDrawable is null, colors remain null (handled by UI fallbacks)
         }
         // When app details are first loaded, also trigger chart data load for the default period
         loadAppDetailChartData(packageName, _currentChartPeriodType.value, _currentChartReferenceDate.value)

@@ -86,10 +86,10 @@ fun AppDetailScreen(
     val currentPeriodType by viewModel.currentChartPeriodType.collectAsStateWithLifecycle()
     val currentReferenceDateStr by viewModel.currentChartReferenceDate.collectAsStateWithLifecycle()
 
-    // Collect palette colors
-    val appBarColor by viewModel.appDetailAppBarColor.collectAsStateWithLifecycle()
-    val appBarContentColor by viewModel.appDetailAppBarContentColor.collectAsStateWithLifecycle()
-    val screenBackgroundColor by viewModel.appDetailBackgroundColor.collectAsStateWithLifecycle()
+    // Collect palette colors - REMOVE THESE
+    // val appBarColor by viewModel.appDetailAppBarColor.collectAsStateWithLifecycle()
+    // val appBarContentColor by viewModel.appDetailAppBarContentColor.collectAsStateWithLifecycle()
+    // val screenBackgroundColor by viewModel.appDetailBackgroundColor.collectAsStateWithLifecycle()
 
     // Collect new summary states
     val focusedUsageDisplay by viewModel.appDetailFocusedUsageDisplay.collectAsStateWithLifecycle()
@@ -160,14 +160,14 @@ fun AppDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = appBarColor ?: MaterialTheme.colorScheme.surfaceVariant,
-                    titleContentColor = appBarContentColor ?: MaterialTheme.colorScheme.onSurfaceVariant,
-                    navigationIconContentColor = appBarContentColor ?: MaterialTheme.colorScheme.onSurfaceVariant,
-                    actionIconContentColor = appBarContentColor ?: MaterialTheme.colorScheme.onSurfaceVariant
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant, // Reverted to default
+                    titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant, // Reverted to default
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant, // Reverted to default
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant // Reverted to default
                 )
             )
         },
-        modifier = modifier.background(screenBackgroundColor ?: MaterialTheme.colorScheme.background)
+        modifier = modifier.background(MaterialTheme.colorScheme.background) // Reverted to default
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -366,6 +366,12 @@ fun UsageBarScrollLineChart(
     var selectedBarIndex by remember { mutableStateOf<Int?>(null) }
     val context = LocalContext.current
 
+    // Hoisted Paint objects
+    val axisLabelPaint = remember { android.graphics.Paint().apply { textAlign = android.graphics.Paint.Align.LEFT } }
+    val legendPaint = remember { android.graphics.Paint().apply { textAlign = android.graphics.Paint.Align.LEFT } }
+    val tooltipTextPaint = remember { android.graphics.Paint().apply { textAlign = android.graphics.Paint.Align.LEFT } }
+    val chartAreaErrorPaint = remember { android.graphics.Paint().apply { textAlign = android.graphics.Paint.Align.CENTER } }
+
     // Reset selectedBarIndex if periodType is DAILY, or if data/period changes
     LaunchedEffect(periodType, data) {
         if (periodType == ChartPeriodType.DAILY) { // Reset for DAILY view
@@ -504,12 +510,11 @@ fun UsageBarScrollLineChart(
 
         if (chartWidth <= 0 || chartHeight <= 0) {
             drawIntoCanvas { canvas ->
-                val paint = android.graphics.Paint().apply {
-                    textAlign = android.graphics.Paint.Align.CENTER
+                chartAreaErrorPaint.apply {
                     textSize = 14.sp.toPx()
                     color = labelColor.toArgb()
                 }
-                canvas.nativeCanvas.drawText("Chart area too small", center.x, center.y, paint)
+                canvas.nativeCanvas.drawText("Chart area too small", center.x, center.y, chartAreaErrorPaint)
             }
             return@Canvas
         }
@@ -695,7 +700,11 @@ fun UsageBarScrollLineChart(
                 if (formattedDate.isNotEmpty()){
                     val textLayoutResult = textMeasurer.measure(buildAnnotatedString { append(formattedDate) }, style = axisLabelTextStyle)
                     val labelX = leftMargin + barSpacingForXLabels + index * (barWidthForXLabels + barSpacingForXLabels) + barWidthForXLabels / 2 - textLayoutResult.size.width / 2
-                    drawContext.canvas.nativeCanvas.drawText(formattedDate, labelX, topMargin + chartHeight + 5f + textLayoutResult.size.height, android.graphics.Paint().apply { this.color = labelColor.toArgb(); textSize = 10.sp.toPx(); textAlign = android.graphics.Paint.Align.LEFT })
+                    axisLabelPaint.apply {
+                        color = labelColor.toArgb()
+                        textSize = 10.sp.toPx()
+                    }
+                    drawContext.canvas.nativeCanvas.drawText(formattedDate, labelX, topMargin + chartHeight + 5f + textLayoutResult.size.height, axisLabelPaint)
                 }
             }
         }
@@ -716,15 +725,15 @@ fun UsageBarScrollLineChart(
                 drawLine(color = faintAxisColor.copy(alpha = 0.5f), start = Offset(leftMargin, labelY), end = Offset(leftMargin + chartWidth, labelY), strokeWidth = 0.5f)
                 // Draw tick mark
                 drawLine(color = faintAxisColor, start = Offset(leftMargin - 5f, labelY), end = Offset(leftMargin, labelY), strokeWidth = 1f)
+                axisLabelPaint.apply {
+                    color = labelColor.toArgb()
+                    textSize = 10.sp.toPx()
+                }
                 drawContext.canvas.nativeCanvas.drawText(
                     labelText,
                     leftMargin - textLayoutResult.size.width - 10f, 
                     labelY + textLayoutResult.size.height / 2f - 5f, 
-                    android.graphics.Paint().apply {
-                        this.color = labelColor.toArgb()
-                        textSize = 10.sp.toPx()
-                        textAlign = android.graphics.Paint.Align.LEFT
-                    }
+                    axisLabelPaint
                 )
             }
         }
@@ -742,7 +751,11 @@ fun UsageBarScrollLineChart(
             // drawLine(color = faintAxisColor.copy(alpha = 0.5f), start = Offset(leftMargin, labelY), end = Offset(leftMargin + chartWidth, labelY), strokeWidth = 0.5f)
             // Draw tick mark (short line extending from where axis *would* be)
             drawLine(color = faintAxisColor, start = Offset(leftMargin + chartWidth, labelY), end = Offset(leftMargin + chartWidth + 5f, labelY), strokeWidth = 1f)
-            drawContext.canvas.nativeCanvas.drawText(labelText, leftMargin + chartWidth + 10f, labelY + textLayoutResult.size.height / 2 - 5f, android.graphics.Paint().apply { this.color = labelColor.toArgb(); textSize = 10.sp.toPx(); textAlign = android.graphics.Paint.Align.LEFT })
+            axisLabelPaint.apply {
+                color = labelColor.toArgb()
+                textSize = 10.sp.toPx()
+            }
+            drawContext.canvas.nativeCanvas.drawText(labelText, leftMargin + chartWidth + 10f, labelY + textLayoutResult.size.height / 2 - 5f, axisLabelPaint)
         }
 
         val legendStartY = topMargin + chartHeight + xAxisLabelHeight + 20f
@@ -750,11 +763,19 @@ fun UsageBarScrollLineChart(
         val legendTextPadding = 8.dp.toPx()
 
         drawRect(color = barColor, topLeft = Offset(leftMargin, legendStartY), size = androidx.compose.ui.geometry.Size(legendItemSize, legendItemSize))
-        drawContext.canvas.nativeCanvas.drawText("Usage", leftMargin + legendItemSize + legendTextPadding, legendStartY + legendItemHeight / 2 + textMeasurer.measure(buildAnnotatedString { append("Usage") }, style = axisLabelTextStyle).size.height / 4, android.graphics.Paint().apply { this.color = labelColor.toArgb(); textSize = 11.sp.toPx(); textAlign = android.graphics.Paint.Align.LEFT })
+        legendPaint.apply {
+            color = labelColor.toArgb()
+            textSize = 11.sp.toPx()
+        }
+        drawContext.canvas.nativeCanvas.drawText("Usage", leftMargin + legendItemSize + legendTextPadding, legendStartY + legendItemHeight / 2 + textMeasurer.measure(buildAnnotatedString { append("Usage") }, style = axisLabelTextStyle).size.height / 4, legendPaint)
 
         val secondLegendItemY = legendStartY + legendItemHeight
         drawRect(color = scrollDistanceColor, topLeft = Offset(leftMargin, secondLegendItemY), size = androidx.compose.ui.geometry.Size(legendItemSize, legendItemSize))
-        drawContext.canvas.nativeCanvas.drawText("Scroll", leftMargin + legendItemSize + legendTextPadding, secondLegendItemY + legendItemHeight / 2 + textMeasurer.measure(buildAnnotatedString { append("Scroll") }, style = axisLabelTextStyle).size.height / 4, android.graphics.Paint().apply { this.color = labelColor.toArgb(); textSize = 11.sp.toPx(); textAlign = android.graphics.Paint.Align.LEFT })
+        legendPaint.apply {
+            color = labelColor.toArgb()
+            textSize = 11.sp.toPx()
+        }
+        drawContext.canvas.nativeCanvas.drawText("Scroll", leftMargin + legendItemSize + legendTextPadding, secondLegendItemY + legendItemHeight / 2 + textMeasurer.measure(buildAnnotatedString { append("Scroll") }, style = axisLabelTextStyle).size.height / 4, legendPaint)
 
         // --- Draw Tooltip if a bar is selected (Only for WEEKLY/MONTHLY) ---
         if ((periodType == ChartPeriodType.WEEKLY || periodType == ChartPeriodType.MONTHLY) && selectedBarIndex != null && selectedBarIndex!! < data.size) {
@@ -816,11 +837,9 @@ fun UsageBarScrollLineChart(
                 usageText,
                 tooltipX + tooltipPaddingHorizontal,
                 tooltipY + tooltipPaddingVertical + usageTextLayout.size.height, // Y is baseline for text
-                android.graphics.Paint().apply {
-                    this.color = tooltipActualTextColor.toArgb() // Use resolved color
+                tooltipTextPaint.apply {
+                    color = tooltipActualTextColor.toArgb()
                     textSize = tooltipTextStyle.fontSize.toPx()
-                    textAlign = android.graphics.Paint.Align.LEFT
-                    // Optionally set typeface if MaterialTheme.typography.bodySmall has a specific font
                 }
             )
             // Draw scroll text
@@ -828,10 +847,9 @@ fun UsageBarScrollLineChart(
                 scrollText,
                 tooltipX + tooltipPaddingHorizontal,
                 tooltipY + tooltipPaddingVertical + usageTextLayout.size.height + tooltipTextSpacing + scrollTextLayout.size.height, // Y is baseline
-                android.graphics.Paint().apply {
-                    this.color = tooltipActualTextColor.toArgb() // Use resolved color
+                tooltipTextPaint.apply {
+                    color = tooltipActualTextColor.toArgb()
                     textSize = tooltipTextStyle.fontSize.toPx()
-                    textAlign = android.graphics.Paint.Align.LEFT
                 }
             )
         }
