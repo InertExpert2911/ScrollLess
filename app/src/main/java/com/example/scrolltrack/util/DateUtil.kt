@@ -1,56 +1,75 @@
-package com.example.scrolltrack.util // Updated package name
+package com.example.scrolltrack.util
 
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+// No need to import java.util.TimeZone explicitly unless using TimeZone.getTimeZone("UTC") for Calendar instances
 
 object DateUtil {
-    // Standard date format for storing and querying dates as strings
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    // SimpleDateFormat initialized with Locale.getDefault() will use the system's default TimeZone
+    // when formatting Date objects or parsing date strings without explicit timezone information.
+    private val localIsoDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
     /**
-     * Gets the current date as a formatted string (YYYY-MM-DD).
+     * Gets the current UTC timestamp in milliseconds.
      */
-    fun getCurrentDateString(): String {
-        return dateFormat.format(Date())
+    fun getUtcTimestamp(): Long {
+        return System.currentTimeMillis()
     }
 
     /**
-     * Formats a given Date object into a string (YYYY-MM-DD).
+     * Gets the current local date as a formatted string (yyyy-MM-dd),
+     * based on the device's current default timezone.
      */
-    fun formatDate(date: Date): String {
-        return dateFormat.format(date)
+    fun getCurrentLocalDateString(): String {
+        // Date() constructor with no args uses current time, which is effectively UTC millis.
+        // localIsoDateFormat then formats it using the default TimeZone.
+        return localIsoDateFormat.format(Date(getUtcTimestamp()))
     }
 
     /**
-     * Formats a given timestamp (milliseconds since epoch) into a date string (YYYY-MM-DD).
+     * Formats a given UTC timestamp (milliseconds since epoch) into a local date string (yyyy-MM-dd),
+     * based on the device's current default timezone.
      */
-    fun formatDate(millis: Long): String {
-        return dateFormat.format(Date(millis))
+    fun formatUtcTimestampToLocalDateString(utcTimestampMillis: Long): String {
+        return localIsoDateFormat.format(Date(utcTimestampMillis))
     }
 
     /**
-     * Parses a date string (YYYY-MM-DD) into a Date object.
+     * Parses a local date string (yyyy-MM-dd) into a Date object.
+     * The resulting Date object represents milliseconds from epoch (UTC).
+     * Its interpretation as a "local date" depends on how it's further processed or formatted.
      * Returns null if parsing fails.
      */
-    fun parseDateString(dateString: String): Date? {
+    fun parseLocalDateString(localDateString: String): Date? {
         return try {
-            dateFormat.parse(dateString)
+            localIsoDateFormat.parse(localDateString)
         } catch (e: Exception) {
             null // Handle parsing exception
         }
     }
 
     /**
-     * Gets the timestamp for the start of the day (midnight) for a given date string.
-     * @param dateString Date in "YYYY-MM-DD" format.
-     * @return Milliseconds since epoch for the start of that day.
+     * Formats a given Date object into a local date string (yyyy-MM-dd),
+     * based on the device's current default timezone.
+     * @param date The Date object to format.
+     * @return Formatted date string "yyyy-MM-dd".
      */
-    fun getStartOfDayMillis(dateString: String): Long {
-        val date = parseDateString(dateString) ?: Date() // Default to current date if parsing fails
-        val calendar = Calendar.getInstance()
+    fun formatDateToYyyyMmDdString(date: Date): String {
+        return localIsoDateFormat.format(date)
+    }
+
+    /**
+     * Gets the UTC timestamp for the start of the day (00:00:00.000) for a given local date string,
+     * interpreted in the device's current default timezone.
+     * @param localDateString Date in "yyyy-MM-dd" format.
+     * @return Milliseconds since epoch (UTC) for the start of that local day.
+     */
+    fun getStartOfDayUtcMillis(localDateString: String): Long {
+        val date = parseLocalDateString(localDateString) ?: Date(getUtcTimestamp()) // Default to current time if parsing fails, effectively current day.
+        val calendar = Calendar.getInstance() // getInstance() uses the default timezone and locale.
         calendar.time = date
         calendar.set(Calendar.HOUR_OF_DAY, 0)
         calendar.set(Calendar.MINUTE, 0)
@@ -60,13 +79,14 @@ object DateUtil {
     }
 
     /**
-     * Gets the timestamp for the end of the day (23:59:59.999) for a given date string.
-     * @param dateString Date in "YYYY-MM-DD" format.
-     * @return Milliseconds since epoch for the end of that day.
+     * Gets the UTC timestamp for the end of the day (23:59:59.999) for a given local date string,
+     * interpreted in the device's current default timezone.
+     * @param localDateString Date in "yyyy-MM-dd" format.
+     * @return Milliseconds since epoch (UTC) for the end of that local day.
      */
-    fun getEndOfDayMillis(dateString: String): Long {
-        val date = parseDateString(dateString) ?: Date() // Default to current date if parsing fails
-        val calendar = Calendar.getInstance()
+    fun getEndOfDayUtcMillis(localDateString: String): Long {
+        val date = parseLocalDateString(localDateString) ?: Date(getUtcTimestamp()) // Default to current time if parsing fails, effectively current day.
+        val calendar = Calendar.getInstance() // getInstance() uses the default timezone and locale.
         calendar.time = date
         calendar.set(Calendar.HOUR_OF_DAY, 23)
         calendar.set(Calendar.MINUTE, 59)
@@ -82,15 +102,15 @@ object DateUtil {
      */
     fun formatDuration(millis: Long): String {
         if (millis < 0) return "N/A" // Invalid duration
-        if (millis < TimeUnit.MINUTES.toMillis(1)) return "< 1min" // Less than a minute (reverted to include space)
+        if (millis < TimeUnit.MINUTES.toMillis(1)) return "< 1min"
 
         val hours = TimeUnit.MILLISECONDS.toHours(millis)
         val minutes = TimeUnit.MILLISECONDS.toMinutes(millis) % TimeUnit.HOURS.toMinutes(1)
 
         return when {
-            hours > 0 -> String.format(Locale.getDefault(), "%dhr %02dmin", hours, minutes) // Reverted to include space
-            minutes > 0 -> String.format(Locale.getDefault(), "%dmin", minutes) // This was likely already like this or similar
-            else -> "< 1min" // Reverted to include space
+            hours > 0 -> String.format(Locale.getDefault(), "%dhr %02dmin", hours, minutes)
+            minutes > 0 -> String.format(Locale.getDefault(), "%dmin", minutes)
+            else -> "< 1min"
         }
     }
 }

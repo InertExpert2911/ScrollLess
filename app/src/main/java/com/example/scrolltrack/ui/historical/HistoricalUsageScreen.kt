@@ -43,7 +43,7 @@ fun HistoricalUsageScreen(
     var showDatePickerDialog by remember { mutableStateOf(false) }
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = remember(selectedDateString) {
-            DateUtil.parseDateString(selectedDateString)?.time ?: System.currentTimeMillis()
+            DateUtil.parseLocalDateString(selectedDateString)?.time ?: System.currentTimeMillis()
         },
         selectableDates = object : SelectableDates {
             override fun isSelectableDate(utcTimeMillis: Long): Boolean {

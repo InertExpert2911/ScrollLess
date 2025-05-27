@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar // For date calculations
+import java.util.Date // Added import
 import kotlinx.coroutines.async
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -86,6 +87,14 @@ class MainViewModel(
     private val _selectedThemeVariant = MutableStateFlow(DEFAULT_THEME)
     val selectedThemeVariant: StateFlow<String> = _selectedThemeVariant.asStateFlow()
 
+    // Ensure _todayDateString is initialized before _selectedDateForHistory
+    private val _todayDateString = DateUtil.getCurrentLocalDateString()
+    
+    private val _selectedDateForHistory = MutableStateFlow(_todayDateString) // Default to today
+    val selectedDateForHistory: StateFlow<String> = _selectedDateForHistory.asStateFlow()
+
+    val isTodaySelectedForHistory: StateFlow<Boolean> = _selectedDateForHistory.map { it == _todayDateString }.stateIn(viewModelScope, SharingStarted.Lazily, true)
+
     init {
         // Load saved theme or use default
         val savedTheme = appPrefs.getString(KEY_SELECTED_THEME, DEFAULT_THEME) ?: DEFAULT_THEME
@@ -100,15 +109,6 @@ class MainViewModel(
             Log.d("MainViewModel", "Theme updated and saved: $newVariant")
         }
     }
-
-    private val _todayDateString = DateUtil.getCurrentDateString() // Fixed for "today's" data
-
-    // Public getter for today's date string
-    fun getTodayDateString(): String = _todayDateString
-
-    // --- State for Date Picker and Historical View ---
-    private val _selectedDateForHistory = MutableStateFlow(_todayDateString) // Default to today
-    val selectedDateForHistory: StateFlow<String> = _selectedDateForHistory.asStateFlow()
 
     // --- App Detail Screen Specific States ---
     private val _appDetailPackageName = MutableStateFlow<String?>(null)
@@ -138,7 +138,7 @@ class MainViewModel(
     // Represents the anchor date for the current chart view.
     // For WEEKLY, it's the last day of the week. For MONTHLY, the first day of the month.
     // For DAILY, it's the specific day being focused on within its week.
-    private val _currentChartReferenceDate = MutableStateFlow(DateUtil.getCurrentDateString())
+    private val _currentChartReferenceDate = MutableStateFlow(DateUtil.getCurrentLocalDateString()) // Changed
     val currentChartReferenceDate: StateFlow<String> = _currentChartReferenceDate.asStateFlow()
 
     // --- New StateFlows for App Detail Summary ---
@@ -266,7 +266,7 @@ class MainViewModel(
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "Loading...")
 
     // --- Data for SCROLL DETAIL SCREEN ---
-    private val _selectedDateForScrollDetail = MutableStateFlow(getTodayDateString()) // Default to today
+    private val _selectedDateForScrollDetail = MutableStateFlow(DateUtil.getCurrentLocalDateString()) // Default to today, changed
     val selectedDateForScrollDetail: StateFlow<String> = _selectedDateForScrollDetail.asStateFlow()
 
     val aggregatedScrollDataForSelectedDate: StateFlow<List<AppScrollUiItem>> =
@@ -283,22 +283,18 @@ class MainViewModel(
 
     // Function to update the selected date for the scroll detail screen
     fun updateSelectedDateForScrollDetail(dateMillis: Long) {
-        val newDateString = DateUtil.formatDate(dateMillis)
-        Log.d("MainViewModel", "ScrollDetail: Updating selected date to $newDateString (from $dateMillis)")
-        if (_selectedDateForScrollDetail.value != newDateString) {
-            _selectedDateForScrollDetail.value = newDateString
-        } else {
-            Log.d("MainViewModel", "ScrollDetail: Selected date $newDateString is already set.")
-        }
+        _selectedDateForScrollDetail.value = DateUtil.formatDateToYyyyMmDdString(Date(dateMillis))
     }
-    // --- End Data for SCROLL DETAIL SCREEN ---
+    fun resetSelectedDateForScrollDetailToToday() {
+        _selectedDateForScrollDetail.value = DateUtil.getCurrentLocalDateString() // Changed
+    }
 
     // --- Top Used App in Last 7 Days ---
     val topUsedAppLast7Days: StateFlow<AppUsageUiItem?> = flow {
         val calendar = Calendar.getInstance()
-        val endDateString = DateUtil.formatDate(calendar.timeInMillis) // Today
+        val endDateString = DateUtil.formatDateToYyyyMmDdString(calendar.time) // Today, Changed
         calendar.add(Calendar.DAY_OF_YEAR, -6) // Go back 6 days to make it a 7-day range including today
-        val startDateString = DateUtil.formatDate(calendar.timeInMillis)
+        val startDateString = DateUtil.formatDateToYyyyMmDdString(calendar.time) // Changed
 
         repository.getUsageRecordsForDateRange(startDateString, endDateString)
             .map { dailyRecords ->
@@ -375,7 +371,7 @@ class MainViewModel(
     }
 
     fun updateSelectedDateForHistory(dateMillis: Long) {
-        val newDateString = DateUtil.formatDate(dateMillis)
+        val newDateString = DateUtil.formatDateToYyyyMmDdString(Date(dateMillis))
         if (_selectedDateForHistory.value != newDateString) {
             _selectedDateForHistory.value = newDateString
         }
@@ -426,7 +422,7 @@ class MainViewModel(
     fun loadAppDetailsInfo(packageName: String) {
         // Reset to default period and date every time this screen is loaded
         _currentChartPeriodType.value = ChartPeriodType.DAILY // Default to Daily view
-        _currentChartReferenceDate.value = DateUtil.getCurrentDateString() // Anchor to today
+        _currentChartReferenceDate.value = DateUtil.getCurrentLocalDateString() // Changed
         _appDetailPackageName.value = packageName // This line IS needed to load app-specific data
 
         // Reset palette colors for the new app
@@ -543,7 +539,7 @@ class MainViewModel(
 
             // --- Calculate and Update Summary Information ---
             val calendar = Calendar.getInstance()
-            DateUtil.parseDateString(referenceDate)?.let { calendar.time = it }
+            DateUtil.parseLocalDateString(referenceDate)?.let { calendar.time = it }
             val sdfDisplay = SimpleDateFormat("EEE, MMM d", Locale.getDefault()) // Example original formatter
             val sdfMonth = SimpleDateFormat("MMMM yyyy", Locale.getDefault()) // Example original formatter
 
@@ -663,23 +659,23 @@ class MainViewModel(
 
     private fun calculatePreviousPeriodDateStrings(period: ChartPeriodType, currentReferenceDateStr: String): Pair<List<String>, String> {
         val calendar = Calendar.getInstance()
-        DateUtil.parseDateString(currentReferenceDateStr)?.let { calendar.time = it }
+        DateUtil.parseLocalDateString(currentReferenceDateStr)?.let { calendar.time = it } // Changed
         lateinit var newReferenceDateStr: String
 
         val previousPeriodDates = when (period) {
             ChartPeriodType.DAILY -> { // For daily, previous period is previous week
                 calendar.add(Calendar.WEEK_OF_YEAR, -1)
-                newReferenceDateStr = DateUtil.formatDate(calendar.time)
+                newReferenceDateStr = DateUtil.formatDateToYyyyMmDdString(calendar.time) // Changed
                 calculateDateStringsForPeriod(ChartPeriodType.WEEKLY, newReferenceDateStr) // Get full previous week
             }
             ChartPeriodType.WEEKLY -> {
                 calendar.add(Calendar.WEEK_OF_YEAR, -1) // Move to previous week
-                newReferenceDateStr = DateUtil.formatDate(calendar.time) // End of previous week
+                newReferenceDateStr = DateUtil.formatDateToYyyyMmDdString(calendar.time) // End of previous week, Changed
                 calculateDateStringsForPeriod(ChartPeriodType.WEEKLY, newReferenceDateStr)
             }
             ChartPeriodType.MONTHLY -> {
                 calendar.add(Calendar.MONTH, -1) // Move to previous month
-                newReferenceDateStr = DateUtil.formatDate(calendar.time) // A day in previous month
+                newReferenceDateStr = DateUtil.formatDateToYyyyMmDdString(calendar.time) // A day in previous month, Changed
                 calculateDateStringsForPeriod(ChartPeriodType.MONTHLY, newReferenceDateStr)
             }
         }
@@ -688,7 +684,7 @@ class MainViewModel(
 
     private fun getPeriodDisplayStrings(period: ChartPeriodType, referenceDateStr: String, includeYear: Boolean = true): Pair<String, String> {
         val calendar = Calendar.getInstance()
-        DateUtil.parseDateString(referenceDateStr)?.let { calendar.time = it }
+        DateUtil.parseLocalDateString(referenceDateStr)?.let { calendar.time = it } // Changed
 
         val monthDayFormat = SimpleDateFormat("MMM d", Locale.getDefault())
         val fullDateFormat = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
@@ -700,7 +696,7 @@ class MainViewModel(
             }
             ChartPeriodType.WEEKLY -> {
                 // First, ensure the calendar is set to the Monday of the week of referenceDateStr
-                DateUtil.parseDateString(referenceDateStr)?.let { calendar.time = it }
+                DateUtil.parseLocalDateString(referenceDateStr)?.let { calendar.time = it }
                 val currentDayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
                 val daysToSubtract = if (currentDayOfWeek == Calendar.SUNDAY) 6 else currentDayOfWeek - Calendar.MONDAY
                 calendar.add(Calendar.DAY_OF_YEAR, -daysToSubtract)
@@ -739,13 +735,13 @@ class MainViewModel(
 
     private fun calculateDateStringsForPeriod(period: ChartPeriodType, referenceDateStr: String): List<String> {
         val calendar = Calendar.getInstance()
-        DateUtil.parseDateString(referenceDateStr)?.let { calendar.time = it }
+        DateUtil.parseLocalDateString(referenceDateStr)?.let { calendar.time = it } // Changed
 
         return when (period) {
             ChartPeriodType.DAILY, ChartPeriodType.WEEKLY -> {
                 // For both DAILY and WEEKLY, we want the week to start on Monday and end on Sunday.
                 // Set calendar to the reference date first.
-                DateUtil.parseDateString(referenceDateStr)?.let { calendar.time = it }
+                DateUtil.parseLocalDateString(referenceDateStr)?.let { calendar.time = it } // Changed
 
                 // Adjust to Monday of that week.
                 // Note: Calendar.DAY_OF_WEEK is 1 (Sunday) to 7 (Saturday).
@@ -763,19 +759,19 @@ class MainViewModel(
                 (0..6).map {
                     val dayCal = Calendar.getInstance().apply { time = calendar.time }
                     dayCal.add(Calendar.DAY_OF_YEAR, it)
-                    DateUtil.formatDate(dayCal.time)
+                    DateUtil.formatDateToYyyyMmDdString(dayCal.time) // Changed
                 } // This list is already in chronological order: M, T, W, T, F, S, S
             }
             ChartPeriodType.MONTHLY -> {
                 // referenceDateStr is any day in the target month.
                 // Set to first day of month for consistency for data fetching range
-                DateUtil.parseDateString(referenceDateStr)?.let { calendar.time = it } // Ensure calendar is on referenceDateStr
+                DateUtil.parseLocalDateString(referenceDateStr)?.let { calendar.time = it } // Changed
                 calendar.set(Calendar.DAY_OF_MONTH, 1)
                 val daysInMonth = calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
                 (0 until daysInMonth).map {
                     val dayCal = Calendar.getInstance().apply { time = calendar.time }
                     dayCal.add(Calendar.DAY_OF_MONTH, it)
-                    DateUtil.formatDate(dayCal.time)
+                    DateUtil.formatDateToYyyyMmDdString(dayCal.time) // Changed
                 }
             }
         }
@@ -785,7 +781,7 @@ class MainViewModel(
         if (newPeriod != _currentChartPeriodType.value) {
             _currentChartPeriodType.value = newPeriod
             // Reset reference date to today when period changes, for simplicity
-            _currentChartReferenceDate.value = DateUtil.getCurrentDateString() 
+            _currentChartReferenceDate.value = DateUtil.getCurrentLocalDateString() 
             loadAppDetailChartData(packageName, _currentChartPeriodType.value, _currentChartReferenceDate.value)
         }
     }
@@ -794,7 +790,7 @@ class MainViewModel(
         val currentPeriod = _currentChartPeriodType.value
         val currentRefDate = _currentChartReferenceDate.value
         val calendar = Calendar.getInstance()
-        DateUtil.parseDateString(currentRefDate)?.let { calendar.time = it }
+        DateUtil.parseLocalDateString(currentRefDate)?.let { calendar.time = it } // Changed
 
         when (currentPeriod) {
             // For DAILY, navigation should shift the focused day, but the chart still shows the whole week.
@@ -803,7 +799,7 @@ class MainViewModel(
             ChartPeriodType.WEEKLY -> calendar.add(Calendar.WEEK_OF_YEAR, direction)
             ChartPeriodType.MONTHLY -> calendar.add(Calendar.MONTH, direction)
         }
-        _currentChartReferenceDate.value = DateUtil.formatDate(calendar.time)
+        _currentChartReferenceDate.value = DateUtil.formatDateToYyyyMmDdString(calendar.time) // Changed
         loadAppDetailChartData(packageName, currentPeriod, _currentChartReferenceDate.value)
     }
 

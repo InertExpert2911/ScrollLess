@@ -31,6 +31,8 @@ import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.ui.main.MainViewModelFactory
 import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
+import java.util.Calendar
+import java.util.Date
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,7 +42,7 @@ fun ScrollDetailScreen(
     viewModel: MainViewModel = viewModel(factory = MainViewModelFactory(LocalContext.current.applicationContext as android.app.Application))
 ) {
     LaunchedEffect(initialSelectedDate) {
-        DateUtil.parseDateString(initialSelectedDate)?.time?.let {
+        DateUtil.parseLocalDateString(initialSelectedDate)?.time?.let {
             viewModel.updateSelectedDateForScrollDetail(it)
         }
     }
@@ -52,7 +54,7 @@ fun ScrollDetailScreen(
     var showDatePickerDialog by remember { mutableStateOf(false) }
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = remember(selectedDateString) { // React to changes in selectedDateString
-            DateUtil.parseDateString(selectedDateString)?.time ?: System.currentTimeMillis()
+            DateUtil.parseLocalDateString(selectedDateString)?.time ?: System.currentTimeMillis()
         },
         selectableDates = object : SelectableDates {
             override fun isSelectableDate(utcTimeMillis: Long): Boolean {

@@ -105,7 +105,7 @@ fun AppDetailScreen(
         derivedStateOf {
             val today = Calendar.getInstance()
             val refDateCal = Calendar.getInstance().apply {
-                time = DateUtil.parseDateString(currentReferenceDateStr) ?: Date()
+                time = DateUtil.parseLocalDateString(currentReferenceDateStr) ?: Date()
             }
 
             when (currentPeriodType) {
@@ -518,12 +518,17 @@ fun UsageBarScrollLineChart(
         drawLine(color = faintAxisColor, start = Offset(leftMargin, topMargin + chartHeight), end = Offset(leftMargin + chartWidth, topMargin + chartHeight), strokeWidth = 1f) // Keep X-Axis Base Line
 
         val usageTimes = data.map { it.usageTimeMillis }
-        val maxUsageTime = usageTimes.maxOrNull() ?: 1L
+        val actualMaxUsageTime = usageTimes.maxOrNull() ?: 1L // Actual max for data scaling
         val minUsageTime = 0L
 
         val scrollUnitsList = data.map { it.scrollUnits }
-        val maxScrollUnits = scrollUnitsList.maxOrNull() ?: 1L
+        val actualMaxScrollUnits = scrollUnitsList.maxOrNull() ?: 1L // Actual max for data scaling
         val minScrollUnits = 0L
+
+        // Add padding to the max values for Y-axis scale to prevent labels/ticks hitting the top
+        val Y_AXIS_PADDING_FACTOR = 1.15f // Use 15% padding, adjust as needed (e.g., 1.20f for 20%)
+        val maxUsageTimeForAxis = (actualMaxUsageTime * Y_AXIS_PADDING_FACTOR).toLong().coerceAtLeast(1L) 
+        val maxScrollUnitsForAxis = (actualMaxScrollUnits * Y_AXIS_PADDING_FACTOR).toLong().coerceAtLeast(1L)
 
         val barCount = data.size
         // Calculate barWidth and barSpacing here, before they are used for dots
@@ -545,7 +550,8 @@ fun UsageBarScrollLineChart(
         if (barCount > 0) {
             data.forEachIndexed { index, detail ->
                 if (detail.usageTimeMillis > 0) { // Ensure conditional drawing based on data
-                    val barHeightNorm = ((detail.usageTimeMillis - minUsageTime).toFloat() / (maxUsageTime - minUsageTime).coerceAtLeast(1L).toFloat())
+                    // Scale bars based on actualMaxUsageTime for correct representation of data
+                    val barHeightNorm = ((detail.usageTimeMillis - minUsageTime).toFloat() / (actualMaxUsageTime - minUsageTime).coerceAtLeast(1L).toFloat())
                     val barActualHeight = (barHeightNorm * chartHeight).coerceAtLeast(2.dp.toPx()) // Min height for visibility
 
                     val barLeft = leftMargin + barSpacing + index * (barWidth + barSpacing)
@@ -593,38 +599,80 @@ fun UsageBarScrollLineChart(
             }
         }
 
-        // Adjust scrollDistancePoints to align with bar centers and draw as dots
-        if (barCount > 0) { // Also guard dot drawing with barCount > 0
+        // Collect scroll data points first
+        val scrollDataPoints = mutableListOf<Offset>()
+        if (barCount > 0) {
             data.forEachIndexed { index, detail ->
-                if (detail.scrollUnits > 0) { // <<< Only draw dot if there are scroll units
+                if (detail.scrollUnits > 0) { // Only consider points with scroll data
                     val barLeft = leftMargin + barSpacing + index * (barWidth + barSpacing)
                     val barCenterX = barLeft + barWidth / 2
 
-                    val scrollRange = (maxScrollUnits - minScrollUnits).coerceAtLeast(1L)
+                    // Use actualMaxScrollUnits for scaling the data points themselves to the chart height
+                    val scrollRange = (actualMaxScrollUnits - minScrollUnits).coerceAtLeast(1L)
                     val yNorm = if (scrollRange == 0L) 0f else ((detail.scrollUnits - minScrollUnits).toFloat() / scrollRange.toFloat())
                     val y = topMargin + chartHeight - (yNorm * chartHeight)
                     val point = Offset(barCenterX, y.coerceIn(topMargin, topMargin + chartHeight))
-
-                    drawCircle(
-                        color = scrollDistanceColor,
-                        radius = 4.dp.toPx(), // Slightly larger radius for visibility
-                        center = point
-                    )
+                    scrollDataPoints.add(point)
                 }
             }
         }
 
+        // Draw the scroll line (straight or curved)
+        if (scrollDataPoints.size >= 2) {
+            val linePath = Path()
+            if (scrollDataPoints.size == 2) {
+                // Straight line for two points
+                linePath.moveTo(scrollDataPoints[0].x, scrollDataPoints[0].y)
+                linePath.lineTo(scrollDataPoints[1].x, scrollDataPoints[1].y)
+            } else {
+                // Smooth curve for more than two points (Catmull-Rom to Bezier)
+                val splinePoints = mutableListOf<Offset>()
+                splinePoints.add(scrollDataPoints.first()) // Duplicate first point for boundary condition P[-1] = P[0]
+                splinePoints.addAll(scrollDataPoints)
+                splinePoints.add(scrollDataPoints.last())  // Duplicate last point for boundary condition P[n] = P[n-1]
+
+                linePath.moveTo(splinePoints[1].x, splinePoints[1].y) // Move to the first actual data point
+
+                for (i in 1 until splinePoints.size - 2) {
+                    val p0 = splinePoints[i-1]
+                    val p1 = splinePoints[i]   // Current start of segment
+                    val p2 = splinePoints[i+1] // Current end of segment
+                    val p3 = splinePoints[i+2]
+
+                    // Calculate control points for cubic Bezier (Catmull-Rom to Bezier)
+                    val cp1x = p1.x + (p2.x - p0.x) / 6.0f
+                    val cp1y = p1.y + (p2.y - p0.y) / 6.0f
+                    val cp2x = p2.x - (p3.x - p1.x) / 6.0f
+                    val cp2y = p2.y - (p3.y - p1.y) / 6.0f
+
+                    linePath.cubicTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y)
+                }
+            }
+            drawPath(
+                path = linePath,
+                color = scrollDistanceColor,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+            )
+        }
+
+        // Draw circles at each scroll data point (on top of the line)
+        scrollDataPoints.forEach { point ->
+            drawCircle(
+                color = scrollDistanceColor,
+                radius = 4.dp.toPx(),
+                center = point
+            )
+        }
+
         val xLabelCount = data.size
+        // X-axis label drawing logic - THIS MUST BE PRESERVED
         if (barCount > 0) {
-            val totalBarWidth = chartWidth * 0.8f
-            val barWidth = (totalBarWidth / barCount).coerceAtLeast(2f)
-            val barSpacing = (chartWidth - totalBarWidth) / (barCount + 1).coerceAtLeast(1)
+            val totalBarLayoutWidthForXLabels = chartWidth * 0.8f // Factor for X-axis labels
+            val barWidthForXLabels = (totalBarLayoutWidthForXLabels / barCount).coerceAtLeast(2f)
+            val barSpacingForXLabels = (chartWidth - totalBarLayoutWidthForXLabels) / (barCount + 1).coerceAtLeast(1)
 
             data.forEachIndexed { index, dailyData ->
                 val dateStr = dailyData.date
-                val dateParser = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                val calendar = Calendar.getInstance()
-
                 val formattedDate = when (periodType) {
                     ChartPeriodType.DAILY -> getDayOfWeekLetter(dateStr)
                     ChartPeriodType.WEEKLY -> getDayOfWeekLetter(dateStr)
@@ -646,33 +694,50 @@ fun UsageBarScrollLineChart(
                 }
                 if (formattedDate.isNotEmpty()){
                     val textLayoutResult = textMeasurer.measure(buildAnnotatedString { append(formattedDate) }, style = axisLabelTextStyle)
-                    val labelX = leftMargin + barSpacing + index * (barWidth + barSpacing) + barWidth / 2 - textLayoutResult.size.width / 2
-
+                    val labelX = leftMargin + barSpacingForXLabels + index * (barWidthForXLabels + barSpacingForXLabels) + barWidthForXLabels / 2 - textLayoutResult.size.width / 2
                     drawContext.canvas.nativeCanvas.drawText(formattedDate, labelX, topMargin + chartHeight + 5f + textLayoutResult.size.height, android.graphics.Paint().apply { this.color = labelColor.toArgb(); textSize = 10.sp.toPx(); textAlign = android.graphics.Paint.Align.LEFT })
                 }
             }
         }
+        // END OF X-AXIS LABEL LOGIC
 
-        val yLabelCount = 4 // Restore Y-label count for grid lines and labels
-        // Restore Y-axis labels and grid lines for usage time (left side)
+        val yLabelCount = 4 // Restore yLabelCount for usage time ticks
+
+        // Revert to linear interpolation for Y-axis labels and grid lines for usage time (left side)
         for (i in 0..yLabelCount) {
-            val value = minUsageTime + (i.toFloat() / yLabelCount) * (maxUsageTime - minUsageTime)
+            // Use maxUsageTimeForAxis for creating the Y-axis scale labels
+            val value = minUsageTime + (i.toFloat() / yLabelCount) * (maxUsageTimeForAxis - minUsageTime)
             val labelText = formatMillisToHoursOrMinutes(value.toLong())
             val textLayoutResult = textMeasurer.measure(buildAnnotatedString { append(labelText) }, style = axisLabelTextStyle)
             val labelY = topMargin + chartHeight - (i.toFloat() / yLabelCount) * chartHeight
-            // Draw grid line
-            drawLine(color = faintAxisColor.copy(alpha = 0.5f), start = Offset(leftMargin, labelY), end = Offset(leftMargin + chartWidth, labelY), strokeWidth = 0.5f)
-            // Draw tick mark (short line extending from where axis *would* be)
-            drawLine(color = faintAxisColor, start = Offset(leftMargin - 5f, labelY), end = Offset(leftMargin, labelY), strokeWidth = 1f)
-            drawContext.canvas.nativeCanvas.drawText(labelText, leftMargin - textLayoutResult.size.width - 10f, labelY + textLayoutResult.size.height / 2 - 5f, android.graphics.Paint().apply { this.color = labelColor.toArgb(); textSize = 10.sp.toPx(); textAlign = android.graphics.Paint.Align.LEFT })
+            
+            if (labelY >= topMargin && labelY <= topMargin + chartHeight) {
+                // Draw grid line
+                drawLine(color = faintAxisColor.copy(alpha = 0.5f), start = Offset(leftMargin, labelY), end = Offset(leftMargin + chartWidth, labelY), strokeWidth = 0.5f)
+                // Draw tick mark
+                drawLine(color = faintAxisColor, start = Offset(leftMargin - 5f, labelY), end = Offset(leftMargin, labelY), strokeWidth = 1f)
+                drawContext.canvas.nativeCanvas.drawText(
+                    labelText,
+                    leftMargin - textLayoutResult.size.width - 10f, 
+                    labelY + textLayoutResult.size.height / 2f - 5f, 
+                    android.graphics.Paint().apply {
+                        this.color = labelColor.toArgb()
+                        textSize = 10.sp.toPx()
+                        textAlign = android.graphics.Paint.Align.LEFT
+                    }
+                )
+            }
         }
 
-        // Restore Y-axis labels and grid lines for scroll distance (right side)
-        for (i in 0..yLabelCount) {
-            val value = minScrollUnits + (i.toFloat() / yLabelCount) * (maxScrollUnits - minScrollUnits)
-            val labelText = formatScrollForAxis(value, maxScrollUnits, context)
+        // Scroll distance Y-axis ticks remain as they were (linear interpolation)
+        val yScrollLabelCount = 4 // Use a distinct count for scroll if needed, or keep it 4
+        for (i in 0..yScrollLabelCount) {
+            // Use maxScrollUnitsForAxis for creating the Y-axis scale labels
+            val value = minScrollUnits + (i.toFloat() / yScrollLabelCount) * (maxScrollUnitsForAxis - minScrollUnits)
+            // Pass actualMaxScrollUnits to formatScrollForAxis for contextually correct unit formatting
+            val labelText = formatScrollForAxis(value.toFloat(), actualMaxScrollUnits, context)
             val textLayoutResult = textMeasurer.measure(buildAnnotatedString { append(labelText) }, style = axisLabelTextStyle)
-            val labelY = topMargin + chartHeight - (i.toFloat() / yLabelCount) * chartHeight
+            val labelY = topMargin + chartHeight - (i.toFloat() / yScrollLabelCount) * chartHeight
             // Draw grid line (already drawn by the loop above, but if we wanted separate control, it'd be here)
             // drawLine(color = faintAxisColor.copy(alpha = 0.5f), start = Offset(leftMargin, labelY), end = Offset(leftMargin + chartWidth, labelY), strokeWidth = 0.5f)
             // Draw tick mark (short line extending from where axis *would* be)

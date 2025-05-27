@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
+import kotlin.math.*
 
 class ScrollTrackService : AccessibilityService() {
 
@@ -101,7 +102,7 @@ class ScrollTrackService : AccessibilityService() {
     // --- Periodic SharedPreferences Save ---
     private val sharedPrefsHandler = Handler(Looper.getMainLooper())
     private var pendingSharedPrefsWrite: Runnable? = null
-    private val SHARED_PREFS_SAVE_INTERVAL_MS = 30000L // 30 seconds
+    private val SHARED_PREFS_SAVE_INTERVAL_MS = 10000L // 10 seconds, consider implications
     // --- End Periodic SharedPreferences Save ---
 
     override fun onCreate() {
@@ -141,7 +142,7 @@ class ScrollTrackService : AccessibilityService() {
 
     private fun updateNotificationTextAndStartForeground() {
         serviceScope.launch {
-            val todayDateString = DateUtil.getCurrentDateString()
+            val todayDateString = DateUtil.getCurrentLocalDateString()
             var distanceText = "Distance Scrolled: N/A" // This will be the notification's main title
             var usageText = "Total Usage: N/A"    // This will be the content line below the title
 
@@ -242,7 +243,7 @@ class ScrollTrackService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOWS_CHANGED -> {
                 val sourceNodeInfo = event.source
                 val activeWindowIdentifier = sourceNodeInfo?.paneTitle?.toString() ?: eventClassName
-                sourceNodeInfo?.recycle()
+                // sourceNodeInfo?.recycle() // Removed deprecated call
 
                 Log.i(
                     TAG,
@@ -276,46 +277,167 @@ class ScrollTrackService : AccessibilityService() {
         // saveDraftToPrefs() // Comment and call removed
     }
 
-    private fun finalizeAndSaveCurrentSession(sessionEndTime: Long, reason: String) {
-        val pkgToSave = currentAppPackage
-        val activityToSave = currentAppActivity
-        val amountToSave = currentAppScrollAccumulator
-        val startTimeToSave = currentSessionStartTime
+    private fun finalizeAndSaveCurrentSession(sessionEndTimeUTC: Long, reason: String) {
+        val pkgName = currentAppPackage ?: return // If no current package, nothing to save
+        val startTimeUTC = this.currentSessionStartTime
+        val accumulatedScroll = this.currentAppScrollAccumulator
 
-        // Reset trackers before potential async operation to avoid race conditions
-        // but only if we are certain this session is ending.
-        // If a new session starts immediately, new values will be set.
-        if (pkgToSave != null) { // Only proceed if there was an active package
-            currentAppPackage = null // Mark session as ended for internal logic
-            currentAppActivity = null
-            currentAppScrollAccumulator = 0L
-            currentSessionStartTime = 0L
-            pendingSharedPrefsWrite?.let { sharedPrefsHandler.removeCallbacks(it) }
+        Log.d(TAG, "Finalizing session for $pkgName. Start: $startTimeUTC, End: $sessionEndTimeUTC, Scroll: $accumulatedScroll, Reason: $reason")
+
+        if (startTimeUTC == 0L || accumulatedScroll == 0L) {
+            Log.i(TAG, "Skipping save for session ($pkgName) with no start time or zero scroll.")
+            // If we are skipping save, we should still clear any potentially invalid draft
+            // if the reason isn't something like RECOVERED_DRAFT already handling it.
+            if (reason != SessionEndReason.RECOVERED_DRAFT) { // Avoid loop if called from recover
+                 serviceScope.launch { clearDraftSession() }
+            }
+            resetCurrentSessionState() // Reset current session vars even if not saved
+            return
         }
 
+        // Ensure sessionEndTimeUTC is not before startTimeUTC, can happen in edge cases like clock changes or quick events.
+        if (sessionEndTimeUTC < startTimeUTC) {
+            Log.w(TAG, "Session end time ($sessionEndTimeUTC) is before start time ($startTimeUTC) for $pkgName. Using start time as end time.")
+            // Option 1: Discard session - Or Option 2: Use startTime as endTime (0 duration session)
+            // For scroll, a 0 duration session with scroll is possible if events are rapid.
+            // Let's proceed but log it. The date logic below should still work.
+            // If we decide to discard:
+            // serviceScope.launch { clearDraftSession() }
+            // resetCurrentSessionState()
+            // return
+        }
+        
+        val effectiveSessionEndTimeUTC = if (sessionEndTimeUTC < startTimeUTC) startTimeUTC else sessionEndTimeUTC
 
-        if (pkgToSave != null && amountToSave > 0 && startTimeToSave > 0) {
-            val sessionRecord = ScrollSessionRecord(
-                packageName = pkgToSave,
-                scrollAmount = amountToSave,
-                sessionStartTime = startTimeToSave,
-                sessionEndTime = sessionEndTime,
-                date = DateUtil.formatDate(startTimeToSave),
-                sessionEndReason = reason
-            )
-            Log.i(TAG, "SESSION END ($reason): App: $pkgToSave, Activity: $activityToSave, Scroll: $amountToSave. Saving.")
-            serviceScope.launch {
-                try {
-                    scrollSessionDao.insertSession(sessionRecord)
-                    Log.i(TAG, "DB WRITE: Success for $pkgToSave, Amount: $amountToSave, Reason: $reason")
-                    clearDraftFromPrefs() // Clear draft AFTER successful DB write
-                } catch (e: Exception) {
-                    Log.e(TAG, "DB WRITE: Error for $pkgToSave. Draft remains in SharedPreferences.", e)
+
+        val startLocalDateString = DateUtil.formatUtcTimestampToLocalDateString(startTimeUTC)
+        val endLocalDateString = DateUtil.formatUtcTimestampToLocalDateString(effectiveSessionEndTimeUTC)
+
+        val totalSessionDuration = (effectiveSessionEndTimeUTC - startTimeUTC).coerceAtLeast(0L) // Use 0 if end < start after adjustment
+
+        serviceScope.launch {
+            try {
+                if (startLocalDateString == endLocalDateString) {
+                    // Session is within a single local day
+                    val record = ScrollSessionRecord(
+                        packageName = pkgName,
+                        scrollAmount = accumulatedScroll,
+                        sessionStartTime = startTimeUTC,
+                        sessionEndTime = effectiveSessionEndTimeUTC,
+                        date = startLocalDateString,
+                        sessionEndReason = reason
+                    )
+                    scrollSessionDao.insertSession(record)
+                    Log.i(TAG, "Scroll session for $pkgName saved for date $startLocalDateString. Scroll: $accumulatedScroll. Duration: $totalSessionDuration ms")
+                } else {
+                    // Session spans midnight, split it
+                    Log.i(TAG, "Session for $pkgName spans midnight: $startLocalDateString to $endLocalDateString. Total Scroll: $accumulatedScroll. Duration: $totalSessionDuration ms. Splitting.")
+
+                    // Part 1: For startLocalDateString
+                    val endOfDayForStartDayUTC = DateUtil.getEndOfDayUtcMillis(startLocalDateString)
+                    // Ensure end of day for start day is not after the actual session end time
+                    val effectiveEndOfStartDay = minOf(endOfDayForStartDayUTC, effectiveSessionEndTimeUTC)
+                    
+                    val durationInStartDay = (effectiveEndOfStartDay - startTimeUTC + 1).coerceAtLeast(0L)
+                    
+                    val scrollForStartDay = if (totalSessionDuration > 0) {
+                        (accumulatedScroll * durationInStartDay.toDouble() / totalSessionDuration.toDouble()).toLong()
+                    } else if (durationInStartDay > 0) { // If total duration is 0 but this part has time (e.g. event exactly at midnight)
+                        accumulatedScroll // Assign all scroll to the first part encountered
+                    } else {
+                        0L
+                    }
+
+                    if (scrollForStartDay > 0 || (accumulatedScroll > 0 && durationInStartDay > 0)) { // Save even if scroll is 0 but duration exists, or if scroll exists
+                        val record1 = ScrollSessionRecord(
+                            packageName = pkgName,
+                            scrollAmount = scrollForStartDay,
+                            sessionStartTime = startTimeUTC,
+                            sessionEndTime = effectiveEndOfStartDay, // Use the calculated end of the first day part
+                            date = startLocalDateString,
+                            sessionEndReason = reason // Or a specific reason like "SPLIT_MIDNIGHT_START"
+                        )
+                        scrollSessionDao.insertSession(record1)
+                        Log.i(TAG, "Split session (part 1) for $pkgName saved for $startLocalDateString. Scroll: $scrollForStartDay. DurationPart: $durationInStartDay ms.")
+                    }
+
+                    // Part 2: For endLocalDateString (and potentially intermediate days)
+                    // This simplified logic handles only one midnight crossing.
+                    // For multiple midnights, a loop would be needed.
+                    val startOfDayForEndDayUTC = DateUtil.getStartOfDayUtcMillis(endLocalDateString)
+                    // Ensure start of day for end day is not before the actual session start time
+                    val effectiveStartOfEndDay = maxOf(startOfDayForEndDayUTC, startTimeUTC)
+
+                    if (effectiveSessionEndTimeUTC >= effectiveStartOfEndDay) { // Ensure there's actually time in the end day part
+                        val scrollForEndDay = accumulatedScroll - scrollForStartDay // Remainder
+                        if (scrollForEndDay > 0 || (accumulatedScroll > 0 && (effectiveSessionEndTimeUTC - effectiveStartOfEndDay) > 0 && scrollForStartDay == 0L) ) { // Save if scroll or if it's the only part with scroll
+                             val record2 = ScrollSessionRecord(
+                                packageName = pkgName,
+                                scrollAmount = scrollForEndDay.coerceAtLeast(0L), // Ensure not negative
+                                sessionStartTime = effectiveStartOfEndDay, // Use the calculated start of the second day part
+                                sessionEndTime = effectiveSessionEndTimeUTC,
+                                date = endLocalDateString,
+                                sessionEndReason = reason // Or "SPLIT_MIDNIGHT_END"
+                            )
+                            scrollSessionDao.insertSession(record2)
+                            Log.i(TAG, "Split session (part 2) for $pkgName saved for $endLocalDateString. Scroll: ${scrollForEndDay.coerceAtLeast(0L)}. DurationPart: ${(effectiveSessionEndTimeUTC - effectiveStartOfEndDay)} ms.")
+                        }
+                    }
                 }
+                clearDraftSession() // Clear draft only on successful processing of all parts
+                updateNotificationTextAndStartForeground()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving session for $pkgName to DB. Scroll: $accumulatedScroll. Reason: $reason", e)
+                // If DB save fails, the draft in SharedPreferences remains for next recovery attempt.
             }
-        } else if (pkgToSave != null) { // Session ended, but no (or not enough) scroll
-            Log.i(TAG, "SESSION END ($reason): App: $pkgToSave, Activity: $activityToSave. No scroll data to save (Amount: $amountToSave). Clearing any draft.")
-            clearDraftFromPrefs() // Clear any existing draft for this package if it wasn't saved
+        }
+        resetCurrentSessionState() // Reset current session vars after attempting to save/process
+    }
+
+    private fun resetCurrentSessionState() {
+        currentAppPackage = null
+        currentAppActivity = null
+        currentAppScrollAccumulator = 0L
+        currentSessionStartTime = 0L
+        pendingSharedPrefsWrite?.let { sharedPrefsHandler.removeCallbacks(it) }
+    }
+
+    private fun clearDraftSession() {
+        Log.i(TAG, "PREFS CLEAR: Clearing draft session from SharedPreferences for package: ${sharedPreferences.getString(KEY_DRAFT_PKG, "N/A")}")
+        with(sharedPreferences.edit()) {
+            remove(KEY_DRAFT_PKG)
+            remove(KEY_DRAFT_ACTIVITY)
+            remove(KEY_DRAFT_SCROLL)
+            remove(KEY_DRAFT_START_TIME)
+            remove(KEY_DRAFT_LAST_UPDATE)
+            apply()
+        }
+    }
+
+    private fun recoverSessionFromPrefs() {
+        val draftPkg = sharedPreferences.getString(KEY_DRAFT_PKG, null)
+        val draftActivity = sharedPreferences.getString(KEY_DRAFT_ACTIVITY, null) // Though not directly used in session splitting
+        val draftScroll = sharedPreferences.getLong(KEY_DRAFT_SCROLL, 0L)
+        val draftStartTime = sharedPreferences.getLong(KEY_DRAFT_START_TIME, 0L)
+        val draftLastUpdate = sharedPreferences.getLong(KEY_DRAFT_LAST_UPDATE, 0L)
+
+        if (draftPkg != null && draftStartTime != 0L && draftScroll > 0L) {
+            Log.i(TAG, "Recovering draft session for $draftPkg. Scroll: $draftScroll, StartTime: $draftStartTime, LastUpdate: $draftLastUpdate")
+            // Treat the "current time" of recovery as the end of this draft session
+            val recoveryTimeUTC = DateUtil.getUtcTimestamp()
+
+            // Restore state to what it was
+            this.currentAppPackage = draftPkg
+            this.currentAppActivity = draftActivity // Restore for consistency
+            this.currentAppScrollAccumulator = draftScroll
+            this.currentSessionStartTime = draftStartTime
+            
+            // Now finalize it as if it just ended
+            // The finalizeAndSaveCurrentSession will handle splitting if this recovered session spans midnight
+            finalizeAndSaveCurrentSession(recoveryTimeUTC, SessionEndReason.RECOVERED_DRAFT)
+            // `finalizeAndSaveCurrentSession` will call clearDraftSession on successful save.
+        } else {
+            Log.i(TAG, "No valid draft session to recover.")
         }
     }
 
@@ -343,54 +465,6 @@ class ScrollTrackService : AccessibilityService() {
             }
         } else {
             Log.d(TAG, "PREFS SAVE: Skipped, no active session or start time.")
-        }
-    }
-
-    private fun recoverSessionFromPrefs() {
-        val draftPkg = sharedPreferences.getString(KEY_DRAFT_PKG, null)
-        if (draftPkg != null) {
-            val draftActivity = sharedPreferences.getString(KEY_DRAFT_ACTIVITY, null)
-            val draftScroll = sharedPreferences.getLong(KEY_DRAFT_SCROLL, 0L)
-            val draftStartTime = sharedPreferences.getLong(KEY_DRAFT_START_TIME, 0L)
-            val draftLastUpdate = sharedPreferences.getLong(KEY_DRAFT_LAST_UPDATE, System.currentTimeMillis()) // Default to now if not found
-
-            if (draftScroll > 0 && draftStartTime > 0) { // Only recover if there's actual scroll and start time
-                Log.i(TAG, "PREFS RECOVERY: Found draft for $draftPkg, Scroll: $draftScroll. Recovering.")
-                val recoveredSession = ScrollSessionRecord(
-                    packageName = draftPkg,
-                    scrollAmount = draftScroll,
-                    sessionStartTime = draftStartTime,
-                    sessionEndTime = draftLastUpdate,
-                    date = DateUtil.formatDate(draftStartTime),
-                    sessionEndReason = SessionEndReason.RECOVERED_DRAFT
-                )
-                serviceScope.launch {
-                    try {
-                        scrollSessionDao.insertSession(recoveredSession)
-                        Log.i(TAG, "DB WRITE (Recovery): Success for $draftPkg")
-                        clearDraftFromPrefs() // Clear draft after successful recovery and DB save
-                    } catch (e: Exception) {
-                        Log.e(TAG, "DB WRITE (Recovery): Error for $draftPkg. Draft remains.", e)
-                    }
-                }
-            } else {
-                Log.i(TAG, "PREFS RECOVERY: Draft found for $draftPkg but was empty/invalid. Clearing draft.")
-                clearDraftFromPrefs()
-            }
-        } else {
-            Log.i(TAG, "PREFS RECOVERY: No draft session found.")
-        }
-    }
-
-    private fun clearDraftFromPrefs() {
-        Log.i(TAG, "PREFS CLEAR: Clearing draft session from SharedPreferences for package: ${sharedPreferences.getString(KEY_DRAFT_PKG, "N/A")}")
-        with(sharedPreferences.edit()) {
-            remove(KEY_DRAFT_PKG)
-            remove(KEY_DRAFT_ACTIVITY)
-            remove(KEY_DRAFT_SCROLL)
-            remove(KEY_DRAFT_START_TIME)
-            remove(KEY_DRAFT_LAST_UPDATE)
-            apply()
         }
     }
 

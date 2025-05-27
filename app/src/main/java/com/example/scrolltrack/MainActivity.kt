@@ -106,6 +106,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.CheckCircle
+import com.example.scrolltrack.util.DateUtil
 
 // Constants for theme variants to be used by the Switch logic
 // Moved to top level for accessibility by ThemeModeSwitch
@@ -472,7 +473,7 @@ fun TodaySummaryScreen(
             scrollDistanceMeters = scrollDistanceMeters,
             totalScrollUnits = totalScrollUnits,
             onClick = {
-                val todayDate = viewModel.getTodayDateString()
+                val todayDate = DateUtil.getCurrentLocalDateString()
                 navController.navigate(ScreenRoutes.ScrollDetailRoute.createRoute(todayDate))
             }
         )
