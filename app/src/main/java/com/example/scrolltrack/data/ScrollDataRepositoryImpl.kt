@@ -19,6 +19,8 @@ import android.app.usage.UsageEvents // Added for queryEvents
 import kotlinx.coroutines.flow.first // Added import for .first() on Flow
 import kotlin.math.max // Added for maxOf
 import kotlin.math.min // Added for minOf
+import kotlinx.coroutines.withContext // Ensure this is imported
+import kotlinx.coroutines.Dispatchers // Ensure this is imported
 
 class ScrollDataRepositoryImpl(
     private val scrollSessionDao: ScrollSessionDao,
@@ -52,137 +54,165 @@ class ScrollDataRepositoryImpl(
     }
 
     override suspend fun updateTodayAppUsageStats(): Boolean {
+        val application = application // Use the injected context
         val usageStatsManager =
             application.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
                 ?: run {
-                    Log.e(TAG_REPO, "UsageStatsManager not available for today's update.")
+                    Log.e(TAG_REPO, "UsageStatsManager not available.")
                     return false
                 }
 
-        Log.d(TAG_REPO, "Starting update for today's app usage stats using event-based processing.")
-
-        // Define the query range: from the start of yesterday to the end of today (local time, converted to UTC)
-        // This ensures we capture sessions that started yesterday and ended today.
         val todayLocalString = DateUtil.getCurrentLocalDateString()
-        val yesterdayCalendar = Calendar.getInstance().apply {
-            time = DateUtil.parseLocalDateString(todayLocalString) ?: Date() // Fallback to now if parsing fails
-            add(Calendar.DAY_OF_YEAR, -1)
+        val startOfDayUTC = DateUtil.getStartOfDayUtcMillis(todayLocalString)
+        val endOfDayUTC = DateUtil.getEndOfDayUtcMillis(todayLocalString)
+
+        // Clear any potentially stale aggregated data for today before processing new events
+        // This is important if we are re-calculating from scratch
+        // dailyAppUsageDao.deleteUsageForDate(todayLocalString) // Consider if this is needed or if insertOrUpdate is sufficient
+
+        Log.d(TAG_REPO, "Starting update for today's app usage stats using event-based processing. Range: $startOfDayUTC to $endOfDayUTC")
+
+        val events: UsageEvents? = try {
+            withContext(Dispatchers.IO) {
+                usageStatsManager.queryEvents(startOfDayUTC, endOfDayUTC)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG_REPO, "Error querying usage events", e)
+            null // Return null on error
         }
-        val yesterdayLocalString = DateUtil.formatDateToYyyyMmDdString(yesterdayCalendar.time) // Changed from formatDate
 
-        val queryStartTimeUTC = DateUtil.getStartOfDayUtcMillis(yesterdayLocalString)
-        val queryEndTimeUTC = DateUtil.getEndOfDayUtcMillis(todayLocalString)
-
-        if (queryStartTimeUTC >= queryEndTimeUTC) {
-            Log.e(TAG_REPO, "Invalid query time range for usage stats update. Start: $queryStartTimeUTC, End: $queryEndTimeUTC")
-            return false
+        if (events == null) {
+            Log.w(TAG_REPO, "UsageEvents object is null, cannot process events for today.")
+            return false // Or handle as appropriate, e.g., return true if partial success is okay
         }
 
-        val appUsageAggregator = mutableMapOf<Pair<String, String>, Long>() // Key: (packageName, localDateString), Value: totalMillis
+        val currentAppSessions = mutableMapOf<String, Long>() // Tracks start time of current foreground app
+        val appUsageAggregator = mutableMapOf<Pair<String, String>, Long>() // Pair of (PackageName, LocalDateString) to DurationMillis
 
-        try {
-            val usageEvents = usageStatsManager.queryEvents(queryStartTimeUTC, queryEndTimeUTC)
-            if (usageEvents == null) {
-                Log.w(TAG_REPO, "queryEvents returned null. No usage events to process.")
-                // Attempt to insert/update based on whatever might be in appUsageAggregator (likely empty)
-                // or decide if this is a hard failure. For now, proceed to save (empty) records.
+        val event = UsageEvents.Event()
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            val packageName = event.packageName ?: continue // Skip if no package name
+            val eventTimestampUTC = event.timeStamp
+
+            // Skip events outside our precise daily range if queryEvents is too broad (though it shouldn't be)
+            if (eventTimestampUTC < startOfDayUTC || eventTimestampUTC > endOfDayUTC) {
+                // Log.v(TAG_REPO, "Skipping event for $packageName outside today's range: $eventTimestampUTC")
+                continue
             }
 
-            val currentAppSessions = mutableMapOf<String, Long>() // packageName to sessionStartTimeUTC
-            val event = UsageEvents.Event()
+            // Filter out system/launcher UI or very short-lived events if necessary, though current approach is to capture all
+            if (packageName == application.packageName && event.eventType != UsageEvents.Event.SCREEN_INTERACTIVE && event.eventType != UsageEvents.Event.SCREEN_NON_INTERACTIVE) {
+                // Log.v(TAG_REPO, "Skipping self-package event for ${application.packageName} of type ${event.eventType}")
+                continue // Skip our own app's typical usage events, but keep screen events if we track them
+            }
 
-            while (usageEvents != null && usageEvents.hasNextEvent()) {
-                usageEvents.getNextEvent(event)
-                val eventTimestampUTC = event.timeStamp
-                val packageName = event.packageName ?: continue // Skip if package name is null
 
-                if (packageName == application.packageName) continue // Skip our own app's usage
-
-                when (event.eventType) {
-                    UsageEvents.Event.ACTIVITY_RESUMED -> {
-                        // If there was a previous foreground event for this app without a background, finalize it first.
-                        // This can happen if events are missed or service restarted. Treat current event time as end.
-                        if (currentAppSessions.containsKey(packageName)) {
-                            val sessionStartTimeUTC = currentAppSessions[packageName]!!
-                            // Use eventTimestampUTC - 1 to avoid zero duration if events are immediate
-                            processAndAggregateSession(packageName, sessionStartTimeUTC, eventTimestampUTC - 1, appUsageAggregator)
+            when (event.eventType) {
+                UsageEvents.Event.ACTIVITY_RESUMED -> {
+                    // If there was a previous foreground event for this app without a background,
+                    // finalize it using the current event's timestamp as the end time.
+                    // This handles cases where a PAUSED event might have been missed or service restarted.
+                    if (currentAppSessions.containsKey(packageName)) {
+                        val previousSessionStartTimeUTC = currentAppSessions[packageName]!!
+                        if (eventTimestampUTC > previousSessionStartTimeUTC) {
+                            // Log.d(TAG_REPO, "RESUMED for $packageName: Found lingering session. Closing $previousSessionStartTimeUTC -> ${eventTimestampUTC -1}")
+                            processAndAggregateSession(packageName, previousSessionStartTimeUTC, eventTimestampUTC - 1, appUsageAggregator)
                         }
+                    }
+                    currentAppSessions[packageName] = eventTimestampUTC
+                    // Log.d(TAG_REPO, "ACTIVITY_RESUMED: $packageName at $eventTimestampUTC")
+                }
+
+                UsageEvents.Event.ACTIVITY_PAUSED -> {
+                    val sessionStartTimeFromMap = currentAppSessions.remove(packageName)
+                    if (sessionStartTimeFromMap != null) {
+                        if (eventTimestampUTC > sessionStartTimeFromMap) {
+                            processAndAggregateSession(packageName, sessionStartTimeFromMap, eventTimestampUTC, appUsageAggregator)
+                            // Log.d(TAG_REPO, "ACTIVITY_PAUSED: $packageName. Session: $sessionStartTimeFromMap -> $eventTimestampUTC. Duration: ${eventTimestampUTC - sessionStartTimeFromMap}")
+                        } else {
+                            // Log.w(TAG_REPO, "ACTIVITY_PAUSED: $packageName. End time $eventTimestampUTC <= start time $sessionStartTimeFromMap. Skipping session.")
+                        }
+                    } else {
+                        // No active session in currentAppSessions for this packageName.
+                        // This means we didn't see its RESUME in *this current processing pass*.
+                        // It could be an app that was already running when this processing started,
+                        // or its RESUME event was not (yet) returned by queryEvents.
+                        // Critically, DO NOT assume it started at startOfDayUTC, as that causes huge overcounting for newly opened apps.
+                        Log.w(TAG_REPO, "ACTIVITY_PAUSED for $packageName at $eventTimestampUTC: No corresponding RESUME event found in current processing map. This specific segment will be ignored to prevent overcounting. It might be captured in a later refresh.")
+                        // The old logic that tried to find a previous resume or defaulted to startOfDayUTC is removed here to prevent the "11hr bug".
+                    }
+                    // Log.d(TAG_REPO, "ACTIVITY_PAUSED: $packageName at $eventTimestampUTC (after processing map entry)")
+                }
+
+                UsageEvents.Event.USER_INTERACTION -> {
+                    // If an app is interacted with, it implies it's in the foreground.
+                    // If we don't have a session start time for it, record this as a potential start.
+                    if (!currentAppSessions.containsKey(packageName)) {
+                        // Log.d(TAG_REPO, "USER_INTERACTION for $packageName without active session. Marking as active from $eventTimestampUTC.")
                         currentAppSessions[packageName] = eventTimestampUTC
                     }
-                    UsageEvents.Event.ACTIVITY_STOPPED,
-                    UsageEvents.Event.ACTIVITY_PAUSED -> { // Also consider paused as end of focused usage
-                        if (currentAppSessions.containsKey(packageName)) {
-                            val sessionStartTimeUTC = currentAppSessions.remove(packageName)!!
-                            // Ensure session end is not before start; use start time if it is (0 duration)
-                            val sessionEndTimeUTC = max(eventTimestampUTC, sessionStartTimeUTC)
-                            processAndAggregateSession(packageName, sessionStartTimeUTC, sessionEndTimeUTC, appUsageAggregator)
+                }
+                UsageEvents.Event.SCREEN_INTERACTIVE -> {
+                    // Potentially useful for phone unlock tracking later.
+                    // Log.d(TAG_REPO, "SCREEN_INTERACTIVE at $eventTimestampUTC")
+                }
+                UsageEvents.Event.SCREEN_NON_INTERACTIVE -> {
+                    // Potentially useful for phone lock tracking later.
+                    // Log.d(TAG_REPO, "SCREEN_NON_INTERACTIVE at $eventTimestampUTC")
+                    // When screen locks, all apps effectively lose foreground status.
+                    // Finalize all open sessions.
+                    val appsToFinalize = currentAppSessions.toMap() // Iterate over a copy
+                    for ((pkg, startTime) in appsToFinalize) {
+                        if (eventTimestampUTC > startTime) {
+                            // Log.d(TAG_REPO, "SCREEN_NON_INTERACTIVE: Finalizing session for $pkg. $startTime -> $eventTimestampUTC")
+                            processAndAggregateSession(pkg, startTime, eventTimestampUTC, appUsageAggregator)
                         }
-                    }
-                    // Handling for other events if necessary (e.g., configuration changes, screen off might interrupt sessions)
-                     UsageEvents.Event.SCREEN_INTERACTIVE -> { // User interacting with screen
-                        // This might indicate the start of general phone usage, but not specific app session start.
-                        // Could be used for phone unlock tracking later.
-                    }
-                    UsageEvents.Event.SCREEN_NON_INTERACTIVE -> { // Screen off
-                        // Finalize all currently open sessions when screen goes off
-                        val screenOffTimeUTC = eventTimestampUTC
-                        currentAppSessions.keys.toList().forEach { pkg -> // Iterate over copy of keys
-                            val sessionStartTimeUTC = currentAppSessions.remove(pkg)!!
-                            val sessionEndTimeUTC = max(screenOffTimeUTC, sessionStartTimeUTC)
-                            processAndAggregateSession(pkg, sessionStartTimeUTC, sessionEndTimeUTC, appUsageAggregator)
-                        }
+                        currentAppSessions.remove(pkg) // Remove from active map
                     }
                 }
+                // Consider other event types like CONFIGURATION_CHANGE if they affect session continuity
+                // UsageEvents.Event.CONFIGURATION_CHANGE -> { Log.d(TAG_REPO, "CONFIGURATION_CHANGE for $packageName") }
+                else -> {
+                    // Log.v(TAG_REPO, "Unhandled event type ${event.eventType} for $packageName")
+                }
             }
-
-            // After iterating through all events, some sessions might still be "open"
-            // (e.g., app was in foreground when queryEvents range ended).
-            // Finalize them using queryEndTimeUTC as their end time.
-            val endOfQueryRangeTimestamp = queryEndTimeUTC
-            currentAppSessions.keys.toList().forEach { pkg ->
-                val sessionStartTimeUTC = currentAppSessions.remove(pkg)!!
-                val sessionEndTimeUTC = max(endOfQueryRangeTimestamp, sessionStartTimeUTC)
-                processAndAggregateSession(pkg, sessionStartTimeUTC, sessionEndTimeUTC, appUsageAggregator)
-            }
-
-
-        } catch (e: Exception) {
-            Log.e(TAG_REPO, "Error fetching or processing usage events for today's update.", e)
-            return false // Indicate failure
         }
 
-        val recordsToInsert = appUsageAggregator.mapNotNull { (key, totalMillis) ->
-            val (packageName, localDateString) = key
-            if (totalMillis > 0) { // Only insert if there's actual usage time
-                // Filter to only include today's records for "updateTodayAppUsageStats"
-                // The query range included yesterday to catch midnight-spanning sessions.
-                if (localDateString == todayLocalString) {
-                     DailyAppUsageRecord(
-                        packageName = packageName,
-                        dateString = localDateString,
-                        usageTimeMillis = totalMillis,
-                        lastUpdatedTimestamp = DateUtil.getUtcTimestamp() // Use consistent UTC timestamp
+        // Finalize any sessions that are still marked as active at the end of the event processing
+        // (e.g., app is still in foreground at the time of query or end of day)
+        val currentTimeForFinalization = DateUtil.getUtcTimestamp() // Current time for finalization
+        for ((pkgName, sessionStartTimeUTC) in currentAppSessions) {
+            // Ensure finalization does not exceed endOfDayUTC for today's processing
+            val sessionEndTimeCandidate = min(currentTimeForFinalization, endOfDayUTC)
+            if (sessionEndTimeCandidate > sessionStartTimeUTC) {
+                // Log.d(TAG_REPO, "Finalizing lingering open session for $pkgName at query end. Start: $sessionStartTimeUTC, End: $sessionEndTimeCandidate")
+                processAndAggregateSession(pkgName, sessionStartTimeUTC, sessionEndTimeCandidate, appUsageAggregator)
+            }
+        }
+        currentAppSessions.clear() // Clear after finalization
+
+        // Persist all aggregated usages
+        var recordsProcessed = 0
+        if (appUsageAggregator.isNotEmpty()) {
+            Log.d(TAG_REPO, "Aggregated Usage for today ($todayLocalString):")
+            for ((key, totalDuration) in appUsageAggregator) {
+                val (pkg, dateStr) = key
+                // Log.d(TAG_REPO, "- $pkg on $dateStr: ${totalDuration / 1000}s")
+                if (totalDuration > 0) { // Only save if there's actual usage
+                    val record = DailyAppUsageRecord(
+                        packageName = pkg,
+                        dateString = dateStr,
+                        usageTimeMillis = totalDuration,
+                        lastUpdatedTimestamp = DateUtil.getUtcTimestamp() // Add this field to your entity if you want to track updates
                     )
-                } else {
-                    null // Will be filtered out by mapNotNull
+                    dailyAppUsageDao.insertOrUpdateUsage(record) // Assumes this handles conflicts by summing or replacing
+                    recordsProcessed++
                 }
-            } else {
-                null
             }
         }
-
-        if (recordsToInsert.isNotEmpty()) {
-            try {
-                dailyAppUsageDao.insertAllUsage(recordsToInsert) // Uses OnConflictStrategy.REPLACE
-                Log.i(TAG_REPO, "Successfully inserted/updated ${recordsToInsert.size} usage records for today ($todayLocalString) using event-based processing.")
-            } catch (e: Exception) {
-                Log.e(TAG_REPO, "Error inserting today's usage records into database for $todayLocalString.", e)
-                return false // Indicate failure
-            }
-        } else {
-            Log.i(TAG_REPO, "No new usage records to insert for today ($todayLocalString) after event processing.")
-        }
-        return true // Indicate success
+        Log.i(TAG_REPO, "Successfully inserted/updated $recordsProcessed usage records for today ($todayLocalString) using event-based processing.")
+        return true
     }
 
     // Helper function to process a single session and add its duration to the aggregator
@@ -197,9 +227,7 @@ class ScrollDataRepositoryImpl(
             return // No valid duration to record
         }
 
-        val totalSessionDuration = sessionEndTimeUTC - sessionStartTimeUTC
-        // Log.d(TAG_REPO, "Processing session for $packageName: Start: $sessionStartTimeUTC, End: $sessionEndTimeUTC, Duration: $totalSessionDuration")
-
+        // Log.d(TAG_REPO, "Processing session for $packageName: Start: $sessionStartTimeUTC, End: $sessionEndTimeUTC, Duration: ${sessionEndTimeUTC - sessionStartTimeUTC}")
 
         var currentProcessingTimeUTC = sessionStartTimeUTC
 
@@ -211,15 +239,15 @@ class ScrollDataRepositoryImpl(
             val segmentEndTimeUTC = min(endOfCurrentLocalDateUtc, sessionEndTimeUTC)
 
             // Duration for this segment
-            val segmentDuration = (segmentEndTimeUTC - currentProcessingTimeUTC + 1).coerceAtLeast(0L)
+            val segmentDuration = segmentEndTimeUTC - currentProcessingTimeUTC // Revised
 
-            if (segmentDuration > 0) {
+            if (segmentDuration > 0) { // Ensure duration is strictly positive
                 val key = Pair(packageName, currentLocalDateString)
                 aggregator[key] = (aggregator[key] ?: 0L) + segmentDuration
                 // Log.d(TAG_REPO, "  -> Added to $currentLocalDateString for $packageName: $segmentDuration ms. New total for day: ${aggregator[key]}")
             }
-            // Move to the start of the next segment (which is the millisecond after the current segment ended)
-            currentProcessingTimeUTC = segmentEndTimeUTC + 1
+            // Move to the start of the next segment (which is the end time of the current segment)
+            currentProcessingTimeUTC = segmentEndTimeUTC // Revised
         }
     }
 
@@ -365,3 +393,4 @@ class ScrollDataRepositoryImpl(
         return scrollSessionDao.getAggregatedScrollForPackageAndDates(packageName, dateStrings)
     }
 }
+

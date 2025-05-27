@@ -193,7 +193,7 @@ class MainActivity : ComponentActivity() {
                 val backfillDone = appPrefs.getBoolean(KEY_HISTORICAL_BACKFILL_DONE, false)
                 if (!backfillDone) {
                     Log.i(TAG, "Performing initial historical data backfill.")
-                    viewModel.performHistoricalUsageDataBackfill(10)
+                    viewModel.performHistoricalUsageDataBackfill(30)
                     appPrefs.edit().putBoolean(KEY_HISTORICAL_BACKFILL_DONE, true).apply()
                 }
             }
