@@ -13,8 +13,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  */
 @Database(
     entities = [ScrollSessionRecord::class, DailyAppUsageRecord::class], // Added DailyAppUsageRecord
-    version = 3, // Incremented version due to schema change (new table)
-    exportSchema = false // Set to true and specify schema location for production
+    version = 4, // Current version
+    exportSchema = true // Recommended to set to true and check schema into VCS
 )
 abstract class AppDatabase : RoomDatabase() {
 
@@ -25,26 +25,18 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        // Example of a simple migration (not strictly needed if using fallbackToDestructiveMigration for dev)
-        // val MIGRATION_2_3 = object : Migration(2, 3) {
-        //     override fun migrate(db: SupportSQLiteDatabase) {
-        //         // SQL to create the new daily_app_usage table (Room handles this if it's a new table)
-        //         // If you were altering an existing table, you'd put ALTER TABLE statements here.
-        //         // For adding a new table, Room handles it if it's part of the entities list
-        //         // and the version is incremented.
-        //         // However, if you want to be explicit or if Room has issues:
-        //         db.execSQL(
-        //             "CREATE TABLE IF NOT EXISTS `daily_app_usage` (" +
-        //                     "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
-        //                     "`package_name` TEXT NOT NULL, " +
-        //                     "`date_string` TEXT NOT NULL, " +
-        //                     "`usage_time_millis` INTEGER NOT NULL, " +
-        //                     "`last_updated_timestamp` INTEGER NOT NULL, " +
-        //                     "UNIQUE (`package_name`, `date_string`))"
-        //         )
-        //     }
-        // }
+        // Migration from version 3 to 4: Adds indices to scroll_sessions table
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Create indices for scroll_sessions table
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_scroll_sessions_date_string ON scroll_sessions(date_string)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_scroll_sessions_package_name ON scroll_sessions(package_name)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_scroll_sessions_date_string_package_name ON scroll_sessions(date_string, package_name)")
+            }
+        }
 
+        // Example of a simple migration for future reference (e.g., MIGRATION_2_3 was an example)
+        // val MIGRATION_2_3 = object : Migration(2, 3) { ... }
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -53,10 +45,9 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "scroll_track_database"
                 )
-                    // For development, fallbackToDestructiveMigration is often easiest.
-                    // For production, you MUST provide proper Migration objects.
-                    .fallbackToDestructiveMigration(dropAllTables = true) // This will wipe data on version upgrade if no migration
-                    // .addMigrations(MIGRATION_2_3) // Example if you were providing a specific migration
+                    // Add migrations here instead of fallbackToDestructiveMigration for production
+                    .addMigrations(MIGRATION_3_4)
+                    // .fallbackToDestructiveMigration(dropAllTables = true) // Removed for robust migration
                     .build()
                 INSTANCE = instance
                 instance
