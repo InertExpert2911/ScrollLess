@@ -554,8 +554,8 @@ class ScrollDataRepositoryImpl(
                                          processAndAggregateSession(packageName, existingSessionStartTime, eventTimestampUTC -1, appUsageAggregator)
                                     }
                                 }
-                        }
-                        currentAppSessions[packageName] = eventTimestampUTC
+                            }
+                            currentAppSessions[packageName] = eventTimestampUTC
                             Log.d(TAG_REPO, "RESUMED $packageName ($className) (Backfill for $historicalDateLocalString): New session started at $eventTimestampUTC.")
                         }
                     }
