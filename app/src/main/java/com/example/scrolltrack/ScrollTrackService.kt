@@ -20,6 +20,7 @@ import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.data.ScrollDataRepositoryImpl
 import com.example.scrolltrack.db.AppDatabase
 import com.example.scrolltrack.db.DailyAppUsageDao
+import com.example.scrolltrack.db.RawAppEventDao
 import com.example.scrolltrack.db.ScrollSessionDao
 import com.example.scrolltrack.db.ScrollSessionRecord
 import com.example.scrolltrack.util.ConversionUtil
@@ -47,6 +48,7 @@ class ScrollTrackService : AccessibilityService() {
 
     private lateinit var scrollSessionDao: ScrollSessionDao
     private lateinit var dailyAppUsageDao: DailyAppUsageDao
+    private lateinit var rawAppEventDao: RawAppEventDao
     private lateinit var dataRepository: ScrollDataRepository
     private lateinit var sharedPreferences: SharedPreferences
     private lateinit var notificationManager: NotificationManager
@@ -114,7 +116,8 @@ class ScrollTrackService : AccessibilityService() {
             val db = AppDatabase.getDatabase(applicationContext)
             scrollSessionDao = db.scrollSessionDao()
             dailyAppUsageDao = db.dailyAppUsageDao()
-            dataRepository = ScrollDataRepositoryImpl(scrollSessionDao, dailyAppUsageDao, application)
+            rawAppEventDao = db.rawAppEventDao()
+            dataRepository = ScrollDataRepositoryImpl(scrollSessionDao, dailyAppUsageDao, rawAppEventDao, application)
 
             Log.i(TAG, "ScrollTrackService onCreate: DAO and Repository initialized.")
             recoverSessionFromPrefs() // Attempt to recover any draft session

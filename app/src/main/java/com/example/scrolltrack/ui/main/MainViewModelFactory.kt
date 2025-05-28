@@ -15,7 +15,12 @@ class MainViewModelFactory(
         if (modelClass.isAssignableFrom(MainViewModel::class.java)) {
             val repository = repositoryOverride ?: run {
                 val database = AppDatabase.getDatabase(application)
-                ScrollDataRepositoryImpl(database.scrollSessionDao(), database.dailyAppUsageDao(), application)
+                ScrollDataRepositoryImpl(
+                    database.scrollSessionDao(),
+                    database.dailyAppUsageDao(),
+                    database.rawAppEventDao(),
+                    application
+                )
             }
             @Suppress("UNCHECKED_CAST")
             return MainViewModel(repository, application) as T

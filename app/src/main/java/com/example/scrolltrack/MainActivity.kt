@@ -2,6 +2,7 @@ package com.example.scrolltrack
 
 import android.Manifest
 import android.app.AppOpsManager
+import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -15,20 +16,36 @@ import android.text.TextUtils
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 // import androidx.compose.foundation.shape.RoundedCornerShape // Not directly used by name in this file after changes
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-// import androidx.compose.material.icons.automirrored.filled.ArrowBack // Not used
-// import androidx.compose.material.icons.filled.BarChart // Not used
-// import androidx.compose.material.icons.filled.CalendarToday // Not used
-import androidx.compose.material.icons.filled.CheckCircle
-// import androidx.compose.material.icons.filled.Insights // Not used
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -37,76 +54,45 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp // Used in PermissionRow
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+// import androidx.lifecycle.compose.collectAsStateWithLifecycle // Duplicate import
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-// import androidx.navigation.NavController // NavHostController is used
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import androidx.navigation.NavType
 import coil.compose.rememberAsyncImagePainter
+import com.example.scrolltrack.data.AppScrollData
+import com.example.scrolltrack.data.ScrollDataRepositoryImpl
+import com.example.scrolltrack.ui.main.AppScrollUiItem
+import com.example.scrolltrack.ui.main.AppUsageUiItem
+import com.example.scrolltrack.db.* // Wildcard for db package
 import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.detail.AppDetailScreen
 import com.example.scrolltrack.ui.detail.ScrollDetailScreen
 import com.example.scrolltrack.ui.historical.HistoricalUsageScreen
-import com.example.scrolltrack.ui.main.AppScrollUiItem
-import com.example.scrolltrack.ui.main.AppUsageUiItem
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.ui.main.MainViewModelFactory
-import com.example.scrolltrack.ui.theme.ScrollTrackTheme
-import com.example.scrolltrack.ui.theme.UsageStatusGreen
-import com.example.scrolltrack.ui.theme.UsageStatusOrange
-import com.example.scrolltrack.ui.theme.UsageStatusRed
-// import com.example.scrolltrack.util.DateUtil // Not directly used in this file's composables after changes
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.TrendingUp
-import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.AccessibilityNew
-import androidx.compose.material.icons.filled.QueryStats
-import androidx.compose.material.icons.filled.HourglassEmpty
-// import androidx.compose.material3.HorizontalDivider // Ensure this stays commented if not used
-import androidx.compose.ui.platform.LocalContext
-// import androidx.compose.ui.platform.LocalContentColor // REMOVING this import
-import android.app.Application // For Preview
-import com.example.scrolltrack.data.ScrollDataRepositoryImpl // For Preview
-import com.example.scrolltrack.db.ScrollSessionDao
-import com.example.scrolltrack.db.DailyAppUsageDao
-import com.example.scrolltrack.db.ScrollSessionRecord
-import com.example.scrolltrack.db.DailyAppUsageRecord
-import com.example.scrolltrack.data.AppScrollData // For ScrollSessionDao mock
-import com.example.scrolltrack.db.AppScrollDataPerDate // Added import
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
-import androidx.compose.material.icons.filled.Brightness2
-import androidx.compose.material.icons.filled.WbSunny
-import com.example.scrolltrack.ui.theme.CaveatFontFamily
-// import androidx.compose.ui.unit.dp // Duplicate import, already imported earlier
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
-// import androidx.lifecycle.compose.collectAsStateWithLifecycle // Duplicate import
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.automirrored.filled.TrendingDown
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.filled.CheckCircle
+import com.example.scrolltrack.ui.theme.* // Wildcard for theme package
+import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
+import com.example.scrolltrack.util.GreetingUtil
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.flowOf
+import java.util.*
 
 // Constants for theme variants to be used by the Switch logic
 // Moved to top level for accessibility by ThemeModeSwitch
@@ -351,7 +337,7 @@ fun AppNavigationHost(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalAnimationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TodaySummaryScreen(
     navController: NavHostController,
@@ -809,7 +795,18 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
         override suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord> = emptyList()
     }
 
-    val fakeRepo = ScrollDataRepositoryImpl(dummyScrollSessionDao, dummyDailyAppUsageDao, app)
+    val dummyRawAppEventDao = object : com.example.scrolltrack.db.RawAppEventDao {
+        override suspend fun insertEvent(event: com.example.scrolltrack.db.RawAppEvent) {}
+        override suspend fun insertEvents(events: List<com.example.scrolltrack.db.RawAppEvent>) {}
+        override fun getEventsForDate(dateString: String): Flow<List<com.example.scrolltrack.db.RawAppEvent>> = flowOf(emptyList())
+        override suspend fun getEventsForPeriod(startTime: Long, endTime: Long): List<com.example.scrolltrack.db.RawAppEvent> = emptyList()
+        override suspend fun getEventsForPackageNameInPeriod(packageName: String, startTime: Long, endTime: Long): List<com.example.scrolltrack.db.RawAppEvent> = emptyList()
+        override suspend fun deleteOldEvents(cutoffTimestamp: Long) {}
+        override suspend fun getFirstEventTimestamp(): Long? = null
+        override suspend fun getLastEventTimestamp(): Long? = null
+    }
+
+    val fakeRepo = ScrollDataRepositoryImpl(dummyScrollSessionDao, dummyDailyAppUsageDao, dummyRawAppEventDao, app)
     val fakeViewModel: MainViewModel = viewModel(factory = MainViewModelFactory(application = app, repositoryOverride = fakeRepo))
     ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) { 
         TodaySummaryScreen(
@@ -860,7 +857,18 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
         override suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord> = emptyList()
     }
 
-    val fakeRepo = ScrollDataRepositoryImpl(dummyScrollSessionDao, dummyDailyAppUsageDao, app)
+    val dummyRawAppEventDao = object : com.example.scrolltrack.db.RawAppEventDao {
+        override suspend fun insertEvent(event: com.example.scrolltrack.db.RawAppEvent) {}
+        override suspend fun insertEvents(events: List<com.example.scrolltrack.db.RawAppEvent>) {}
+        override fun getEventsForDate(dateString: String): Flow<List<com.example.scrolltrack.db.RawAppEvent>> = flowOf(emptyList())
+        override suspend fun getEventsForPeriod(startTime: Long, endTime: Long): List<com.example.scrolltrack.db.RawAppEvent> = emptyList()
+        override suspend fun getEventsForPackageNameInPeriod(packageName: String, startTime: Long, endTime: Long): List<com.example.scrolltrack.db.RawAppEvent> = emptyList()
+        override suspend fun deleteOldEvents(cutoffTimestamp: Long) {}
+        override suspend fun getFirstEventTimestamp(): Long? = null
+        override suspend fun getLastEventTimestamp(): Long? = null
+    }
+
+    val fakeRepo = ScrollDataRepositoryImpl(dummyScrollSessionDao, dummyDailyAppUsageDao, dummyRawAppEventDao, app)
     val fakeViewModel: MainViewModel = viewModel(factory = MainViewModelFactory(application = app, repositoryOverride = fakeRepo))
     ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) { 
         val exampleTimeMillis = (2.75 * 60 * 60 * 1000).toLong()
@@ -928,13 +936,13 @@ fun ThemeModeSwitch(
     onThemeChange: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isDarkMode = currentThemeVariant != THEME_LIGHT // Now THEME_LIGHT should be resolved
+    val isDarkMode = currentThemeVariant != THEME_LIGHT
 
     Switch(
         modifier = modifier,
         checked = isDarkMode,
         onCheckedChange = {
-            val newTheme = if (it) THEME_OLED_DARK else THEME_LIGHT // THEME_OLED_DARK and THEME_LIGHT should be resolved
+            val newTheme = if (it) THEME_OLED_DARK else THEME_LIGHT
             onThemeChange(newTheme)
         },
         thumbContent = {

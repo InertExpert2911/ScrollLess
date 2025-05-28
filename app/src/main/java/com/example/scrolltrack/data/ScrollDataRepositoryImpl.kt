@@ -11,6 +11,8 @@ import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.db.ScrollSessionDao
 import com.example.scrolltrack.db.ScrollSessionRecord
 import com.example.scrolltrack.db.AppScrollDataPerDate // Import the new data class
+import com.example.scrolltrack.db.RawAppEvent // Added import
+import com.example.scrolltrack.db.RawAppEventDao // Added import
 import com.example.scrolltrack.util.DateUtil
 import kotlinx.coroutines.flow.Flow
 import java.util.Calendar
@@ -25,6 +27,7 @@ import kotlinx.coroutines.Dispatchers // Ensure this is imported
 class ScrollDataRepositoryImpl(
     private val scrollSessionDao: ScrollSessionDao,
     private val dailyAppUsageDao: DailyAppUsageDao, // Make sure this is passed in constructor
+    private val rawAppEventDao: RawAppEventDao, // Added RawAppEventDao
     private val application: Application
 ) : ScrollDataRepository {
 
@@ -51,6 +54,26 @@ class ScrollDataRepositoryImpl(
     // Implementation for the missing method
     override fun getUsageRecordsForDateRange(startDateString: String, endDateString: String): Flow<List<DailyAppUsageRecord>> {
         return dailyAppUsageDao.getUsageRecordsForDateRange(startDateString, endDateString)
+    }
+
+    // Helper function to map UsageEvents.Event types to our internal RawAppEvent types
+    private fun mapUsageEventTypeToInternal(eventType: Int): Int {
+        return when (eventType) {
+            UsageEvents.Event.NONE -> RawAppEvent.EVENT_TYPE_UNKNOWN
+            UsageEvents.Event.ACTIVITY_RESUMED, UsageEvents.Event.MOVE_TO_FOREGROUND -> RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED
+            UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.MOVE_TO_BACKGROUND -> RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED
+            UsageEvents.Event.ACTIVITY_STOPPED -> RawAppEvent.EVENT_TYPE_ACTIVITY_STOPPED
+            UsageEvents.Event.CONFIGURATION_CHANGE -> RawAppEvent.EVENT_TYPE_CONFIGURATION_CHANGE
+            UsageEvents.Event.USER_INTERACTION -> RawAppEvent.EVENT_TYPE_USER_INTERACTION
+            UsageEvents.Event.SCREEN_INTERACTIVE -> RawAppEvent.EVENT_TYPE_SCREEN_INTERACTIVE
+            UsageEvents.Event.SCREEN_NON_INTERACTIVE -> RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE
+            UsageEvents.Event.KEYGUARD_SHOWN -> RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN
+            UsageEvents.Event.KEYGUARD_HIDDEN -> RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN
+            UsageEvents.Event.FOREGROUND_SERVICE_START -> RawAppEvent.EVENT_TYPE_FOREGROUND_SERVICE_START
+            UsageEvents.Event.FOREGROUND_SERVICE_STOP -> RawAppEvent.EVENT_TYPE_FOREGROUND_SERVICE_STOP
+            // Add other specific mappings as needed, e.g., SHORTCUT_INVOCATION, STANDBY_BUCKET_CHANGED
+            else -> RawAppEvent.EVENT_TYPE_UNKNOWN // Default for unhandled event types
+        }
     }
 
     override suspend fun updateTodayAppUsageStats(): Boolean {
@@ -89,11 +112,40 @@ class ScrollDataRepositoryImpl(
         val currentAppSessions = mutableMapOf<String, Long>() // Tracks start time of current foreground app
         val appUsageAggregator = mutableMapOf<Pair<String, String>, Long>() // Pair of (PackageName, LocalDateString) to DurationMillis
 
+        val rawEventsToInsert = mutableListOf<RawAppEvent>() // Added: List to batch raw events
+        val eventProcessingBatchSize = 100 // Added: Batch size for inserting raw events
+
         val event = UsageEvents.Event()
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
             val packageName = event.packageName ?: continue // Skip if no package name
             val eventTimestampUTC = event.timeStamp
+            val className = event.className
+            val systemEventType = event.eventType
+
+            // Create and add RawAppEvent
+            val internalEventType = mapUsageEventTypeToInternal(systemEventType)
+            val eventDateString = DateUtil.formatUtcTimestampToLocalDateString(eventTimestampUTC)
+            rawEventsToInsert.add(
+                RawAppEvent(
+                    packageName = packageName,
+                    className = className,
+                    eventType = internalEventType,
+                    eventTimestamp = eventTimestampUTC,
+                    eventDateString = eventDateString
+                )
+            )
+
+            // Batch insert raw events
+            if (rawEventsToInsert.size >= eventProcessingBatchSize) {
+                try {
+                    rawAppEventDao.insertEvents(rawEventsToInsert.toList()) // Pass a copy
+                    rawEventsToInsert.clear()
+                } catch (e: Exception) {
+                    Log.e(TAG_REPO, "Error batch inserting raw events", e)
+                    // Decide on error handling: clear and continue, or retry?
+                }
+            }
 
             // Skip events outside our precise daily range if queryEvents is too broad (though it shouldn't be)
             if (eventTimestampUTC < startOfDayUTC || eventTimestampUTC > endOfDayUTC) {
@@ -179,8 +231,17 @@ class ScrollDataRepositoryImpl(
             }
         }
 
+        // After the loop, insert any remaining raw events
+        if (rawEventsToInsert.isNotEmpty()) {
+            try {
+                rawAppEventDao.insertEvents(rawEventsToInsert.toList())
+                rawEventsToInsert.clear()
+            } catch (e: Exception) {
+                Log.e(TAG_REPO, "Error inserting remaining raw events", e)
+            }
+        }
+
         // Finalize any sessions that are still marked as active at the end of the event processing
-        // (e.g., app is still in foreground at the time of query or end of day)
         val currentTimeForFinalization = DateUtil.getUtcTimestamp() // Current time for finalization
         for ((pkgName, sessionStartTimeUTC) in currentAppSessions) {
             // Ensure finalization does not exceed endOfDayUTC for today's processing
