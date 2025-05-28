@@ -793,6 +793,7 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
         override fun getTotalUsageTimeMillisForDate(dateString: String): Flow<Long?> = flowOf(0L)
         override suspend fun deleteOldUsageData(timestampMillis: Long): Int = 0
         override suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord> = emptyList()
+        override suspend fun deleteUsageForDate(dateString: String) {}
     }
 
     val dummyRawAppEventDao = object : com.example.scrolltrack.db.RawAppEventDao {
@@ -804,6 +805,7 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
         override suspend fun deleteOldEvents(cutoffTimestamp: Long) {}
         override suspend fun getFirstEventTimestamp(): Long? = null
         override suspend fun getLastEventTimestamp(): Long? = null
+        override suspend fun deleteEventsForDateString(dateString: String) {}
     }
 
     val fakeRepo = ScrollDataRepositoryImpl(dummyScrollSessionDao, dummyDailyAppUsageDao, dummyRawAppEventDao, app)
@@ -855,6 +857,7 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
         override fun getTotalUsageTimeMillisForDate(dateString: String): Flow<Long?> = flowOf(0L)
         override suspend fun deleteOldUsageData(timestampMillis: Long): Int = 0
         override suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord> = emptyList()
+        override suspend fun deleteUsageForDate(dateString: String) {}
     }
 
     val dummyRawAppEventDao = object : com.example.scrolltrack.db.RawAppEventDao {
@@ -866,6 +869,7 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
         override suspend fun deleteOldEvents(cutoffTimestamp: Long) {}
         override suspend fun getFirstEventTimestamp(): Long? = null
         override suspend fun getLastEventTimestamp(): Long? = null
+        override suspend fun deleteEventsForDateString(dateString: String) {}
     }
 
     val fakeRepo = ScrollDataRepositoryImpl(dummyScrollSessionDao, dummyDailyAppUsageDao, dummyRawAppEventDao, app)
