@@ -83,6 +83,9 @@ interface DailyAppUsageDao {
      */
     @Query("DELETE FROM daily_app_usage")
     suspend fun clearAllUsageData()
+
+    @Query("DELETE FROM daily_app_usage WHERE date_string = :dateString")
+    suspend fun deleteUsageForDate(dateString: String)
 }
 
 /**
