@@ -34,6 +34,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.*
+import com.example.scrolltrack.db.RawAppEvent
 
 class ScrollTrackService : AccessibilityService() {
 
@@ -199,7 +200,10 @@ class ScrollTrackService : AccessibilityService() {
         val info = AccessibilityServiceInfo().apply {
             eventTypes = AccessibilityEvent.TYPE_VIEW_SCROLLED or
                     AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                    AccessibilityEvent.TYPE_WINDOWS_CHANGED
+                    AccessibilityEvent.TYPE_WINDOWS_CHANGED or
+                    AccessibilityEvent.TYPE_VIEW_CLICKED or
+                    AccessibilityEvent.TYPE_VIEW_FOCUSED or
+                    AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             notificationTimeout = 50 // Kept at 50ms as requested
         }
@@ -213,6 +217,25 @@ class ScrollTrackService : AccessibilityService() {
         val eventPackageName = event.packageName?.toString()
         val eventClassName = event.className?.toString()
         val eventTime = System.currentTimeMillis()
+
+        // Helper function to log RawAppEvents
+        fun logAccessibilityRawEvent(eventTypeConst: Int, pkgName: String, clsName: String?, time: Long) {
+            serviceScope.launch {
+                try {
+                    val rawEvent = RawAppEvent(
+                        packageName = pkgName,
+                        className = clsName,
+                        eventType = eventTypeConst,
+                        eventTimestamp = time,
+                        eventDateString = DateUtil.formatUtcTimestampToLocalDateString(time)
+                    )
+                    rawAppEventDao.insertEvent(rawEvent)
+                    Log.d(TAG, "Logged RawAppEvent from Accessibility: Pkg=$pkgName, Cls=$clsName, Type=$eventTypeConst, Time=$time")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error logging RawAppEvent from Accessibility", e)
+                }
+            }
+        }
 
         when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
@@ -260,6 +283,30 @@ class ScrollTrackService : AccessibilityService() {
                     Log.d(TAG, "Activity/Window change within $currentAppPackage: from $currentAppActivity to $eventClassName")
                     currentAppActivity = eventClassName
                     scheduleSharedPrefsWrite()
+                }
+            }
+
+            AccessibilityEvent.TYPE_VIEW_CLICKED -> {
+                if (eventPackageName != null) {
+                    Log.d(TAG, "Accessibility: VIEW_CLICKED in $eventPackageName, Class: $eventClassName")
+                    logAccessibilityRawEvent(RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, eventPackageName, eventClassName, eventTime)
+                }
+            }
+
+            AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
+                if (eventPackageName != null) {
+                    Log.d(TAG, "Accessibility: VIEW_FOCUSED in $eventPackageName, Class: $eventClassName")
+                    logAccessibilityRawEvent(RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_FOCUSED, eventPackageName, eventClassName, eventTime)
+                }
+            }
+
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {
+                if (eventPackageName != null) {
+                    // Consider strategies to avoid excessive logging for every character.
+                    // For now, logging each detected change.
+                    // Further details like event.text could be logged if needed, perhaps in a separate field or a JSON payload.
+                    Log.d(TAG, "Accessibility: VIEW_TEXT_CHANGED in $eventPackageName, Class: $eventClassName")
+                    logAccessibilityRawEvent(RawAppEvent.EVENT_TYPE_ACCESSIBILITY_TYPING, eventPackageName, eventClassName, eventTime)
                 }
             }
         }
