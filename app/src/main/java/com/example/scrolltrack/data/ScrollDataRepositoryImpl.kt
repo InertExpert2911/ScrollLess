@@ -37,6 +37,7 @@ class ScrollDataRepositoryImpl(
     companion object {
         private const val CONFIG_CHANGE_PEEK_AHEAD_MS = 1000L // Time to look ahead for config change after a pause
         private const val CONFIG_CHANGE_MERGE_THRESHOLD_MS = 3000L // Time within which a resume merges a transient config-change pause
+        private const val MINIMUM_SIGNIFICANT_SESSION_DURATION_MS = 2000L // Ignore sessions shorter than this
     }
 
     override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> {
@@ -105,11 +106,19 @@ class ScrollDataRepositoryImpl(
 
         val rawEventsToInsert = mutableListOf<RawAppEvent>()
         val eventProcessingBatchSize = 100
+        var lastSystemEventTimestamp = 0L // For out-of-order detection
 
         if (systemEvents != null) {
             val event = UsageEvents.Event()
             while (systemEvents.hasNextEvent()) {
                 systemEvents.getNextEvent(event)
+
+                val currentSystemEventTimestamp = event.timeStamp
+                if (lastSystemEventTimestamp != 0L && currentSystemEventTimestamp < lastSystemEventTimestamp) {
+                    Log.w(TAG_REPO, "Out-of-order event from UsageStatsManager for ${event.packageName}. Current: $currentSystemEventTimestamp, Prev: $lastSystemEventTimestamp. Type: ${event.eventType}")
+                }
+                lastSystemEventTimestamp = currentSystemEventTimestamp
+
                 val packageName = event.packageName ?: continue
                 val eventTimestampUTC = event.timeStamp
                 // Ensure event is within the day to avoid issues if queryEvents is too broad
@@ -383,6 +392,12 @@ class ScrollDataRepositoryImpl(
             return // No valid duration to record
         }
 
+        val duration = sessionEndTimeUTC - sessionStartTimeUTC
+        if (duration < MINIMUM_SIGNIFICANT_SESSION_DURATION_MS) {
+            Log.d(TAG_REPO, "Skipping very short session for $packageName. Duration: $duration ms. Start: $sessionStartTimeUTC, End: $sessionEndTimeUTC")
+            return
+        }
+
         // Log.d(TAG_REPO, "Processing session for $packageName: Start: $sessionStartTimeUTC, End: $sessionEndTimeUTC, Duration: ${sessionEndTimeUTC - sessionStartTimeUTC}")
 
         var currentProcessingTimeUTC = sessionStartTimeUTC
@@ -433,6 +448,7 @@ class ScrollDataRepositoryImpl(
             val historicalDateLocalString = DateUtil.formatDateToYyyyMmDdString(calendar.time)
             val startOfDayUTC = DateUtil.getStartOfDayUtcMillis(historicalDateLocalString)
             val endOfDayUTC = DateUtil.getEndOfDayUtcMillis(historicalDateLocalString)
+            var lastSystemEventTimestampForDay = 0L // For out-of-order detection within this day's backfill
 
             Log.d(TAG_REPO, "Backfilling data for date: $historicalDateLocalString (Range: $startOfDayUTC to $endOfDayUTC)")
 
@@ -461,6 +477,16 @@ class ScrollDataRepositoryImpl(
                 val event = UsageEvents.Event()
                 while (systemEvents.hasNextEvent()) {
                     systemEvents.getNextEvent(event)
+
+                    val currentSystemEventTimestamp = event.timeStamp
+                    if (lastSystemEventTimestampForDay != 0L && currentSystemEventTimestamp < lastSystemEventTimestampForDay && currentSystemEventTimestamp >= startOfDayUTC) { // Check it's still within the day's bounds
+                        Log.w(TAG_REPO, "Out-of-order event during backfill from UsageStatsManager for ${event.packageName} on $historicalDateLocalString. Current: $currentSystemEventTimestamp, Prev: $lastSystemEventTimestampForDay. Type: ${event.eventType}")
+                    }
+                    // Only update if the event is within the current processing day to avoid carry-over from a previous day's last event if queryEvents was broader than expected
+                    if (currentSystemEventTimestamp >= startOfDayUTC && currentSystemEventTimestamp <= endOfDayUTC) {
+                        lastSystemEventTimestampForDay = currentSystemEventTimestamp
+                    }
+
                     val packageName = event.packageName ?: continue
                     val eventTimestampUTC = event.timeStamp
                     if (eventTimestampUTC < startOfDayUTC || eventTimestampUTC > endOfDayUTC) {
