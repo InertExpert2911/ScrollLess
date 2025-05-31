@@ -38,6 +38,8 @@ class ScrollDataRepositoryImpl(
         private const val CONFIG_CHANGE_PEEK_AHEAD_MS = 1000L // Time to look ahead for config change after a pause
         private const val CONFIG_CHANGE_MERGE_THRESHOLD_MS = 3000L // Time within which a resume merges a transient config-change pause
         private const val MINIMUM_SIGNIFICANT_SESSION_DURATION_MS = 2000L // Ignore sessions shorter than this
+        private const val QUICK_SWITCH_THRESHOLD_MS = 2000L // Minimum duration for a session to be considered significant
+        private const val EVENT_FETCH_OVERLAP_MS = 10000L // 10 seconds overlap for iterative fetching
     }
 
     override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> {
@@ -90,28 +92,45 @@ class ScrollDataRepositoryImpl(
                     return@withContext false
                 }
 
-        val todayLocalString = DateUtil.getCurrentLocalDateString()
-        val startOfDayUTC = DateUtil.getStartOfDayUtcMillis(todayLocalString)
-        val endOfDayUTC = DateUtil.getEndOfDayUtcMillis(todayLocalString)
+        val currentUtcTimestamp = DateUtil.getUtcTimestamp()
+        val todayDateString = DateUtil.getCurrentLocalDateString()
 
-        Log.d(TAG_REPO, "Starting update for today's app usage stats. Range: $startOfDayUTC to $endOfDayUTC")
+        // Step 1: Determine Start of Day UTC (SOD)
+        val startOfDayUTC = DateUtil.getStartOfDayUtcMillis(todayDateString)
 
-        // Step 1: Query and Log fresh raw events from UsageStatsManager
-        val systemEvents: UsageEvents? = try {
-                usageStatsManager.queryEvents(startOfDayUTC, endOfDayUTC)
-        } catch (e: Exception) {
-            Log.e(TAG_REPO, "Error querying usage events from UsageStatsManager", e)
-            null
-        }
+        // Step 2: Get the latest event timestamp from DAO
+        val initialDaoTimestamp = rawAppEventDao.getLatestEventTimestampForDate(todayDateString)
+
+        // Step 3: Determine the base timestamp. This is the one we will subtract overlap from.
+        // It's SOD if initial DAO is null or before SOD, otherwise it's the initial DAO value.
+        val actualBaseForOverlap: Long =
+            if (initialDaoTimestamp == null || initialDaoTimestamp < startOfDayUTC) {
+                startOfDayUTC
+            } else {
+                initialDaoTimestamp
+            }
+
+        // Step 4: Calculate the desired start time (base - overlap)
+        val desiredQueryStartTime = actualBaseForOverlap - EVENT_FETCH_OVERLAP_MS
+
+        // Step 5: The final query start time is the later of SOD or the desired start time.
+        val finalQueryStartTime = max(startOfDayUTC, desiredQueryStartTime)
+
+        val endOfTodayUTC = DateUtil.getEndOfDayUtcMillis(todayDateString)
+
+        Log.d(TAG_REPO, "UsageStats Query Window: $finalQueryStartTime -> $endOfTodayUTC. (Calculation Details: StartOfDay_UTC=$startOfDayUTC, DB_LatestEvent=$initialDaoTimestamp, BaseForOverlap=$actualBaseForOverlap, TargetStart_PreClamp=$desiredQueryStartTime)")
+
+        // Use UsageStatsManager to query events
+        val usageEvents = usageStatsManager.queryEvents(finalQueryStartTime, endOfTodayUTC)
 
         val rawEventsToInsert = mutableListOf<RawAppEvent>()
         val eventProcessingBatchSize = 100
         var lastSystemEventTimestamp = 0L // For out-of-order detection
 
-        if (systemEvents != null) {
+        if (usageEvents != null) {
             val event = UsageEvents.Event()
-            while (systemEvents.hasNextEvent()) {
-                systemEvents.getNextEvent(event)
+            while (usageEvents.hasNextEvent()) {
+                usageEvents.getNextEvent(event)
 
                 val currentSystemEventTimestamp = event.timeStamp
                 if (lastSystemEventTimestamp != 0L && currentSystemEventTimestamp < lastSystemEventTimestamp) {
@@ -122,7 +141,7 @@ class ScrollDataRepositoryImpl(
                 val packageName = event.packageName ?: continue
                 val eventTimestampUTC = event.timeStamp
                 // Ensure event is within the day to avoid issues if queryEvents is too broad
-                if (eventTimestampUTC < startOfDayUTC || eventTimestampUTC > endOfDayUTC) {
+                if (eventTimestampUTC < startOfDayUTC || eventTimestampUTC > endOfTodayUTC) {
                     continue
                 }
 
@@ -163,33 +182,33 @@ class ScrollDataRepositoryImpl(
 
         // Step 2: Clear today's old aggregated data
         try {
-            dailyAppUsageDao.deleteUsageForDate(todayLocalString)
-            Log.d(TAG_REPO, "Cleared existing aggregated usage for $todayLocalString")
+            dailyAppUsageDao.deleteUsageForDate(todayDateString)
+            Log.d(TAG_REPO, "Cleared existing aggregated usage for $todayDateString")
         } catch (e: Exception) {
-            Log.e(TAG_REPO, "Error clearing aggregated usage for $todayLocalString", e)
+            Log.e(TAG_REPO, "Error clearing aggregated usage for $todayDateString", e)
             // Decide if this is a fatal error for the update process
         }
 
         // Step 3: Fetch all stored raw events for today to perform aggregation
         val storedRawEventsForToday: List<RawAppEvent> = try {
-            Log.d(TAG_REPO, "Attempting to fetch stored raw events for $todayLocalString from $startOfDayUTC to $endOfDayUTC")
-            val events = rawAppEventDao.getEventsForPeriod(startOfDayUTC, endOfDayUTC) // Already sorts by timestamp ASC
-            Log.d(TAG_REPO, "Successfully fetched ${events.size} stored raw events for $todayLocalString")
+            Log.d(TAG_REPO, "Attempting to fetch stored raw events for $todayDateString from $startOfDayUTC to $endOfTodayUTC")
+            val events = rawAppEventDao.getEventsForPeriod(startOfDayUTC, endOfTodayUTC) // Already sorts by timestamp ASC
+            Log.d(TAG_REPO, "Successfully fetched ${events.size} stored raw events for $todayDateString")
             events
         } catch (e: kotlinx.coroutines.CancellationException) {
-            Log.e(TAG_REPO, "Fetching stored raw events for $todayLocalString was CANCELLED", e)
+            Log.e(TAG_REPO, "Fetching stored raw events for $todayDateString was CANCELLED", e)
             throw e // Re-throw cancellation to ensure the job is properly cancelled
         } catch (e: Exception) {
-            Log.e(TAG_REPO, "Error fetching stored raw events for $todayLocalString", e)
+            Log.e(TAG_REPO, "Error fetching stored raw events for $todayDateString", e)
             return@withContext false
         }
 
         if (storedRawEventsForToday.isEmpty()) {
-            Log.i(TAG_REPO, "No stored raw events found for $todayLocalString. No aggregation to perform.")
+            Log.i(TAG_REPO, "No stored raw events found for $todayDateString. No aggregation to perform.")
             return@withContext true // Successfully did nothing if no events
         }
 
-        Log.d(TAG_REPO, "Processing ${storedRawEventsForToday.size} stored raw events for $todayLocalString for aggregation.")
+        Log.d(TAG_REPO, "Processing ${storedRawEventsForToday.size} stored raw events for $todayDateString for aggregation.")
 
         // Step 4 & 5: Process stored raw events and aggregate usage
         val currentAppSessions = mutableMapOf<String, Long>() // packageName to sessionStartTimeUTC
@@ -350,15 +369,15 @@ class ScrollDataRepositoryImpl(
 
         // Finalize any sessions still marked as active at the end of the day
         for ((pkgName, sessionStartTimeUTC) in currentAppSessions) {
-            if (endOfDayUTC > sessionStartTimeUTC) {
-                processAndAggregateSession(pkgName, sessionStartTimeUTC, endOfDayUTC, appUsageAggregator)
+            if (endOfTodayUTC > sessionStartTimeUTC) {
+                processAndAggregateSession(pkgName, sessionStartTimeUTC, endOfTodayUTC, appUsageAggregator)
             }
         }
         currentAppSessions.clear()
 
         var recordsProcessed = 0
         if (appUsageAggregator.isNotEmpty()) {
-            Log.d(TAG_REPO, "Aggregated Usage for $todayLocalString from stored raw events:")
+            Log.d(TAG_REPO, "Aggregated Usage for $todayDateString from stored raw events:")
             val dailyRecordsToInsert = mutableListOf<DailyAppUsageRecord>()
             for ((key, totalDuration) in appUsageAggregator) {
                 val (pkg, dateStr) = key
@@ -376,7 +395,7 @@ class ScrollDataRepositoryImpl(
                 recordsProcessed = dailyRecordsToInsert.size
             }
         }
-        Log.i(TAG_REPO, "Successfully inserted/updated $recordsProcessed usage records for $todayLocalString from stored raw events.")
+        Log.i(TAG_REPO, "Successfully inserted/updated $recordsProcessed usage records for $todayDateString from stored raw events.")
         return@withContext true
     }
 

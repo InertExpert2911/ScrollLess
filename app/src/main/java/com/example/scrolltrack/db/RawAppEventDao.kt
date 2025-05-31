@@ -36,4 +36,7 @@ interface RawAppEventDao {
     @Query("DELETE FROM raw_app_events WHERE event_date_string = :dateString")
     suspend fun deleteEventsForDateString(dateString: String)
 
+    @Query("SELECT MAX(event_timestamp) FROM raw_app_events WHERE event_date_string = :dateString")
+    suspend fun getLatestEventTimestampForDate(dateString: String): Long?
+
 } 

@@ -806,6 +806,7 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
         override suspend fun getFirstEventTimestamp(): Long? = null
         override suspend fun getLastEventTimestamp(): Long? = null
         override suspend fun deleteEventsForDateString(dateString: String) {}
+        override suspend fun getLatestEventTimestampForDate(dateString: String): Long? = null
     }
 
     val fakeRepo = ScrollDataRepositoryImpl(dummyScrollSessionDao, dummyDailyAppUsageDao, dummyRawAppEventDao, app)
@@ -870,6 +871,7 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
         override suspend fun getFirstEventTimestamp(): Long? = null
         override suspend fun getLastEventTimestamp(): Long? = null
         override suspend fun deleteEventsForDateString(dateString: String) {}
+        override suspend fun getLatestEventTimestampForDate(dateString: String): Long? = null
     }
 
     val fakeRepo = ScrollDataRepositoryImpl(dummyScrollSessionDao, dummyDailyAppUsageDao, dummyRawAppEventDao, app)
