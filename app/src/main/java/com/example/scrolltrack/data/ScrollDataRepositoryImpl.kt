@@ -44,8 +44,16 @@ class ScrollDataRepositoryImpl(
         // Add other system/launcher packages as needed
     )
 
-    private fun isFilteredPackage(packageName: String?): Boolean {
-        return packageName == null || filteredPackages.contains(packageName) || packageName.startsWith("com.android.inputmethod")
+    /**
+     * Checks if the given package name should be filtered out from tracking.
+     * Currently, it filters out the app's own package and common launcher packages.
+     *
+     * @param packageName The name of the package to check.
+     * @return `true` if the package should be filtered, `false` otherwise.
+     */
+    internal fun isFilteredPackage(packageName: String): Boolean {
+        return packageName == "com.example.scrolltrack" ||
+                packageName.contains("launcher")
     }
 
     companion object {
@@ -391,9 +399,9 @@ class ScrollDataRepositoryImpl(
                 timeInMillis = today.timeInMillis
                 add(Calendar.DAY_OF_YEAR, -i)
             }
-            val historicalDateLocalString = DateUtil.formatCalendarToLocalDateString(calendar)
-            val startOfDayUTC = DateUtil.getStartOfDayUtcMillisForCalendar(calendar)
-            val endOfDayUTC = DateUtil.getEndOfDayUtcMillisForCalendar(calendar)
+            val historicalDateLocalString = DateUtil.formatDateToYyyyMmDdString(calendar.time)
+            val startOfDayUTC = DateUtil.getStartOfDayUtcMillis(historicalDateLocalString)
+            val endOfDayUTC = DateUtil.getEndOfDayUtcMillis(historicalDateLocalString)
 
             try {
                 // Check if we already have data for this day
