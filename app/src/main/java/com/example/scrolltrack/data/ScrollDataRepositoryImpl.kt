@@ -407,15 +407,15 @@ class ScrollDataRepositoryImpl(
                 val events = usageStatsManager.queryEvents(startOfDayUTC, endOfDayUTC)
                 val rawEventsFromUsageManager = mutableListOf<RawAppEvent>()
                 if (events != null) {
-                val event = UsageEvents.Event()
+                    val event = UsageEvents.Event()
                     while (events.hasNextEvent()) {
                         events.getNextEvent(event)
-                    val internalEventType = mapUsageEventTypeToInternal(event.eventType)
+                        val internalEventType = mapUsageEventTypeToInternal(event.eventType)
                         rawEventsFromUsageManager.add(
-                        RawAppEvent(
+                            RawAppEvent(
                                 packageName = event.packageName,
-                            className = event.className,
-                            eventType = internalEventType,
+                                className = event.className,
+                                eventType = internalEventType,
                                 eventTimestamp = event.timeStamp,
                                 eventDateString = DateUtil.formatUtcTimestampToLocalDateString(event.timeStamp)
                             )
