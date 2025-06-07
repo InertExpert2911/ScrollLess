@@ -794,6 +794,7 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
         override suspend fun deleteOldUsageData(timestampMillis: Long): Int = 0
         override suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord> = emptyList()
         override suspend fun deleteUsageForDate(dateString: String) {}
+        override suspend fun getUsageCountForDateString(dateString: String): Int = 0
     }
 
     val dummyRawAppEventDao = object : com.example.scrolltrack.db.RawAppEventDao {
@@ -859,6 +860,7 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
         override suspend fun deleteOldUsageData(timestampMillis: Long): Int = 0
         override suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord> = emptyList()
         override suspend fun deleteUsageForDate(dateString: String) {}
+        override suspend fun getUsageCountForDateString(dateString: String): Int = 0
     }
 
     val dummyRawAppEventDao = object : com.example.scrolltrack.db.RawAppEventDao {

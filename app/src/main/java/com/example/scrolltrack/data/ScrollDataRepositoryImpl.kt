@@ -254,7 +254,7 @@ class ScrollDataRepositoryImpl(
         return@withContext true
     }
 
-    private fun calculateActiveTimeFromInteractions(interactionTimestamps: List<Long>): Long {
+    private fun calculateActiveTimeFromInteractions(interactionTimestamps: List<Long>, sessionStartTime: Long, sessionEndTime: Long): Long {
         if (interactionTimestamps.isEmpty()) return 0L
 
         val intervals = interactionTimestamps.map { it to it + ACTIVE_TIME_INTERACTION_WINDOW_MS }.sortedBy { it.first }
@@ -276,10 +276,16 @@ class ScrollDataRepositoryImpl(
                 merged.add(current)
             }
         }
-        return merged.sumOf { it.second - it.first }
+        
+        // Clip merged intervals to the session boundaries.
+        val clippedIntervals = merged.map { (start, end) ->
+            max(start, sessionStartTime) to min(end, sessionEndTime)
+        }.filter { it.first < it.second }
+
+        return clippedIntervals.sumOf { it.second - it.first }
     }
 
-    private fun aggregateUsage(allEvents: List<RawAppEvent>, periodEndDate: Long): Map<Pair<String, String>, Pair<Long, Long>> {
+    internal fun aggregateUsage(allEvents: List<RawAppEvent>, periodEndDate: Long): Map<Pair<String, String>, Pair<Long, Long>> {
         // Stage 1: Identify all foreground sessions from the event stream.
         data class Session(val pkg: String, val startTime: Long, val endTime: Long)
         val sessions = mutableListOf<Session>()
@@ -352,11 +358,10 @@ class ScrollDataRepositoryImpl(
                 ?.sorted()
                 ?: emptyList()
 
-            val activeTime = calculateActiveTimeFromInteractions(sessionInteractionTimestamps)
+            val activeTime = calculateActiveTimeFromInteractions(sessionInteractionTimestamps, session.startTime, session.endTime)
 
             val (currentUsage, currentActive) = aggregator.getOrDefault(key, 0L to 0L)
             aggregator[key] = (currentUsage + usageTime) to (currentActive + activeTime)
-            Log.d(TAG_REPO, "Processed Session for ${session.pkg} on $dateString: UsageTime=${usageTime}ms, ActiveTime=${activeTime}ms")
         }
         return aggregator
     }
