@@ -23,7 +23,10 @@ data class DailyAppUsageRecord(
     val dateString: String,
 
     @ColumnInfo(name = "usage_time_millis")
-    val usageTimeMillis: Long, // Total foreground time in milliseconds for this app on this date
+    val usageTimeMillis: Long, // Total time app was in foreground
+
+    @ColumnInfo(name = "active_time_millis", defaultValue = "0")
+    val activeTimeMillis: Long = 0L, // Time user was actively interacting (clicking, typing, focusing)
 
     @ColumnInfo(name = "last_updated_timestamp") // When this record was last calculated/updated
     val lastUpdatedTimestamp: Long = System.currentTimeMillis()

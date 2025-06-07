@@ -42,9 +42,10 @@ data class RawAppEvent(
         const val EVENT_TYPE_KEYGUARD_HIDDEN = 14         // Maps to UsageEvents.Event.KEYGUARD_HIDDEN
 
         // New Accessibility Service driven events
-        const val EVENT_TYPE_ACCESSIBILITY_TYPING = 15
-        const val EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED = 16
-        const val EVENT_TYPE_ACCESSIBILITY_VIEW_FOCUSED = 17
+        const val EVENT_TYPE_ACCESSIBILITY_OFFSET = 1000
+        const val EVENT_TYPE_ACCESSIBILITY_TYPING = EVENT_TYPE_ACCESSIBILITY_OFFSET + 1
+        const val EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED = EVENT_TYPE_ACCESSIBILITY_OFFSET + 2
+        const val EVENT_TYPE_ACCESSIBILITY_VIEW_FOCUSED = EVENT_TYPE_ACCESSIBILITY_OFFSET + 3
 
         // Add more specific mappings as needed based on UsageEvents.Event
         // For example, if you want to distinguish between MOVE_TO_FOREGROUND and ACTIVITY_RESUMED more clearly

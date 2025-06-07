@@ -214,16 +214,27 @@ class ScrollTrackService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
-        val eventPackageName = event.packageName?.toString()
+        val actualEventTimeUTC = DateUtil.getUtcTimestamp() // Use current UTC time
+
+        // Try to get package name from source node first, fallback to event.packageName
+        val sourceNodePackageName = event.source?.packageName?.toString()
+        val directEventPackageName = event.packageName?.toString()
+        val determinedPackageName = sourceNodePackageName ?: directEventPackageName
+
         val eventClassName = event.className?.toString()
-        val eventTime = System.currentTimeMillis()
+        // val eventTime = System.currentTimeMillis() // REPLACED with actualEventTimeUTC
 
         // Helper function to log RawAppEvents
-        fun logAccessibilityRawEvent(eventTypeConst: Int, pkgName: String, clsName: String?, time: Long) {
+        fun logAccessibilityRawEvent(eventTypeConst: Int, pkgName: String?, clsName: String?, time: Long) {
+            if (pkgName.isNullOrEmpty()) {
+                Log.w(TAG, "Cannot log accessibility event, package name is null or empty. Type: $eventTypeConst")
+                return
+            }
+            // After the check above, pkgName is guaranteed to be non-null and non-empty.
             serviceScope.launch {
                 try {
                     val rawEvent = RawAppEvent(
-                        packageName = pkgName,
+                        packageName = pkgName!!, // Use non-null assertion operator
                         className = clsName,
                         eventType = eventTypeConst,
                         eventTimestamp = time,
@@ -239,14 +250,14 @@ class ScrollTrackService : AccessibilityService() {
 
         when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
-                if (eventPackageName == null) return
+                if (determinedPackageName == null) return
 
-                if (currentAppPackage == null || eventPackageName != currentAppPackage) {
-                    finalizeAndSaveCurrentSession(eventTime, SessionEndReason.APP_SWITCH)
-                    startNewSession(eventPackageName, eventClassName, eventTime)
+                if (currentAppPackage == null || determinedPackageName != currentAppPackage) {
+                    finalizeAndSaveCurrentSession(actualEventTimeUTC, SessionEndReason.APP_SWITCH)
+                    startNewSession(determinedPackageName, eventClassName, actualEventTimeUTC)
                 }
 
-                if (eventPackageName == currentAppPackage) {
+                if (determinedPackageName == currentAppPackage) {
                     val deltaY = event.scrollDeltaY
                     val deltaX = event.scrollDeltaX
 
@@ -258,7 +269,7 @@ class ScrollTrackService : AccessibilityService() {
                         currentAppScrollAccumulator += totalDelta
                         Log.d(
                             TAG,
-                            "Scroll in $eventPackageName ($currentAppActivity): Delta(X:$deltaX,Y:$deltaY), Added:$totalDelta, SessionTotal:$currentAppScrollAccumulator"
+                            "Scroll in $determinedPackageName ($currentAppActivity): Delta(X:$deltaX,Y:$deltaY), Added:$totalDelta, SessionTotal:$currentAppScrollAccumulator"
                         )
                         scheduleSharedPrefsWrite()
                     }
@@ -273,13 +284,13 @@ class ScrollTrackService : AccessibilityService() {
 
                 Log.i(
                     TAG,
-                    "Window Change: Pkg=$eventPackageName, Class/Title=$activeWindowIdentifier, EventType=${AccessibilityEvent.eventTypeToString(event.eventType)}"
+                    "Window Change: Pkg=$determinedPackageName, Class/Title=$activeWindowIdentifier, EventType=${AccessibilityEvent.eventTypeToString(event.eventType)}"
                 )
 
-                if (eventPackageName != null && eventPackageName != currentAppPackage) {
-                    finalizeAndSaveCurrentSession(eventTime, SessionEndReason.APP_SWITCH)
-                    startNewSession(eventPackageName, eventClassName, eventTime)
-                } else if (eventPackageName != null && eventPackageName == currentAppPackage && eventClassName != null && eventClassName != currentAppActivity) {
+                if (determinedPackageName != null && determinedPackageName != currentAppPackage) {
+                    finalizeAndSaveCurrentSession(actualEventTimeUTC, SessionEndReason.APP_SWITCH)
+                    startNewSession(determinedPackageName, eventClassName, actualEventTimeUTC)
+                } else if (determinedPackageName != null && determinedPackageName == currentAppPackage && eventClassName != null && eventClassName != currentAppActivity) {
                     Log.d(TAG, "Activity/Window change within $currentAppPackage: from $currentAppActivity to $eventClassName")
                     currentAppActivity = eventClassName
                     scheduleSharedPrefsWrite()
@@ -287,26 +298,24 @@ class ScrollTrackService : AccessibilityService() {
             }
 
             AccessibilityEvent.TYPE_VIEW_CLICKED -> {
-                if (eventPackageName != null) {
-                    Log.d(TAG, "Accessibility: VIEW_CLICKED in $eventPackageName, Class: $eventClassName")
-                    logAccessibilityRawEvent(RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, eventPackageName, eventClassName, eventTime)
+                if (determinedPackageName != null) {
+                    Log.d(TAG, "VIEW_CLICKED in $determinedPackageName. Class: $eventClassName")
+                    logAccessibilityRawEvent(RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, determinedPackageName, eventClassName, actualEventTimeUTC)
                 }
             }
 
             AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
-                if (eventPackageName != null) {
-                    Log.d(TAG, "Accessibility: VIEW_FOCUSED in $eventPackageName, Class: $eventClassName")
-                    logAccessibilityRawEvent(RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_FOCUSED, eventPackageName, eventClassName, eventTime)
+                if (determinedPackageName != null) {
+                    Log.d(TAG, "VIEW_FOCUSED in $determinedPackageName. Class: $eventClassName")
+                    logAccessibilityRawEvent(RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_FOCUSED, determinedPackageName, eventClassName, actualEventTimeUTC)
                 }
             }
 
             AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {
-                if (eventPackageName != null) {
-                    // Consider strategies to avoid excessive logging for every character.
-                    // For now, logging each detected change.
-                    // Further details like event.text could be logged if needed, perhaps in a separate field or a JSON payload.
-                    Log.d(TAG, "Accessibility: VIEW_TEXT_CHANGED in $eventPackageName, Class: $eventClassName")
-                    logAccessibilityRawEvent(RawAppEvent.EVENT_TYPE_ACCESSIBILITY_TYPING, eventPackageName, eventClassName, eventTime)
+                if (determinedPackageName != null) {
+                    // This indicates typing or text modification.
+                    Log.d(TAG, "VIEW_TEXT_CHANGED in $determinedPackageName. Class: $eventClassName")
+                    logAccessibilityRawEvent(RawAppEvent.EVENT_TYPE_ACCESSIBILITY_TYPING, determinedPackageName, eventClassName, actualEventTimeUTC)
                 }
             }
         }

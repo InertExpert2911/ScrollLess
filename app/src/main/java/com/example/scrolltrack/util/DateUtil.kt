@@ -96,6 +96,38 @@ object DateUtil {
     }
 
     /**
+     * Formats a given Calendar object into a local date string (yyyy-MM-dd),
+     * based on the device's current default timezone.
+     */
+    fun formatCalendarToLocalDateString(calendar: Calendar): String {
+        return localIsoDateFormat.format(calendar.time)
+    }
+
+    /**
+     * Gets the UTC timestamp for the start of the day (00:00:00.000) for a given Calendar instance.
+     */
+    fun getStartOfDayUtcMillisForCalendar(calendar: Calendar): Long {
+        val cal = calendar.clone() as Calendar
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        return cal.timeInMillis
+    }
+
+    /**
+     * Gets the UTC timestamp for the end of the day (23:59:59.999) for a given Calendar instance.
+     */
+    fun getEndOfDayUtcMillisForCalendar(calendar: Calendar): Long {
+        val cal = calendar.clone() as Calendar
+        cal.set(Calendar.HOUR_OF_DAY, 23)
+        cal.set(Calendar.MINUTE, 59)
+        cal.set(Calendar.SECOND, 59)
+        cal.set(Calendar.MILLISECOND, 999)
+        return cal.timeInMillis
+    }
+
+    /**
      * Formats a duration in milliseconds into a human-readable string (e.g., "2h 30m", "45m", "< 1m").
      * @param millis The duration in milliseconds.
      * @return Formatted string representation of the duration.

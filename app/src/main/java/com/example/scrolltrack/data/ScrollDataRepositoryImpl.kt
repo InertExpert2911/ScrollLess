@@ -23,6 +23,7 @@ import kotlin.math.max // Added for maxOf
 import kotlin.math.min // Added for minOf
 import kotlinx.coroutines.withContext // Ensure this is imported
 import kotlinx.coroutines.Dispatchers // Ensure this is imported
+import android.annotation.SuppressLint
 
 class ScrollDataRepositoryImpl(
     private val scrollSessionDao: ScrollSessionDao,
@@ -34,12 +35,26 @@ class ScrollDataRepositoryImpl(
     private val TAG_REPO = "ScrollDataRepoImpl"
     private val packageManager: PackageManager = application.packageManager
 
+    // Filter list - add package names of apps to exclude from tracking
+    private val filteredPackages = setOf(
+        "com.example.scrolltrack", // Exclude the app itself
+        "com.android.systemui",
+        "com.google.android.apps.nexuslauncher", // Example: exclude a launcher
+        "com.nothing.launcher"
+        // Add other system/launcher packages as needed
+    )
+
+    private fun isFilteredPackage(packageName: String?): Boolean {
+        return packageName == null || filteredPackages.contains(packageName) || packageName.startsWith("com.android.inputmethod")
+    }
+
     companion object {
         private const val CONFIG_CHANGE_PEEK_AHEAD_MS = 1000L // Time to look ahead for config change after a pause
         private const val CONFIG_CHANGE_MERGE_THRESHOLD_MS = 3000L // Time within which a resume merges a transient config-change pause
         private const val MINIMUM_SIGNIFICANT_SESSION_DURATION_MS = 2000L // Ignore sessions shorter than this
         private const val QUICK_SWITCH_THRESHOLD_MS = 2000L // Minimum duration for a session to be considered significant
         private const val EVENT_FETCH_OVERLAP_MS = 10000L // 10 seconds overlap for iterative fetching
+        private const val ACTIVE_TIME_INTERACTION_WINDOW_MS = 2000L // Define the active time interaction window
     }
 
     override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> {
@@ -210,182 +225,22 @@ class ScrollDataRepositoryImpl(
 
         Log.d(TAG_REPO, "Processing ${storedRawEventsForToday.size} stored raw events for $todayDateString for aggregation.")
 
-        // Step 4 & 5: Process stored raw events and aggregate usage
-        val currentAppSessions = mutableMapOf<String, Long>() // packageName to sessionStartTimeUTC
-        val appUsageAggregator = mutableMapOf<Pair<String, String>, Long>() // Pair(PackageName, LocalDateString) to DurationMillis
-        val potentiallyTransientPause = mutableMapOf<String, Long>() // packageName -> timestamp of a pause that might be due to config change
-        val lastEventTypeForApp = mutableMapOf<String, Int>() // packageName -> last processed RawAppEvent.EVENT_TYPE_ for this app
-
-        storedRawEventsForToday.forEachIndexed { index, rawEvent ->
-            val packageName = rawEvent.packageName
-            val eventTimestampUTC = rawEvent.eventTimestamp
-            val internalEventType = rawEvent.eventType
-            val className = rawEvent.className // Needed for more precise config change check
-
-            // Filter out self-package events, except screen events
-            if (packageName == application.packageName && internalEventType != RawAppEvent.EVENT_TYPE_SCREEN_INTERACTIVE && internalEventType != RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE) {
-                lastEventTypeForApp[packageName] = internalEventType // Still record it happened
-                return@forEachIndexed // Skip processing for aggregation
-            }
-
-            when (internalEventType) {
-                RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED -> {
-                    Log.d(TAG_REPO, "EVENT: RESUMED $packageName at $eventTimestampUTC")
-                    // Implicitly pause any other app that was considered active
-                    currentAppSessions.keys.filter { it != packageName }.forEach { otherPkg ->
-                        val otherAppSessionStart = currentAppSessions.remove(otherPkg)
-                        if (otherAppSessionStart != null && eventTimestampUTC -1 > otherAppSessionStart) {
-                            Log.d(TAG_REPO, "Implicitly PAUSING $otherPkg due to $packageName RESUME. Session: $otherAppSessionStart -> ${eventTimestampUTC -1}")
-                            processAndAggregateSession(otherPkg, otherAppSessionStart, eventTimestampUTC - 1, appUsageAggregator)
-                        }
-                        potentiallyTransientPause.remove(otherPkg) // Clear any transient state for the other app
-                    }
-
-                    val transientPauseTime = potentiallyTransientPause.remove(packageName)
-                    if (transientPauseTime != null && (eventTimestampUTC - transientPauseTime < CONFIG_CHANGE_MERGE_THRESHOLD_MS)) {
-                        // This RESUME is a continuation of a session after a transient config-change pause
-                        // The session is already in currentAppSessions with its original start time.
-                        Log.d(TAG_REPO, "RESUMED $packageName ($className): Continuing session after transient pause. Original start: ${currentAppSessions[packageName]}, Pause was at $transientPauseTime, Resumed at $eventTimestampUTC")
-                        // No need to call processAndAggregateSession here, the session continues.
-                    } else {
-                        // Standard RESUME or resume after non-transient pause / long gap
-                        val existingSessionStartTime = currentAppSessions[packageName]
-                        if (existingSessionStartTime != null) {
-                            // App was already active (e.g. re-focus, or previous segment ended by screen off and now it's back)
-                            // If it's a new segment, finalize the old one.
-                            // However, if it's truly the same session (e.g. screen on after screen off), this check is tricky.
-                            // For now, if it's already there, we assume the screen-off logic handled the previous segment.
-                            // A simple re-focus would also mean its session might have been implicitly paused by another app, then resumed.
-                            // The critical part is that a *new* RESUME for an app already in currentAppSessions implies its previous active period ended.
-                            // Let's refine: if it's in currentAppSessions, it means its session was ongoing *or* just restored (e.g. after screen on).
-                            // If this resume is significantly later, it should start a new segment. But our implicit pause logic above handles this.
-                            Log.v(TAG_REPO, "RESUMED $packageName ($className): Already in current sessions (started at $existingSessionStartTime). New active period from $eventTimestampUTC.")
-                            // If there was an existing session, and this resume is truly new (not a merge), the implicit pause logic above *should* have handled it.
-                            // The only case left is if it's the *same app* resuming after no other app interrupted it, meaning this is a continuation perhaps after a brief backgrounding without pause event or screen on.
-                            // For safety, if it's still in currentAppSessions, its old segment should have been closed by an intervening event (pause, screen_off, or another app's resume).
-                            // We only update the start time if this is effectively a *new* start, not a merge.
-                            if (transientPauseTime == null) { // Only treat as a new segment start if not merging
-                                if (eventTimestampUTC > existingSessionStartTime) {
-                                    // This implies the app was running, something happened (e.g. screen off), and now it's back.
-                                    // The screen off should have closed the previous segment. This resume starts a new one.
-                                     Log.v(TAG_REPO, "Finalizing previous segment for $packageName ($className) from $existingSessionStartTime to ${eventTimestampUTC -1} before new resume.")
-                                     processAndAggregateSession(packageName, existingSessionStartTime, eventTimestampUTC -1, appUsageAggregator)
-                                }
-                            }
-                        }
-                        currentAppSessions[packageName] = eventTimestampUTC
-                        Log.d(TAG_REPO, "RESUMED $packageName ($className): New session started at $eventTimestampUTC.")
-                    }
-                }
-                RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED -> {
-                    Log.d(TAG_REPO, "EVENT: PAUSED $packageName at $eventTimestampUTC")
-                    var isTransientConfigChangePause = false
-                    val nextEvent = if (index + 1 < storedRawEventsForToday.size) storedRawEventsForToday[index + 1] else null
-                    val eventAfterNext = if (index + 2 < storedRawEventsForToday.size) storedRawEventsForToday[index + 2] else null
-
-                    // Revised logic:
-                    // 1. Check if the next event is a CONFIG_CHANGE within the PEEK_AHEAD window.
-                    //    The CONFIG_CHANGE event itself might come from the "android" package.
-                    // 2. Then, check if the event *after* the CONFIG_CHANGE is an ACTIVITY_RESUMED
-                    //    for the *original app (packageName, className)*, also within a PEEK_AHEAD window.
-                    if (nextEvent != null &&
-                        nextEvent.eventType == RawAppEvent.EVENT_TYPE_CONFIGURATION_CHANGE && // Check type first
-                        (nextEvent.eventTimestamp - eventTimestampUTC < CONFIG_CHANGE_PEEK_AHEAD_MS)) { // Check timing of CONFIG_CHANGE
-
-                        // Now, ensure the event *after* the CONFIG_CHANGE is a RESUME for the *original app and class*
-                        if (eventAfterNext != null &&
-                            eventAfterNext.packageName == packageName && // Original app's package
-                            eventAfterNext.className == className &&   // Original app's class
-                            eventAfterNext.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED &&
-                            (eventAfterNext.eventTimestamp - nextEvent.eventTimestamp < CONFIG_CHANGE_PEEK_AHEAD_MS)) { // Timing from CONFIG_CHANGE to RESUME
-                            
-                            isTransientConfigChangePause = true
-                        }
-                    }
-
-                    if (isTransientConfigChangePause) {
-                        Log.d(TAG_REPO, "PAUSED $packageName ($className): Detected as POTENTIALLY TRANSIENT (due to upcoming config change and resume). Storing pause time $eventTimestampUTC. Session continues.")
-                        potentiallyTransientPause[packageName] = eventTimestampUTC
-                        // DO NOT remove from currentAppSessions or process session yet.
-                    } else {
-                        val sessionStartTimeFromMap = currentAppSessions.remove(packageName)
-                        if (sessionStartTimeFromMap != null) {
-                            if (eventTimestampUTC > sessionStartTimeFromMap) {
-                                Log.d(TAG_REPO, "PAUSED $packageName ($className): Standard pause. Session: $sessionStartTimeFromMap -> $eventTimestampUTC.")
-                                processAndAggregateSession(packageName, sessionStartTimeFromMap, eventTimestampUTC, appUsageAggregator)
-                            } else {
-                                Log.w(TAG_REPO, "PAUSED $packageName ($className): End time $eventTimestampUTC <= start time $sessionStartTimeFromMap. Skipping.")
-                            }
-                        }
-                        potentiallyTransientPause.remove(packageName) // Clear any prior transient state
-                    }
-                }
-                RawAppEvent.EVENT_TYPE_ACTIVITY_STOPPED -> {
-                    Log.d(TAG_REPO, "EVENT: STOPPED $packageName at $eventTimestampUTC")
-                    val sessionStartTimeFromMap = currentAppSessions.remove(packageName)
-                    if (sessionStartTimeFromMap != null) {
-                        if (eventTimestampUTC > sessionStartTimeFromMap) {
-                            Log.d(TAG_REPO, "STOPPED $packageName ($className): Session: $sessionStartTimeFromMap -> $eventTimestampUTC.")
-                            processAndAggregateSession(packageName, sessionStartTimeFromMap, eventTimestampUTC, appUsageAggregator)
-                        } else {
-                             Log.w(TAG_REPO, "STOPPED $packageName ($className): End time $eventTimestampUTC <= start time $sessionStartTimeFromMap. Skipping.")
-                        }
-                    }
-                    potentiallyTransientPause.remove(packageName) // Clear any transient state definitively
-                }
-                 RawAppEvent.EVENT_TYPE_CONFIGURATION_CHANGE -> {
-                    Log.d(TAG_REPO, "EVENT: CONFIG_CHANGE $packageName ($className) at $eventTimestampUTC. Handled by PAUSE/RESUME logic.")
-                    // This event itself doesn't directly alter sessions; its impact is via PAUSE/RESUME lookaheads.
-                }
-                RawAppEvent.EVENT_TYPE_USER_INTERACTION -> {
-                    Log.d(TAG_REPO, "EVENT: USER_INTERACTION $packageName at $eventTimestampUTC")
-                    if (!currentAppSessions.containsKey(packageName) && !potentiallyTransientPause.containsKey(packageName)) {
-                        // If no active session and not in a transient pause, this interaction might imply a start.
-                        // However, a RESUME event is more definitive. For now, this mainly serves as an activity indicator.
-                        // Let's not start a session here to avoid conflicts if a RESUME is imminent.
-                        Log.v(TAG_REPO, "USER_INTERACTION for $packageName: Not currently in an active or transient session. No session started by this event alone.")
-                    }
-                }
-                RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE -> {
-                    Log.d(TAG_REPO, "EVENT: SCREEN_NON_INTERACTIVE at $eventTimestampUTC")
-                    val appsToFinalize = currentAppSessions.toMap() // Iterate over a copy
-                    for ((pkg, startTime) in appsToFinalize) {
-                        if (eventTimestampUTC > startTime) {
-                            Log.d(TAG_REPO, "SCREEN_NON_INTERACTIVE: Finalizing session for $pkg. $startTime -> $eventTimestampUTC")
-                            processAndAggregateSession(pkg, startTime, eventTimestampUTC, appUsageAggregator)
-                        }
-                        currentAppSessions.remove(pkg)
-                        potentiallyTransientPause.remove(pkg) // Screen off clears transient states
-                    }
-                }
-                RawAppEvent.EVENT_TYPE_SCREEN_INTERACTIVE -> {
-                     Log.d(TAG_REPO, "EVENT: SCREEN_INTERACTIVE at $eventTimestampUTC. No direct session change; RESUME events will follow for active app.")
-                }
-                // Other event types (KEYGUARD_SHOWN/HIDDEN, etc.) can be logged but might not directly alter app sessions here
-                // unless explicitly needed. SCREEN_NON_INTERACTIVE is the main one for session termination.
-            }
-            lastEventTypeForApp[packageName] = internalEventType
-        } // End of forEachIndexed loop
-
-        // Finalize any sessions still marked as active at the end of the day
-        for ((pkgName, sessionStartTimeUTC) in currentAppSessions) {
-            if (endOfTodayUTC > sessionStartTimeUTC) {
-                processAndAggregateSession(pkgName, sessionStartTimeUTC, endOfTodayUTC, appUsageAggregator)
-            }
-        }
-        currentAppSessions.clear()
+        val appUsageAggregator = aggregateUsage(storedRawEventsForToday, endOfTodayUTC)
 
         var recordsProcessed = 0
         if (appUsageAggregator.isNotEmpty()) {
             Log.d(TAG_REPO, "Aggregated Usage for $todayDateString from stored raw events:")
             val dailyRecordsToInsert = mutableListOf<DailyAppUsageRecord>()
-            for ((key, totalDuration) in appUsageAggregator) {
+            for ((key, totals) in appUsageAggregator) {
                 val (pkg, dateStr) = key
-                if (totalDuration > 0) {
+                val foregroundDuration = totals.first
+                val activeDuration = totals.second
+                if (foregroundDuration > 0) {
                     dailyRecordsToInsert.add(DailyAppUsageRecord(
                         packageName = pkg,
                         dateString = dateStr,
-                        usageTimeMillis = totalDuration,
+                        usageTimeMillis = foregroundDuration,
+                        activeTimeMillis = activeDuration,
                         lastUpdatedTimestamp = DateUtil.getUtcTimestamp()
                     ))
                 }
@@ -399,46 +254,111 @@ class ScrollDataRepositoryImpl(
         return@withContext true
     }
 
-    // Helper function to process a single session and add its duration to the aggregator
-    private fun processAndAggregateSession(
-        packageName: String,
-        sessionStartTimeUTC: Long,
-        sessionEndTimeUTC: Long,
-        aggregator: MutableMap<Pair<String, String>, Long>
-    ) {
-        if (sessionStartTimeUTC == 0L || sessionEndTimeUTC <= sessionStartTimeUTC) {
-            // Log.v(TAG_REPO, "Skipping zero or negative duration session for $packageName ($sessionStartTimeUTC -> $sessionEndTimeUTC)")
-            return // No valid duration to record
+    private fun calculateActiveTimeFromInteractions(interactionTimestamps: List<Long>): Long {
+        if (interactionTimestamps.isEmpty()) return 0L
+
+        val intervals = interactionTimestamps.map { it to it + ACTIVE_TIME_INTERACTION_WINDOW_MS }.sortedBy { it.first }
+
+        val merged = mutableListOf<Pair<Long, Long>>()
+        if (intervals.isNotEmpty()) {
+            merged.add(intervals.first())
+        } else {
+            return 0L
         }
 
-        val duration = sessionEndTimeUTC - sessionStartTimeUTC
-        if (duration < MINIMUM_SIGNIFICANT_SESSION_DURATION_MS) {
-            Log.d(TAG_REPO, "Skipping very short session for $packageName. Duration: $duration ms. Start: $sessionStartTimeUTC, End: $sessionEndTimeUTC")
-            return
-        }
-
-        // Log.d(TAG_REPO, "Processing session for $packageName: Start: $sessionStartTimeUTC, End: $sessionEndTimeUTC, Duration: ${sessionEndTimeUTC - sessionStartTimeUTC}")
-
-        var currentProcessingTimeUTC = sessionStartTimeUTC
-
-        while (currentProcessingTimeUTC < sessionEndTimeUTC) {
-            val currentLocalDateString = DateUtil.formatUtcTimestampToLocalDateString(currentProcessingTimeUTC)
-            val endOfCurrentLocalDateUtc = DateUtil.getEndOfDayUtcMillis(currentLocalDateString)
-
-            // Determine the end of this segment: either the end of the current local day or the actual session end, whichever comes first.
-            val segmentEndTimeUTC = min(endOfCurrentLocalDateUtc, sessionEndTimeUTC)
-
-            // Duration for this segment
-            val segmentDuration = segmentEndTimeUTC - currentProcessingTimeUTC // Revised
-
-            if (segmentDuration > 0) { // Ensure duration is strictly positive
-                val key = Pair(packageName, currentLocalDateString)
-                aggregator[key] = (aggregator[key] ?: 0L) + segmentDuration
-                // Log.d(TAG_REPO, "  -> Added to $currentLocalDateString for $packageName: $segmentDuration ms. New total for day: ${aggregator[key]}")
+        for (i in 1 until intervals.size) {
+            val current = intervals[i]
+            val last = merged.last()
+            if (current.first < last.second) {
+                val newEnd = max(last.second, current.second)
+                merged[merged.size - 1] = last.first to newEnd
+            } else {
+                merged.add(current)
             }
-            // Move to the start of the next segment (which is the end time of the current segment)
-            currentProcessingTimeUTC = segmentEndTimeUTC // Revised
         }
+        return merged.sumOf { it.second - it.first }
+    }
+
+    private fun aggregateUsage(allEvents: List<RawAppEvent>, periodEndDate: Long): Map<Pair<String, String>, Pair<Long, Long>> {
+        // Stage 1: Identify all foreground sessions from the event stream.
+        data class Session(val pkg: String, val startTime: Long, val endTime: Long)
+        val sessions = mutableListOf<Session>()
+        val currentSessionStart = mutableMapOf<String, Long>()
+
+        allEvents.forEach { event ->
+            val pkg = event.packageName
+            if (isFilteredPackage(pkg)) return@forEach
+
+            val eventType = event.eventType
+            val timestamp = event.eventTimestamp
+
+            val isInteraction = eventType >= RawAppEvent.EVENT_TYPE_ACCESSIBILITY_OFFSET
+            val isResume = eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED
+            val isPauseOrStop = eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED || eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_STOPPED
+            val isScreenOff = eventType == RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE
+
+            if (isResume || (isInteraction && !currentSessionStart.containsKey(pkg))) {
+                // An app becomes primary. End sessions for all other apps.
+                currentSessionStart.keys.filter { it != pkg }.forEach { otherPkg ->
+                    currentSessionStart.remove(otherPkg)?.let { startTime ->
+                        if(timestamp > startTime) sessions.add(Session(otherPkg, startTime, timestamp - 1))
+                    }
+                }
+                // Start a new session for the current app if it wasn't already running.
+                if (!currentSessionStart.containsKey(pkg)) {
+                    currentSessionStart[pkg] = timestamp
+                }
+            } else if (isPauseOrStop) {
+                // App is paused or stopped, end its session.
+                currentSessionStart.remove(pkg)?.let { startTime ->
+                    if(timestamp > startTime) sessions.add(Session(pkg, startTime, timestamp))
+                }
+            } else if (isScreenOff) {
+                // Screen off ends all running sessions.
+                currentSessionStart.keys.toList().forEach { runningPkg ->
+                    currentSessionStart.remove(runningPkg)?.let { startTime ->
+                        if(timestamp > startTime) sessions.add(Session(runningPkg, startTime, timestamp))
+                    }
+                }
+            }
+        }
+        // End any sessions still running at the end of the specified period.
+        currentSessionStart.forEach { (pkg, startTime) ->
+            if(periodEndDate > startTime) sessions.add(Session(pkg, startTime, periodEndDate))
+        }
+
+        // Stage 2: Calculate usage and active time for each session.
+        val aggregator = mutableMapOf<Pair<String, String>, Pair<Long, Long>>()
+        val accessibilityEventTypes = setOf(
+            RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED,
+            RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_FOCUSED,
+            RawAppEvent.EVENT_TYPE_ACCESSIBILITY_TYPING
+        )
+        val interactionEventsByPackage = allEvents
+            .filter { it.eventType in accessibilityEventTypes }
+            .groupBy { it.packageName }
+
+        sessions.forEach { session ->
+            val usageTime = session.endTime - session.startTime
+            if (usageTime < MINIMUM_SIGNIFICANT_SESSION_DURATION_MS) return@forEach
+
+            val dateString = DateUtil.formatUtcTimestampToLocalDateString(session.startTime)
+            val key = Pair(session.pkg, dateString)
+
+            // Find interaction events that fall within this specific session's timeframe.
+            val sessionInteractionTimestamps = interactionEventsByPackage[session.pkg]
+                ?.map { it.eventTimestamp }
+                ?.filter { it in session.startTime..session.endTime }
+                ?.sorted()
+                ?: emptyList()
+
+            val activeTime = calculateActiveTimeFromInteractions(sessionInteractionTimestamps)
+
+            val (currentUsage, currentActive) = aggregator.getOrDefault(key, 0L to 0L)
+            aggregator[key] = (currentUsage + usageTime) to (currentActive + activeTime)
+            Log.d(TAG_REPO, "Processed Session for ${session.pkg} on $dateString: UsageTime=${usageTime}ms, ActiveTime=${activeTime}ms")
+        }
+        return aggregator
     }
 
     override suspend fun getTotalUsageTimeMillisForDate(dateString: String): Long? {
@@ -449,6 +369,8 @@ class ScrollDataRepositoryImpl(
     }
 
     override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean = withContext(Dispatchers.IO) {
+        Log.i(TAG_REPO, "Starting historical backfill for the last $numberOfDays days.")
+
         val usageStatsManager =
             application.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
                 ?: run {
@@ -456,267 +378,101 @@ class ScrollDataRepositoryImpl(
                     return@withContext false
                 }
 
-        Log.i(TAG_REPO, "Starting historical app usage data backfill for the last $numberOfDays days using event-based processing.")
-        
+        val today = Calendar.getInstance()
         var overallSuccess = true
 
-        for (i in numberOfDays downTo 1) { // Iterate from N days ago up to yesterday
+        for (i in 1..numberOfDays) {
             val calendar = Calendar.getInstance().apply {
+                timeInMillis = today.timeInMillis
                 add(Calendar.DAY_OF_YEAR, -i)
             }
-            val historicalDateLocalString = DateUtil.formatDateToYyyyMmDdString(calendar.time)
-            val startOfDayUTC = DateUtil.getStartOfDayUtcMillis(historicalDateLocalString)
-            val endOfDayUTC = DateUtil.getEndOfDayUtcMillis(historicalDateLocalString)
-            var lastSystemEventTimestampForDay = 0L // For out-of-order detection within this day's backfill
+            val historicalDateLocalString = DateUtil.formatCalendarToLocalDateString(calendar)
+            val startOfDayUTC = DateUtil.getStartOfDayUtcMillisForCalendar(calendar)
+            val endOfDayUTC = DateUtil.getEndOfDayUtcMillisForCalendar(calendar)
 
-            Log.d(TAG_REPO, "Backfilling data for date: $historicalDateLocalString (Range: $startOfDayUTC to $endOfDayUTC)")
-
-            // Step 1: Clear any previously logged raw events and aggregated data for this historical day
             try {
-                rawAppEventDao.deleteEventsForDateString(historicalDateLocalString)
-                dailyAppUsageDao.deleteUsageForDate(historicalDateLocalString)
-                Log.d(TAG_REPO, "Cleared existing raw and aggregated data for $historicalDateLocalString")
-            } catch (e: Exception) {
-                Log.e(TAG_REPO, "Error clearing existing data for $historicalDateLocalString during backfill", e)
-                overallSuccess = false
-                continue // Skip to next day if clearing fails
-            }
+                // Check if we already have data for this day
+                val existingRecordsCount = dailyAppUsageDao.getUsageCountForDateString(historicalDateLocalString)
+                if (existingRecordsCount > 0) {
+                    Log.i(TAG_REPO, "Skipping backfill for $historicalDateLocalString, records already exist.")
+                    continue
+                }
 
-            // Step 2: Query and Log fresh raw events from UsageStatsManager for the historical day
-            val systemEvents: UsageEvents? = try {
-                usageStatsManager.queryEvents(startOfDayUTC, endOfDayUTC)
-            } catch (e: Exception) {
-                Log.e(TAG_REPO, "Error querying usage events from UsageStatsManager for $historicalDateLocalString", e)
-                overallSuccess = false
-                continue // Skip to next day
-            }
-
-            val rawEventsToInsert = mutableListOf<RawAppEvent>()
-            if (systemEvents != null) {
+                // Fetch raw events for the historical day from UsageStatsManager
+                val events = usageStatsManager.queryEvents(startOfDayUTC, endOfDayUTC)
+                val rawEventsFromUsageManager = mutableListOf<RawAppEvent>()
+                if (events != null) {
                 val event = UsageEvents.Event()
-                while (systemEvents.hasNextEvent()) {
-                    systemEvents.getNextEvent(event)
-
-                    val currentSystemEventTimestamp = event.timeStamp
-                    if (lastSystemEventTimestampForDay != 0L && currentSystemEventTimestamp < lastSystemEventTimestampForDay && currentSystemEventTimestamp >= startOfDayUTC) { // Check it's still within the day's bounds
-                        Log.w(TAG_REPO, "Out-of-order event during backfill from UsageStatsManager for ${event.packageName} on $historicalDateLocalString. Current: $currentSystemEventTimestamp, Prev: $lastSystemEventTimestampForDay. Type: ${event.eventType}")
-                    }
-                    // Only update if the event is within the current processing day to avoid carry-over from a previous day's last event if queryEvents was broader than expected
-                    if (currentSystemEventTimestamp >= startOfDayUTC && currentSystemEventTimestamp <= endOfDayUTC) {
-                        lastSystemEventTimestampForDay = currentSystemEventTimestamp
-                    }
-
-                    val packageName = event.packageName ?: continue
-                    val eventTimestampUTC = event.timeStamp
-                    if (eventTimestampUTC < startOfDayUTC || eventTimestampUTC > endOfDayUTC) {
-                        continue // Should not happen if queryEvents range is precise
-                    }
+                    while (events.hasNextEvent()) {
+                        events.getNextEvent(event)
                     val internalEventType = mapUsageEventTypeToInternal(event.eventType)
-                    rawEventsToInsert.add(
+                        rawEventsFromUsageManager.add(
                         RawAppEvent(
-                            packageName = packageName,
+                                packageName = event.packageName,
                             className = event.className,
                             eventType = internalEventType,
-                            eventTimestamp = eventTimestampUTC,
-                            eventDateString = historicalDateLocalString // Use the target date string
+                                eventTimestamp = event.timeStamp,
+                                eventDateString = DateUtil.formatUtcTimestampToLocalDateString(event.timeStamp)
+                            )
                         )
-                    )
-                }
-                if (rawEventsToInsert.isNotEmpty()) {
-                    try {
-                        rawAppEventDao.insertEvents(rawEventsToInsert.toList())
-                    } catch (e: Exception) {
-                        Log.e(TAG_REPO, "Error batch inserting raw events for $historicalDateLocalString", e)
-                        overallSuccess = false
-                        // Continue to attempt aggregation with any events that might have been stored from other sources if desired
                     }
                 }
-            } else {
-                Log.w(TAG_REPO, "UsageEvents from UsageStatsManager is null for $historicalDateLocalString.")
-            }
 
-            // Step 3: Fetch all stored raw events for the historical day to perform aggregation
-            val storedRawEventsForDay: List<RawAppEvent> = try {
-                Log.d(TAG_REPO, "Attempting to fetch stored raw events for $historicalDateLocalString from $startOfDayUTC to $endOfDayUTC (Backfill)")
-                val events = rawAppEventDao.getEventsForPeriod(startOfDayUTC, endOfDayUTC)
-                Log.d(TAG_REPO, "Successfully fetched ${events.size} stored raw events for $historicalDateLocalString (Backfill)")
-                events
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                Log.e(TAG_REPO, "Fetching stored raw events for $historicalDateLocalString (Backfill) was CANCELLED", e)
-                throw e // Re-throw cancellation
-            } catch (e: Exception) {
-                Log.e(TAG_REPO, "Error fetching stored raw events for $historicalDateLocalString (Backfill)", e)
-                overallSuccess = false
-                continue // Skip to next day
-            }
+                // Also fetch raw accessibility events for the historical day from our DB
+                val allDbEventsForDay = rawAppEventDao.getEventsForPeriod(startOfDayUTC, endOfDayUTC)
+                val rawAccessibilityEventsForDay = allDbEventsForDay.filter { it.eventType >= RawAppEvent.EVENT_TYPE_ACCESSIBILITY_OFFSET }
 
-            if (storedRawEventsForDay.isEmpty()) {
-                Log.i(TAG_REPO, "No stored raw events found for $historicalDateLocalString after logging. No aggregation to perform.")
-                // This is not an error, just no data for the day.
+                val allRawEvents = (rawEventsFromUsageManager + rawAccessibilityEventsForDay)
+                    .sortedBy { it.eventTimestamp }
+                    .distinctBy { "${it.packageName}-${it.eventType}-${it.eventTimestamp}" }
+
+
+                if (allRawEvents.isEmpty()) {
+                    Log.i(TAG_REPO, "No combined usage or accessibility events found for $historicalDateLocalString.")
                 continue
-            }
-            Log.d(TAG_REPO, "Processing ${storedRawEventsForDay.size} stored raw events for $historicalDateLocalString for aggregation.")
-
-            // Step 4 & 5: Process stored raw events and aggregate usage (same logic as updateTodayAppUsageStats)
-            val currentAppSessions = mutableMapOf<String, Long>()
-            val appUsageAggregator = mutableMapOf<Pair<String, String>, Long>()
-            val potentiallyTransientPause = mutableMapOf<String, Long>() // packageName -> timestamp of a pause that might be due to config change
-            val lastEventTypeForApp = mutableMapOf<String, Int>() // packageName -> last processed RawAppEvent.EVENT_TYPE_ for this app
-
-            storedRawEventsForDay.forEachIndexed { index, rawEvent ->
-                val packageName = rawEvent.packageName
-                val eventTimestampUTC = rawEvent.eventTimestamp
-                val internalEventType = rawEvent.eventType
-                val className = rawEvent.className // Needed for more precise config change check
-
-                // Filter out self-package events, except screen events
-                if (packageName == application.packageName && internalEventType != RawAppEvent.EVENT_TYPE_SCREEN_INTERACTIVE && internalEventType != RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE) {
-                    lastEventTypeForApp[packageName] = internalEventType // Still record it happened
-                    return@forEachIndexed // Skip processing for aggregation
                 }
 
-                when (internalEventType) {
-                    RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED -> {
-                        Log.d(TAG_REPO, "EVENT: RESUMED $packageName at $eventTimestampUTC (Backfill for $historicalDateLocalString)")
-                        currentAppSessions.keys.filter { it != packageName }.forEach { otherPkg ->
-                            val otherAppSessionStart = currentAppSessions.remove(otherPkg)
-                            if (otherAppSessionStart != null && eventTimestampUTC -1 > otherAppSessionStart) {
-                                Log.d(TAG_REPO, "Implicitly PAUSING $otherPkg due to $packageName RESUME (Backfill for $historicalDateLocalString). Session: $otherAppSessionStart -> ${'$'}{eventTimestampUTC -1}")
-                                processAndAggregateSession(otherPkg, otherAppSessionStart, eventTimestampUTC - 1, appUsageAggregator)
-                            }
-                            potentiallyTransientPause.remove(otherPkg)
-                        }
+                dailyAppUsageDao.deleteUsageForDate(historicalDateLocalString)
 
-                        val transientPauseTime = potentiallyTransientPause.remove(packageName)
-                        if (transientPauseTime != null && (eventTimestampUTC - transientPauseTime < CONFIG_CHANGE_MERGE_THRESHOLD_MS)) {
-                            Log.d(TAG_REPO, "RESUMED $packageName ($className) (Backfill for $historicalDateLocalString): Continuing session after transient pause. Original start: ${'$'}{currentAppSessions[packageName]}, Pause was at $transientPauseTime, Resumed at $eventTimestampUTC")
-                        } else {
-                            val existingSessionStartTime = currentAppSessions[packageName]
-                            if (existingSessionStartTime != null) {
-                                if (transientPauseTime == null) {
-                                    if (eventTimestampUTC > existingSessionStartTime) {
-                                         Log.v(TAG_REPO, "Finalizing previous segment for $packageName ($className) (Backfill for $historicalDateLocalString) from $existingSessionStartTime to ${'$'}{eventTimestampUTC -1} before new resume.")
-                                         processAndAggregateSession(packageName, existingSessionStartTime, eventTimestampUTC -1, appUsageAggregator)
-                                    }
-                                }
-                            }
-                            currentAppSessions[packageName] = eventTimestampUTC
-                            Log.d(TAG_REPO, "RESUMED $packageName ($className) (Backfill for $historicalDateLocalString): New session started at $eventTimestampUTC.")
-                        }
-                    }
-                    RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED -> {
-                        Log.d(TAG_REPO, "EVENT: PAUSED $packageName at $eventTimestampUTC (Backfill for $historicalDateLocalString)")
-                        var isTransientConfigChangePause = false
-                        val nextEvent = if (index + 1 < storedRawEventsForDay.size) storedRawEventsForDay[index + 1] else null
-                        val eventAfterNext = if (index + 2 < storedRawEventsForDay.size) storedRawEventsForDay[index + 2] else null
+                Log.d(TAG_REPO, "Backfill for $historicalDateLocalString: Processing ${allRawEvents.size} raw events.")
 
-                        // Revised logic (applied to backfill loop as well):
-                        if (nextEvent != null &&
-                            nextEvent.eventType == RawAppEvent.EVENT_TYPE_CONFIGURATION_CHANGE &&
-                            (nextEvent.eventTimestamp - eventTimestampUTC < CONFIG_CHANGE_PEEK_AHEAD_MS)) {
-    
-                            if (eventAfterNext != null &&
-                                eventAfterNext.packageName == packageName &&
-                                eventAfterNext.className == className &&
-                                eventAfterNext.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED &&
-                                (eventAfterNext.eventTimestamp - nextEvent.eventTimestamp < CONFIG_CHANGE_PEEK_AHEAD_MS)) {
-                                
-                                isTransientConfigChangePause = true
-                            }
-                        }
+                val appUsageAggregator = aggregateUsage(allRawEvents, endOfDayUTC)
 
-                        if (isTransientConfigChangePause) {
-                            Log.d(TAG_REPO, "PAUSED $packageName ($className) (Backfill for $historicalDateLocalString): Detected as POTENTIALLY TRANSIENT. Storing pause time $eventTimestampUTC. Session continues.")
-                            potentiallyTransientPause[packageName] = eventTimestampUTC
-                        } else {
-                            val sessionStartTimeFromMap = currentAppSessions.remove(packageName)
-                            if (sessionStartTimeFromMap != null) {
-                                if (eventTimestampUTC > sessionStartTimeFromMap) {
-                                    Log.d(TAG_REPO, "PAUSED $packageName ($className) (Backfill for $historicalDateLocalString): Standard pause. Session: $sessionStartTimeFromMap -> $eventTimestampUTC.")
-                                    processAndAggregateSession(packageName, sessionStartTimeFromMap, eventTimestampUTC, appUsageAggregator)
-                                } else {
-                                    Log.w(TAG_REPO, "PAUSED $packageName ($className) (Backfill for $historicalDateLocalString): End time $eventTimestampUTC <= start $sessionStartTimeFromMap. Skipping.")
-                                }
-                            }
-                            potentiallyTransientPause.remove(packageName)
-                        }
-                    }
-                    RawAppEvent.EVENT_TYPE_ACTIVITY_STOPPED -> {
-                        Log.d(TAG_REPO, "EVENT: STOPPED $packageName at $eventTimestampUTC (Backfill for $historicalDateLocalString)")
-                        val sessionStartTimeFromMap = currentAppSessions.remove(packageName)
-                        if (sessionStartTimeFromMap != null) {
-                            if (eventTimestampUTC > sessionStartTimeFromMap) {
-                                Log.d(TAG_REPO, "STOPPED $packageName ($className) (Backfill for $historicalDateLocalString): Session: $sessionStartTimeFromMap -> $eventTimestampUTC.")
-                                processAndAggregateSession(packageName, sessionStartTimeFromMap, eventTimestampUTC, appUsageAggregator)
-                            } else {
-                                 Log.w(TAG_REPO, "STOPPED $packageName ($className) (Backfill for $historicalDateLocalString): End time $eventTimestampUTC <= start $sessionStartTimeFromMap. Skipping.")
-                            }
-                        }
-                        potentiallyTransientPause.remove(packageName)
-                    }
-                     RawAppEvent.EVENT_TYPE_CONFIGURATION_CHANGE -> {
-                        Log.d(TAG_REPO, "EVENT: CONFIG_CHANGE $packageName ($className) at $eventTimestampUTC (Backfill for $historicalDateLocalString). Handled by PAUSE/RESUME.")
-                    }
-                    RawAppEvent.EVENT_TYPE_USER_INTERACTION -> {
-                        Log.d(TAG_REPO, "EVENT: USER_INTERACTION $packageName at $eventTimestampUTC (Backfill for $historicalDateLocalString)")
-                        // Similar to updateToday, no direct session start here.
-                    }
-                    RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE -> {
-                        Log.d(TAG_REPO, "EVENT: SCREEN_NON_INTERACTIVE at $eventTimestampUTC (Backfill for $historicalDateLocalString)")
-                        val appsToFinalize = currentAppSessions.toMap()
-                        for ((pkg, startTime) in appsToFinalize) {
-                            if (eventTimestampUTC > startTime) {
-                                Log.d(TAG_REPO, "SCREEN_NON_INTERACTIVE (Backfill for $historicalDateLocalString): Finalizing $pkg. $startTime -> $eventTimestampUTC")
-                                processAndAggregateSession(pkg, startTime, eventTimestampUTC, appUsageAggregator)
-                            }
-                            currentAppSessions.remove(pkg)
-                            potentiallyTransientPause.remove(pkg)
-                        }
-                    }
-                    RawAppEvent.EVENT_TYPE_SCREEN_INTERACTIVE -> {
-                         Log.d(TAG_REPO, "EVENT: SCREEN_INTERACTIVE at $eventTimestampUTC (Backfill for $historicalDateLocalString). No direct session change.")
-                    }
-                }
-                lastEventTypeForApp[packageName] = internalEventType
-            } // End of forEachIndexed loop for backfill
-
-            // Finalize any sessions still marked as active at the end of the day (for backfill)
-            for ((pkgName, sessionStartTimeUTC) in currentAppSessions) {
-                if (endOfDayUTC > sessionStartTimeUTC) {
-                    processAndAggregateSession(pkgName, sessionStartTimeUTC, endOfDayUTC, appUsageAggregator)
-                }
-            }
-            currentAppSessions.clear()
-
-            var recordsProcessed = 0
-            if (appUsageAggregator.isNotEmpty()) {
-                val dailyRecordsToInsert = mutableListOf<DailyAppUsageRecord>()
-                for ((key, totalDuration) in appUsageAggregator) {
-                    val (pkg, dateStr) = key // dateStr should be historicalDateLocalString
-                    if (totalDuration > 0) {
-                        dailyRecordsToInsert.add(DailyAppUsageRecord(
+                if (appUsageAggregator.isNotEmpty()) {
+                    val recordsToInsert = appUsageAggregator.map { (key, totals) ->
+                        val (pkg, date) = key
+                        val (usage, active) = totals
+                        DailyAppUsageRecord(
                             packageName = pkg,
-                            dateString = dateStr, // Ensure this uses historicalDateLocalString
-                            usageTimeMillis = totalDuration,
-                    lastUpdatedTimestamp = DateUtil.getUtcTimestamp()
-                        ))
-            }
-        }
-                if (dailyRecordsToInsert.isNotEmpty()){
-            try {
-                        dailyAppUsageDao.insertAllUsage(dailyRecordsToInsert)
-                        recordsProcessed = dailyRecordsToInsert.size
+                            dateString = date,
+                            usageTimeMillis = usage,
+                            activeTimeMillis = active,
+                            lastUpdatedTimestamp = DateUtil.getUtcTimestamp()
+                        )
+                    }
+                    dailyAppUsageDao.insertAllUsage(recordsToInsert)
+                    Log.i(TAG_REPO, "Successfully backfilled ${recordsToInsert.size} records for $historicalDateLocalString.")
+                            } else {
+                    Log.i(TAG_REPO, "No significant app usage to save for $historicalDateLocalString.")
+                }
+
             } catch (e: Exception) {
-                        Log.e(TAG_REPO, "Error inserting aggregated records for $historicalDateLocalString", e)
+                Log.e(TAG_REPO, "Error during backfill for $historicalDateLocalString: ${e.message}", e)
                         overallSuccess = false
                     }
                 }
-            }
-            Log.i(TAG_REPO, "Processed $recordsProcessed usage records for historical date $historicalDateLocalString.")
-        } // End loop for days
-
-        Log.i(TAG_REPO, "Historical app usage data backfill completed. Overall success: $overallSuccess")
         return@withContext overallSuccess
+    }
+
+    @SuppressLint("PackageManagerGetSignatures")
+    private fun getAppName(packageName: String): String {
+        return try {
+            val packageManager = application.packageManager
+            val packageInfo = packageManager.getPackageInfo(packageName, 0)
+            packageInfo.applicationInfo?.loadLabel(packageManager)?.toString() ?: packageName
+        } catch (e: PackageManager.NameNotFoundException) {
+            packageName // Fallback to package name if not found
+        }
     }
 
     // --- Methods for App Detail Screen Chart Data ---
@@ -728,5 +484,7 @@ class ScrollDataRepositoryImpl(
         return scrollSessionDao.getAggregatedScrollForPackageAndDates(packageName, dateStrings)
     }
 }
+
+
 
 

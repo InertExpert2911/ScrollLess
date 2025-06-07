@@ -86,6 +86,13 @@ interface DailyAppUsageDao {
 
     @Query("DELETE FROM daily_app_usage WHERE date_string = :dateString")
     suspend fun deleteUsageForDate(dateString: String)
+
+    /**
+     * Returns the number of records for a given date string.
+     * Useful for checking if a backfill has already been performed for a day.
+     */
+    @Query("SELECT COUNT(*) FROM daily_app_usage WHERE date_string = :dateString")
+    suspend fun getUsageCountForDateString(dateString: String): Int
 }
 
 /**
