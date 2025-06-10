@@ -344,4 +344,89 @@ class ScrollDataRepositoryImplTest {
         // ASSERT
         assertThat(result).isFalse()
     }
+
+    @Test
+    fun `aggregateUsage - filtered packages are ignored`() {
+        // ARRANGE: An app session interleaved with a launcher session, which should be filtered.
+        val startTime = 9000000L
+        val testEvents = listOf(
+            createEvent("com.google.android.apps.nexuslauncher", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime),
+            createEvent("com.app.a", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime + 1000L),
+            createEvent("com.app.a", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startTime + 21000L), // 20s session
+            createEvent("com.google.android.apps.nexuslauncher", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startTime + 22000L)
+        )
+        val periodEndDate = startTime + 30000L
+
+        // ACT
+        val result = repository.aggregateUsage(testEvents, periodEndDate)
+
+        // ASSERT
+        assertThat(result).hasSize(1) // Only the session for "com.app.a" should be present.
+        val dateString = DateUtil.formatUtcTimestampToLocalDateString(startTime)
+        val key = Pair("com.app.a", dateString)
+        assertThat(result).containsKey(key)
+        assertThat(result).doesNotContainKey(Pair("com.google.android.apps.nexuslauncher", dateString))
+
+        val usage = result[key]!!
+        assertThat(usage.first).isEqualTo(20000L)
+    }
+
+    @Test
+    fun `aggregateUsage - separate active time windows are summed`() {
+        // ARRANGE: A session with two interactions far apart in time.
+        val startTime = 10000000L
+        val interaction1Time = startTime + 5000L
+        // The 2nd interaction is 10s after the first one. Since the active window is 2s, they won't merge.
+        val interaction2Time = startTime + 15000L
+        val endTime = startTime + 30000L
+        val testEvents = listOf(
+            createEvent("com.app.spaced", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime),
+            createEvent("com.app.spaced", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, interaction1Time),
+            createEvent("com.app.spaced", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, interaction2Time),
+            createEvent("com.app.spaced", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, endTime)
+        )
+        val periodEndDate = endTime + 10000L
+
+        // ACT
+        val result = repository.aggregateUsage(testEvents, periodEndDate)
+
+        // ASSERT
+        assertThat(result).hasSize(1)
+        val dateString = DateUtil.formatUtcTimestampToLocalDateString(startTime)
+        val key = Pair("com.app.spaced", dateString)
+        assertThat(result).containsKey(key)
+
+        val usage = result[key]!!
+        assertThat(usage.first).isEqualTo(30000L)
+        // Each interaction creates a 2000ms window. Since they are separate, the total is 4000ms.
+        assertThat(usage.second).isEqualTo(4000L)
+    }
+
+    @Test
+    fun `aggregateUsage - interaction outside session is ignored`() {
+        // ARRANGE: A session with interaction events happening before and after the session's timeframe.
+        val startTime = 11000000L
+        val endTime = startTime + 20000L
+        val testEvents = listOf(
+            createEvent("com.app.bounds", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, startTime - 5000L), // Interaction before RESUME
+            createEvent("com.app.bounds", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime),
+            createEvent("com.app.bounds", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, endTime),
+            createEvent("com.app.bounds", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, endTime + 5000L) // Interaction after PAUSE
+        )
+        val periodEndDate = endTime + 10000L
+
+        // ACT
+        val result = repository.aggregateUsage(testEvents, periodEndDate)
+
+        // ASSERT
+        assertThat(result).hasSize(1)
+        val dateString = DateUtil.formatUtcTimestampToLocalDateString(startTime)
+        val key = Pair("com.app.bounds", dateString)
+        assertThat(result).containsKey(key)
+
+        val usage = result[key]!!
+        assertThat(usage.first).isEqualTo(20000L)
+        // Active time should be zero because both interactions were outside the session.
+        assertThat(usage.second).isEqualTo(0L)
+    }
 } 

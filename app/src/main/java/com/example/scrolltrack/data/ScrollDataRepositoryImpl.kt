@@ -311,7 +311,7 @@ class ScrollDataRepositoryImpl(
             val isPauseOrStop = eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED || eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_STOPPED
             val isScreenOff = eventType == RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE
 
-            if (isResume || (isInteraction && !currentSessionStart.containsKey(pkg))) {
+            if (isResume) {
                 // An app becomes primary. End sessions for all other apps.
                 currentSessionStart.keys.filter { it != pkg }.forEach { otherPkg ->
                     currentSessionStart.remove(otherPkg)?.let { startTime ->
