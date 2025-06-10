@@ -14,7 +14,7 @@ class DateUtilTest {
         val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss").apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
-        val timestamp = formatter.parse("2024-01-15 10:00:00").time
+        val timestamp = formatter.parse("2024-01-15 10:00:00")!!.time
 
         // ACT
         val result = DateUtil.formatUtcTimestampToLocalDateString(timestamp)

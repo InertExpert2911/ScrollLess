@@ -20,6 +20,10 @@ androidxNavigationVersion = "2.9.0"
 palette = "1.0.0"
 truth = "1.4.4"
 mockk = "1.14.2"
+coroutinesTest = "1.10.2"
+turbine = "1.2.0"
+mockito = "5.18.0"
+androidxArchCore = "2.2.0"
 
 [libraries]
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
@@ -51,6 +55,10 @@ androidx-navigation-compose = { group = "androidx.navigation", name = "navigatio
 androidx-palette-ktx = { group = "androidx.palette", name = "palette-ktx", version.ref = "palette" }
 google-truth = { group = "com.google.truth", name = "truth", version.ref = "truth" }
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
+cash-turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
+mockito-core = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
+androidx-arch-core-testing = { group = "androidx.arch.core", name = "core-testing", version.ref = "androidxArchCore" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

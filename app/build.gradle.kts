@@ -87,4 +87,17 @@ dependencies {
 
     implementation(libs.androidx.palette.ktx)
 
+    // Coroutines and Flow testing
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.cash.turbine)
+
+    // Mockito for mocking
+    testImplementation(libs.mockito.core)
+
+    // AndroidX Test
+    testImplementation(libs.androidx.junit)
+    testImplementation(libs.androidx.arch.core.testing)
+
+    androidTestImplementation(libs.androidx.junit)
+
 }
