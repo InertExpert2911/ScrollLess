@@ -12,6 +12,7 @@ object ConversionUtil {
     private const val INCHES_PER_METER = 39.3701
     private const val METERS_PER_KILOMETER = 1000.0
     private const val INCHES_PER_MILE = 63360.0
+    private const val METERS_PER_MILE = 1609.34
 
     /**
      * Formats a distance in meters into a string with comma separation and " m" suffix.
@@ -38,25 +39,28 @@ object ConversionUtil {
      * @return Pair<Formatted Meters String, Formatted Miles String> e.g., ("1,234 m", "0.76 miles")
      */
     fun formatScrollDistance(scrollUnits: Long, context: Context): Pair<String, String> {
-        if (scrollUnits <= 0) return "0 m" to "0.00 miles"
-
-        val displayMetrics: DisplayMetrics = context.resources.displayMetrics
-        // Using ydpi as a primary reference for vertical scrolling,
-        // can be refined if xdpi and ydpi differ significantly and both scrolls are common.
-        val dpi = displayMetrics.ydpi
-        if (dpi <= 0f) { // ydpi is float
-            Log.w("ConversionUtil", "Invalid DPI detected: $dpi. Cannot calculate distance.")
-            return "N/A m" to "N/A miles"
+        if (scrollUnits == 0L) {
+            return "0 m" to "0.00 miles"
         }
 
-        val inchesScrolled = scrollUnits.toDouble() / dpi
-        val metersScrolled = inchesScrolled / INCHES_PER_METER
-        val miles = inchesScrolled / INCHES_PER_MILE
+        val ydpi = context.resources.displayMetrics.ydpi
+        if (ydpi <= 0) {
+            return "0 m" to "0.00 miles" // Avoid division by zero
+        }
+        
+        val inches = scrollUnits.toDouble() / ydpi
+        val meters = inches / INCHES_PER_METER
 
-        val formattedMeters = formatMeters(metersScrolled)
-        val formattedMiles = String.format(Locale.getDefault(), "%.2f miles", miles)
+        val metricDistance: String = if (meters >= 1000) {
+            String.format(Locale.US, "%.2f km", meters / 1000)
+        } else {
+            String.format(Locale.US, "%.2f m", meters)
+        }
 
-        return formattedMeters to formattedMiles
+        val miles = meters / METERS_PER_MILE
+        val imperialDistance = String.format(Locale.US, "%.2f miles", miles)
+
+        return metricDistance to imperialDistance
     }
 
     /**

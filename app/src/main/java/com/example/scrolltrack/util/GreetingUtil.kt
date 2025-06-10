@@ -28,16 +28,16 @@ object GreetingUtil {
      * @return A greeting string like "Good Morning 👋".
      */
     fun getGreeting(): String {
-        val calendar = Calendar.getInstance()
-        val hour = calendar.get(Calendar.HOUR_OF_DAY) // 24-hour format
+        val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        return getGreetingForHour(currentHour)
+    }
 
-        val timeOfDayMessage = when (hour) {
-            in 5..11 -> "Good Morning"  // 5 AM to 11:59 AM
-            in 12..17 -> "Good Afternoon" // 12 PM to 5:59 PM
-            in 18..21 -> "Good Evening" // 6 PM to 9:59 PM
-            else -> "Good Night"        // 10 PM to 4:59 AM (or adjust as preferred)
+    fun getGreetingForHour(hour: Int): String {
+        return when (hour) {
+            in 5..11 -> "Good Morning! ☀️"
+            in 12..17 -> "Good Afternoon! 🌤️"
+            in 18..21 -> "Good Evening! 🌙"
+            else -> "Good Night! 😴"
         }
-        val randomEmoji = greetingEmojis.random()
-        return "$timeOfDayMessage $randomEmoji"
     }
 }
