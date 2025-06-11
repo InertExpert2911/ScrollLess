@@ -97,6 +97,8 @@ dependencies {
     // AndroidX Test
     testImplementation(libs.androidx.junit)
     testImplementation(libs.androidx.arch.core.testing)
+    testImplementation(libs.androidx.room.testing)
+    testImplementation(libs.robolectric)
 
     androidTestImplementation(libs.androidx.junit)
 
