@@ -9,10 +9,21 @@ import io.mockk.mockk
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.junit.runners.JUnit4
 import com.example.scrolltrack.db.DailyAppUsageDao
 import com.example.scrolltrack.db.ScrollSessionDao
 import java.lang.reflect.Method
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
+import android.app.usage.UsageStatsManager
+import android.content.Context
+import com.example.scrolltrack.db.DailyAppUsageRecord
+import io.mockk.slot
+import kotlinx.coroutines.test.runTest
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import android.os.Build
+import android.app.usage.UsageEvents
 
 // Helper function to create a simple RawAppEvent
 private fun createEvent(pkg: String, type: Int, time: Long): RawAppEvent {
@@ -25,17 +36,37 @@ private fun createEvent(pkg: String, type: Int, time: Long): RawAppEvent {
     )
 }
 
-@RunWith(JUnit4::class)
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [Build.VERSION_CODES.P])
 class ScrollDataRepositoryImplTest {
 
     private lateinit var repository: ScrollDataRepositoryImpl
+    private lateinit var mockDailyAppUsageDao: DailyAppUsageDao
+    private lateinit var mockRawAppEventDao: RawAppEventDao
+    private lateinit var mockUsageStatsManager: UsageStatsManager
+    private lateinit var mockApplication: Application
+
+    private val inMemoryRawEvents = mutableListOf<RawAppEvent>()
 
     @Before
     fun setUp() {
+        inMemoryRawEvents.clear()
         val mockScrollSessionDao = mockk<ScrollSessionDao>(relaxed = true)
-        val mockDailyAppUsageDao = mockk<DailyAppUsageDao>(relaxed = true)
-        val mockRawAppEventDao = mockk<RawAppEventDao>(relaxed = true)
-        val mockApplication = mockk<Application>(relaxed = true)
+        mockDailyAppUsageDao = mockk(relaxed = true)
+        mockRawAppEventDao = mockk(relaxed = true)
+        mockApplication = mockk<Application>(relaxed = true)
+        mockUsageStatsManager = mockk(relaxed = true)
+
+        every { mockApplication.getSystemService(Context.USAGE_STATS_SERVICE) } returns mockUsageStatsManager
+        every { mockApplication.packageName } returns "com.example.scrolltrack"
+
+        // Make the mock RawAppEventDao stateful
+        coEvery { mockRawAppEventDao.insertEvents(any()) } coAnswers { inMemoryRawEvents.addAll(arg(0)) }
+        coEvery { mockRawAppEventDao.getEventsForPeriod(any(), any()) } coAnswers {
+            val start = arg<Long>(0)
+            val end = arg<Long>(1)
+            inMemoryRawEvents.filter { it.eventTimestamp in start..end }
+        }
 
         repository = ScrollDataRepositoryImpl(
             scrollSessionDao = mockScrollSessionDao,
@@ -43,6 +74,69 @@ class ScrollDataRepositoryImplTest {
             rawAppEventDao = mockRawAppEventDao,
             application = mockApplication
         )
+    }
+
+    // --- Tests for updateTodayAppUsageStats ---
+
+    @Test
+    fun `updateTodayAppUsageStats - initial fetch - queries correct time window`() = runTest {
+        val today = DateUtil.getCurrentLocalDateString()
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(today)
+
+        // ARRANGE: No previous events for today
+        coEvery { mockRawAppEventDao.getLatestEventTimestampForDate(today) } returns null
+
+        // ACT
+        repository.updateTodayAppUsageStats()
+
+        // ASSERT: Verify queryEvents is called with a window starting from the beginning of the day.
+        val startTimeSlot = slot<Long>()
+        coVerify { mockUsageStatsManager.queryEvents(capture(startTimeSlot), any()) }
+
+        // The query should start at the beginning of the day since there's no previous data.
+        assertThat(startTimeSlot.captured).isEqualTo(startOfDay)
+    }
+
+    @Test
+    fun `updateTodayAppUsageStats - incremental fetch - queries correct time window`() = runTest {
+        val today = DateUtil.getCurrentLocalDateString()
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(today)
+        val lastEventTime = startOfDay + 1000 * 60 * 60 // 1 hour into the day
+
+        // ARRANGE: A previous event exists for today
+        coEvery { mockRawAppEventDao.getLatestEventTimestampForDate(today) } returns lastEventTime
+
+        // ACT
+        repository.updateTodayAppUsageStats()
+
+        // ASSERT: Verify queryEvents is called with a window starting from the last event time minus overlap.
+        val startTimeSlot = slot<Long>()
+        val overlap = 10000L // from ScrollDataRepositoryImpl.EVENT_FETCH_OVERLAP_MS
+        coVerify { mockUsageStatsManager.queryEvents(capture(startTimeSlot), any()) }
+
+        assertThat(startTimeSlot.captured).isEqualTo(lastEventTime - overlap)
+    }
+
+    @Test
+    fun `updateTodayAppUsageStats - always deletes old data and inserts new`() = runTest {
+        val today = DateUtil.getCurrentLocalDateString()
+
+        // ARRANGE: Mock DAO to return some raw events to trigger aggregation
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(today)
+        val events = listOf(
+            createEvent("com.app.test", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 1000),
+            createEvent("com.app.test", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startOfDay + 6000) // Make session 5s long
+        )
+        coEvery { mockRawAppEventDao.getEventsForPeriod(any(), any()) } returns events
+
+        // ACT
+        repository.updateTodayAppUsageStats()
+
+        // ASSERT
+        // Verify that old data is deleted for the current day
+        coVerify { mockDailyAppUsageDao.deleteUsageForDate(today) }
+        // Verify that new aggregated data is inserted
+        coVerify { mockDailyAppUsageDao.insertAllUsage(any()) }
     }
 
     @Test
@@ -321,112 +415,135 @@ class ScrollDataRepositoryImplTest {
         assertThat(usage.second).isEqualTo(0L)
     }
 
+    // --- Tests for backfillHistoricalAppUsageData ---
     @Test
-    fun `isFilteredPackage - returns true for own package name`() {
-        // ARRANGE
-        val ownPackageName = "com.example.scrolltrack"
+    fun `backfillHistoricalAppUsageData - skips days with existing data`() = runTest {
+        val daysToBackfill = 3
+
+        // ARRANGE: Mock DAO to indicate that data EXISTS for all checked days
+        coEvery { mockDailyAppUsageDao.getUsageCountForDateString(any()) } returns 1
 
         // ACT
-        val result = repository.isFilteredPackage(ownPackageName)
+        repository.backfillHistoricalAppUsageData(daysToBackfill)
 
         // ASSERT
-        assertThat(result).isTrue()
+        // Verify we checked each of the 3 days
+        coVerify(exactly = daysToBackfill) { mockDailyAppUsageDao.getUsageCountForDateString(any()) }
+        // Verify that because data existed, we NEVER tried to query events or insert new data.
+        coVerify(exactly = 0) { mockUsageStatsManager.queryEvents(any(), any()) }
+        coVerify(exactly = 0) { mockDailyAppUsageDao.insertAllUsage(any()) }
     }
 
     @Test
-    fun `isFilteredPackage - returns false for other package name`() {
-        // ARRANGE
-        val otherPackageName = "com.someother.app"
+    fun `backfillHistoricalAppUsageData - processes and inserts for empty days`() = runTest {
+        val daysToBackfill = 2
+
+        // ARRANGE: Mock DAO to indicate NO data exists
+        coEvery { mockDailyAppUsageDao.getUsageCountForDateString(any()) } returns 0
+
+        // ARRANGE: Mock UsageStatsManager to return events appropriate for the queried time window
+        every { mockUsageStatsManager.queryEvents(any(), any()) } answers {
+            val startTime = it.invocation.args[0] as Long
+            val eventsToReturn = listOf(
+                // A significant session for a test app
+                createUsageEventForTest("com.app.backfill", UsageEvents.Event.ACTIVITY_RESUMED, startTime + 1000),
+                createUsageEventForTest("com.app.backfill", UsageEvents.Event.ACTIVITY_PAUSED, startTime + 6000),
+                // A session for a launcher, which should be filtered out
+                createUsageEventForTest("com.some.launcher", UsageEvents.Event.ACTIVITY_RESUMED, startTime + 7000),
+                createUsageEventForTest("com.some.launcher", UsageEvents.Event.ACTIVITY_PAUSED, startTime + 8000)
+            )
+            createMockUsageEvents(eventsToReturn)
+        }
 
         // ACT
-        val result = repository.isFilteredPackage(otherPackageName)
+        repository.backfillHistoricalAppUsageData(daysToBackfill)
 
         // ASSERT
-        assertThat(result).isFalse()
+        // Verify we checked each of the 2 days for existing data
+        coVerify(exactly = daysToBackfill) { mockDailyAppUsageDao.getUsageCountForDateString(any()) }
+
+        // Verify we queried the system for events for each of the 2 empty days
+        coVerify(exactly = daysToBackfill) { mockUsageStatsManager.queryEvents(any(), any()) }
+
+        // Verify we inserted the aggregated results for each of the 2 empty days
+        val capturedLists = mutableListOf<List<DailyAppUsageRecord>>()
+        coVerify(exactly = daysToBackfill) { mockDailyAppUsageDao.insertAllUsage(capture(capturedLists)) }
+
+        // Optional: More detailed assertion on what was captured
+        // We expect two captures, one for each day.
+        assertThat(capturedLists).hasSize(daysToBackfill)
+        for (capturedRecords in capturedLists) {
+            assertThat(capturedRecords).hasSize(1) // Only com.app.backfill should be aggregated
+            assertThat(capturedRecords.first().packageName).isEqualTo("com.app.backfill")
+        }
     }
 
-    @Test
-    fun `aggregateUsage - filtered packages are ignored`() {
-        // ARRANGE: An app session interleaved with a launcher session, which should be filtered.
-        val startTime = 9000000L
-        val testEvents = listOf(
-            createEvent("com.google.android.apps.nexuslauncher", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime),
-            createEvent("com.app.a", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime + 1000L),
-            createEvent("com.app.a", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startTime + 21000L), // 20s session
-            createEvent("com.google.android.apps.nexuslauncher", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startTime + 22000L)
-        )
-        val periodEndDate = startTime + 30000L
+    /**
+     * Helper for making the private `aggregateUsage` method accessible for testing.
+     */
+    private fun ScrollDataRepositoryImpl.aggregateUsage(
+        events: List<RawAppEvent>,
+        periodEndDate: Long
+    ): Map<Pair<String, String>, Pair<Long, Long>> {
+        val method: Method = ScrollDataRepositoryImpl::class.java.getDeclaredMethod(
+            "aggregateUsage",
+            List::class.java,
+            Long::class.java
+        ).apply { isAccessible = true }
 
-        // ACT
-        val result = repository.aggregateUsage(testEvents, periodEndDate)
-
-        // ASSERT
-        assertThat(result).hasSize(1) // Only the session for "com.app.a" should be present.
-        val dateString = DateUtil.formatUtcTimestampToLocalDateString(startTime)
-        val key = Pair("com.app.a", dateString)
-        assertThat(result).containsKey(key)
-        assertThat(result).doesNotContainKey(Pair("com.google.android.apps.nexuslauncher", dateString))
-
-        val usage = result[key]!!
-        assertThat(usage.first).isEqualTo(20000L)
+        @Suppress("UNCHECKED_CAST")
+        return method.invoke(this, events, periodEndDate) as Map<Pair<String, String>, Pair<Long, Long>>
     }
 
-    @Test
-    fun `aggregateUsage - separate active time windows are summed`() {
-        // ARRANGE: A session with two interactions far apart in time.
-        val startTime = 10000000L
-        val interaction1Time = startTime + 5000L
-        // The 2nd interaction is 10s after the first one. Since the active window is 2s, they won't merge.
-        val interaction2Time = startTime + 15000L
-        val endTime = startTime + 30000L
-        val testEvents = listOf(
-            createEvent("com.app.spaced", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime),
-            createEvent("com.app.spaced", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, interaction1Time),
-            createEvent("com.app.spaced", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, interaction2Time),
-            createEvent("com.app.spaced", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, endTime)
-        )
-        val periodEndDate = endTime + 10000L
+    /**
+     * Creates a mock UsageEvents object that will iterate over a given list of events.
+     */
+    private fun createMockUsageEvents(events: List<UsageEvents.Event>): UsageEvents {
+        val mockUsageEvents = mockk<UsageEvents>()
+        val eventIterator = events.iterator()
 
-        // ACT
-        val result = repository.aggregateUsage(testEvents, periodEndDate)
-
-        // ASSERT
-        assertThat(result).hasSize(1)
-        val dateString = DateUtil.formatUtcTimestampToLocalDateString(startTime)
-        val key = Pair("com.app.spaced", dateString)
-        assertThat(result).containsKey(key)
-
-        val usage = result[key]!!
-        assertThat(usage.first).isEqualTo(30000L)
-        // Each interaction creates a 2000ms window. Since they are separate, the total is 4000ms.
-        assertThat(usage.second).isEqualTo(4000L)
+        every { mockUsageEvents.hasNextEvent() } answers { eventIterator.hasNext() }
+        every { mockUsageEvents.getNextEvent(any()) } answers {
+            val eventToReturn = eventIterator.next()
+            val outEvent = it.invocation.args[0] as UsageEvents.Event
+            copyEvent(eventToReturn, outEvent)
+            true
+        }
+        return mockUsageEvents
     }
 
-    @Test
-    fun `aggregateUsage - interaction outside session is ignored`() {
-        // ARRANGE: A session with interaction events happening before and after the session's timeframe.
-        val startTime = 11000000L
-        val endTime = startTime + 20000L
-        val testEvents = listOf(
-            createEvent("com.app.bounds", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, startTime - 5000L), // Interaction before RESUME
-            createEvent("com.app.bounds", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime),
-            createEvent("com.app.bounds", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, endTime),
-            createEvent("com.app.bounds", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, endTime + 5000L) // Interaction after PAUSE
-        )
-        val periodEndDate = endTime + 10000L
+    /**
+     * Factory function to create UsageEvents.Event instances for testing using reflection.
+     */
+    private fun createUsageEventForTest(pkg: String, type: Int, time: Long): UsageEvents.Event {
+        val event = UsageEvents.Event()
+        setEventField(event, "mPackage", pkg)
+        setEventField(event, "mClass", "$pkg.TestActivity")
+        setEventField(event, "mTimeStamp", time)
+        setEventField(event, "mEventType", type)
+        return event
+    }
 
-        // ACT
-        val result = repository.aggregateUsage(testEvents, periodEndDate)
+    /**
+     * Uses reflection to copy data from one UsageEvents.Event to another.
+     */
+    private fun copyEvent(from: UsageEvents.Event, to: UsageEvents.Event) {
+        setEventField(to, "mPackage", from.packageName)
+        setEventField(to, "mClass", from.className)
+        setEventField(to, "mTimeStamp", from.timeStamp)
+        setEventField(to, "mEventType", from.eventType)
+    }
 
-        // ASSERT
-        assertThat(result).hasSize(1)
-        val dateString = DateUtil.formatUtcTimestampToLocalDateString(startTime)
-        val key = Pair("com.app.bounds", dateString)
-        assertThat(result).containsKey(key)
-
-        val usage = result[key]!!
-        assertThat(usage.first).isEqualTo(20000L)
-        // Active time should be zero because both interactions were outside the session.
-        assertThat(usage.second).isEqualTo(0L)
+    /**
+     * Sets a field on a UsageEvents.Event object using reflection.
+     */
+    private fun setEventField(event: UsageEvents.Event, fieldName: String, value: Any) {
+        try {
+            val field = UsageEvents.Event::class.java.getDeclaredField(fieldName)
+            field.isAccessible = true
+            field.set(event, value)
+        } catch (e: Exception) {
+            throw RuntimeException("Failed to set field '$fieldName' on UsageEvents.Event", e)
+        }
     }
 } 

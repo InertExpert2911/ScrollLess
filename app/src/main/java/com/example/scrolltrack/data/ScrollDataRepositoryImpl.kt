@@ -107,6 +107,39 @@ class ScrollDataRepositoryImpl(
         }
     }
 
+    /**
+     * Converts a system UsageEvents.Event into the app's internal RawAppEvent data model.
+     * This is a public helper to make it testable and abstract the conversion.
+     */
+    fun mapUsageEventToRawAppEvent(event: android.app.usage.UsageEvents.Event): RawAppEvent? {
+        val packageName = event.packageName ?: return null
+        val eventTimestampUTC = event.timeStamp
+
+        val internalEventType = when (event.eventType) {
+            android.app.usage.UsageEvents.Event.NONE -> RawAppEvent.EVENT_TYPE_UNKNOWN
+            android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED, android.app.usage.UsageEvents.Event.MOVE_TO_FOREGROUND -> RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED
+            android.app.usage.UsageEvents.Event.ACTIVITY_PAUSED, android.app.usage.UsageEvents.Event.MOVE_TO_BACKGROUND -> RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED
+            android.app.usage.UsageEvents.Event.ACTIVITY_STOPPED -> RawAppEvent.EVENT_TYPE_ACTIVITY_STOPPED
+            android.app.usage.UsageEvents.Event.CONFIGURATION_CHANGE -> RawAppEvent.EVENT_TYPE_CONFIGURATION_CHANGE
+            android.app.usage.UsageEvents.Event.USER_INTERACTION -> RawAppEvent.EVENT_TYPE_USER_INTERACTION
+            android.app.usage.UsageEvents.Event.SCREEN_INTERACTIVE -> RawAppEvent.EVENT_TYPE_SCREEN_INTERACTIVE
+            android.app.usage.UsageEvents.Event.SCREEN_NON_INTERACTIVE -> RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE
+            android.app.usage.UsageEvents.Event.KEYGUARD_SHOWN -> RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN
+            android.app.usage.UsageEvents.Event.KEYGUARD_HIDDEN -> RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN
+            android.app.usage.UsageEvents.Event.FOREGROUND_SERVICE_START -> RawAppEvent.EVENT_TYPE_FOREGROUND_SERVICE_START
+            android.app.usage.UsageEvents.Event.FOREGROUND_SERVICE_STOP -> RawAppEvent.EVENT_TYPE_FOREGROUND_SERVICE_STOP
+            else -> RawAppEvent.EVENT_TYPE_UNKNOWN
+        }
+
+        return RawAppEvent(
+            packageName = packageName,
+            className = event.className,
+            eventType = internalEventType,
+            eventTimestamp = eventTimestampUTC,
+            eventDateString = DateUtil.formatUtcTimestampToLocalDateString(eventTimestampUTC)
+        )
+    }
+
     override suspend fun updateTodayAppUsageStats(): Boolean = withContext(Dispatchers.IO) {
         val usageStatsManager =
             application.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
@@ -168,17 +201,7 @@ class ScrollDataRepositoryImpl(
                     continue
                 }
 
-                val internalEventType = mapUsageEventTypeToInternal(event.eventType)
-                val eventDateString = DateUtil.formatUtcTimestampToLocalDateString(eventTimestampUTC)
-                rawEventsToInsert.add(
-                    RawAppEvent(
-                        packageName = packageName,
-                        className = event.className,
-                        eventType = internalEventType,
-                        eventTimestamp = eventTimestampUTC,
-                        eventDateString = eventDateString
-                    )
-                )
+                mapUsageEventToRawAppEvent(event)?.let { rawEventsToInsert.add(it) }
 
                 if (rawEventsToInsert.size >= eventProcessingBatchSize) {
                     try {
