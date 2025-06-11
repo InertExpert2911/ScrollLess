@@ -40,9 +40,10 @@ import android.util.LruCache // Import LruCache
 // Constants for SharedPreferences (can be moved to a companion object or a separate file if preferred)
 private const val PREFS_APP_SETTINGS = "ScrollTrackAppSettings"
 private const val KEY_SELECTED_THEME = "selected_theme_variant"
+private const val KEY_BACKFILL_DONE = "has_completed_initial_backfill_v1" // Renamed for clarity
 private const val THEME_LIGHT = "light"
 private const val THEME_OLED_DARK = "oled_dark"
-private const val DEFAULT_THEME = THEME_OLED_DARK
+internal const val DEFAULT_THEME = THEME_OLED_DARK
 
 // Data class for cached app metadata
 private data class CachedAppMetadata(val appName: String, val icon: Drawable?)
@@ -107,6 +108,9 @@ class MainViewModel(
         val savedTheme = appPrefs.getString(KEY_SELECTED_THEME, DEFAULT_THEME) ?: DEFAULT_THEME
         _selectedThemeVariant.value = savedTheme
         Log.d("MainViewModel", "Initial theme loaded: $savedTheme")
+
+        // Trigger the one-time historical data backfill
+        runHistoricalBackfill(10)
     }
 
     fun updateThemeVariant(newVariant: String) {
@@ -819,6 +823,27 @@ class MainViewModel(
                 Log.w("MainViewModel", "setFocusedDate called with period type ${_currentChartPeriodType.value}. Expected DAILY.")
                 // Still, to be safe, reload with current period type if called unexpectedly.
                 loadAppDetailChartData(packageName, _currentChartPeriodType.value, newDate)
+            }
+        }
+    }
+
+    // This whole function is now actively used.
+    private fun runHistoricalBackfill(days: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            // Check if backfill has already been done to avoid rerunning on process recreation
+            val backfillDone = appPrefs.getBoolean(KEY_BACKFILL_DONE, false)
+            if (!backfillDone) {
+                Log.d("MainViewModel", "Starting historical data backfill for $days days.")
+                val success = repository.backfillHistoricalAppUsageData(days)
+                if (success) {
+                    // Mark backfill as done
+                    appPrefs.edit().putBoolean(KEY_BACKFILL_DONE, true).apply()
+                    Log.d("MainViewModel", "Historical backfill completed successfully.")
+                } else {
+                    Log.e("MainViewModel", "Historical backfill failed.")
+                }
+            } else {
+                Log.d("MainViewModel", "Historical backfill already completed. Skipping.")
             }
         }
     }
