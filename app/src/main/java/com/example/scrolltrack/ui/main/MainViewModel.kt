@@ -462,44 +462,47 @@ class MainViewModel(
 
     // Methods for App Detail Screen
     fun loadAppDetailsInfo(packageName: String) {
-        // Reset to default period and date every time this screen is loaded
-        _currentChartPeriodType.value = ChartPeriodType.DAILY // Default to Daily view
-        _currentChartReferenceDate.value = DateUtil.getCurrentLocalDateString() // Changed
-        _appDetailPackageName.value = packageName // This line IS needed to load app-specific data
+        // Only reset state if the package name is different from the currently loaded one.
+        if (packageName != _appDetailPackageName.value) {
+            // Reset to default period and date every time a NEW app is loaded
+            _currentChartPeriodType.value = ChartPeriodType.DAILY // Default to Daily view
+            _currentChartReferenceDate.value = DateUtil.getCurrentLocalDateString() // Changed
+            _appDetailPackageName.value = packageName
 
-        viewModelScope.launch(Dispatchers.IO) {
-            var appIconDrawable: Drawable? = null
-            val cachedAppInfo = metadataCache.get(packageName)
+            viewModelScope.launch(Dispatchers.IO) {
+                var appIconDrawable: Drawable? = null
+                val cachedAppInfo = metadataCache.get(packageName)
 
-            if (cachedAppInfo != null) {
-                _appDetailAppName.value = cachedAppInfo.appName
-                appIconDrawable = cachedAppInfo.icon
-                _appDetailAppIcon.value = appIconDrawable
-            } else {
-                try {
-                    val pm = application.packageManager
-                    val appInfo = pm.getApplicationInfo(packageName, 0)
-                    val appNameString = pm.getApplicationLabel(appInfo).toString()
-                    _appDetailAppName.value = appNameString
-                    appIconDrawable = pm.getApplicationIcon(packageName)
+                if (cachedAppInfo != null) {
+                    _appDetailAppName.value = cachedAppInfo.appName
+                    appIconDrawable = cachedAppInfo.icon
                     _appDetailAppIcon.value = appIconDrawable
-                    metadataCache.put(packageName, CachedAppMetadata(appNameString, appIconDrawable))
-                } catch (e: PackageManager.NameNotFoundException) {
-                    Log.w("MainViewModel", "App info not found for $packageName in AppDetailScreen")
-                    val fallbackAppName = packageName.substringAfterLast('.', packageName)
-                    _appDetailAppName.value = fallbackAppName // Fallback to package name
-                    _appDetailAppIcon.value = null
-                    metadataCache.put(packageName, CachedAppMetadata(fallbackAppName, null))
-                } catch (e: Exception) {
-                    Log.e("MainViewModel", "Error loading app info for $packageName", e)
-                    _appDetailAppName.value = packageName // Fallback
-                    _appDetailAppIcon.value = null
-                    // Do not cache on general exception, as it might be a temporary issue.
+                } else {
+                    try {
+                        val pm = application.packageManager
+                        val appInfo = pm.getApplicationInfo(packageName, 0)
+                        val appNameString = pm.getApplicationLabel(appInfo).toString()
+                        _appDetailAppName.value = appNameString
+                        appIconDrawable = pm.getApplicationIcon(packageName)
+                        _appDetailAppIcon.value = appIconDrawable
+                        metadataCache.put(packageName, CachedAppMetadata(appNameString, appIconDrawable))
+                    } catch (e: PackageManager.NameNotFoundException) {
+                        Log.w("MainViewModel", "App info not found for $packageName in AppDetailScreen")
+                        val fallbackAppName = packageName.substringAfterLast('.', packageName)
+                        _appDetailAppName.value = fallbackAppName // Fallback to package name
+                        _appDetailAppIcon.value = null
+                        metadataCache.put(packageName, CachedAppMetadata(fallbackAppName, null))
+                    } catch (e: Exception) {
+                        Log.e("MainViewModel", "Error loading app info for $packageName", e)
+                        _appDetailAppName.value = packageName // Fallback
+                        _appDetailAppIcon.value = null
+                        // Do not cache on general exception, as it might be a temporary issue.
+                    }
                 }
             }
+            // When app details are first loaded, also trigger chart data load for the default period
+            loadAppDetailChartData(packageName, _currentChartPeriodType.value, _currentChartReferenceDate.value)
         }
-        // When app details are first loaded, also trigger chart data load for the default period
-        loadAppDetailChartData(packageName, _currentChartPeriodType.value, _currentChartReferenceDate.value)
     }
 
     fun loadAppDetailChartData(packageName: String, period: ChartPeriodType, referenceDate: String) {
