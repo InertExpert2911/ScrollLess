@@ -38,7 +38,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.R
-import com.example.scrolltrack.ui.main.AppDailyDetailData
+import com.example.scrolltrack.ui.model.AppDailyDetailData
 import com.example.scrolltrack.ui.main.ChartPeriodType
 import com.example.scrolltrack.ui.main.ComparisonColorType
 import com.example.scrolltrack.ui.main.ComparisonIconType

@@ -6,6 +6,7 @@ package com.example.scrolltrack.data
 import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.db.ScrollSessionRecord
 import com.example.scrolltrack.db.AppScrollDataPerDate
+import com.example.scrolltrack.ui.model.AppScrollUiItem
 import kotlinx.coroutines.flow.Flow
 
 interface ScrollDataRepository {
@@ -68,4 +69,9 @@ interface ScrollDataRepository {
      * Retrieves aggregated scroll data for a specific package over a list of dates.
      */
     suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate>
+
+    /**
+     * Retrieves aggregated scroll data for a specific date, mapped to UI-ready items.
+     */
+    suspend fun getAggregatedScrollForDateUi(dateString: String): List<AppScrollUiItem>
 }

@@ -28,6 +28,11 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.math.abs
 import android.util.LruCache // Import LruCache
+import com.example.scrolltrack.ui.main.ComparisonColorType
+import com.example.scrolltrack.ui.main.ComparisonIconType
+import com.example.scrolltrack.ui.model.AppDailyDetailData
+import com.example.scrolltrack.ui.model.AppScrollUiItem
+import com.example.scrolltrack.ui.model.AppUsageUiItem
 
 // Palette API Imports - REMOVE THESE
 // import android.graphics.Bitmap
@@ -47,32 +52,6 @@ internal const val DEFAULT_THEME = THEME_OLED_DARK
 
 // Data class for cached app metadata
 private data class CachedAppMetadata(val appName: String, val icon: Drawable?)
-
-// Data class for Scroll UI (remains the same)
-data class AppScrollUiItem(
-    val id: String,
-    val appName: String,
-    val icon: Drawable?,
-    val totalScroll: Long,
-    val packageName: String
-)
-
-// Data class for Usage UI (remains the same)
-data class AppUsageUiItem(
-    val id: String, // packageName
-    val appName: String,
-    val icon: Drawable?,
-    val usageTimeMillis: Long,
-    val formattedUsageTime: String,
-    val packageName: String
-)
-
-// Data class for combined chart data point for AppDetailScreen
-data class AppDailyDetailData(
-    val date: String, // YYYY-MM-DD
-    val usageTimeMillis: Long,
-    val scrollUnits: Long // Raw scroll units, conversion to distance can happen in UI or later in VM
-)
 
 enum class ChartPeriodType {
     DAILY,
@@ -195,7 +174,6 @@ class MainViewModel(
                     appName = cachedData.appName,
                     icon = cachedData.icon,
                     usageTimeMillis = record.usageTimeMillis,
-                    formattedUsageTime = DateUtil.formatDuration(record.usageTimeMillis),
                     packageName = record.packageName
                 )
             } else {
@@ -210,7 +188,6 @@ class MainViewModel(
                         appName = appName,
                         icon = icon,
                         usageTimeMillis = record.usageTimeMillis,
-                        formattedUsageTime = DateUtil.formatDuration(record.usageTimeMillis),
                         packageName = record.packageName
                     )
                 } catch (e: PackageManager.NameNotFoundException) {
@@ -218,7 +195,7 @@ class MainViewModel(
                     // Cache fallback with null icon if not found, to avoid repeated PackageManager calls
                     val fallbackAppName = record.packageName.substringAfterLast('.', record.packageName)
                     metadataCache.put(record.packageName, CachedAppMetadata(fallbackAppName, null))
-                    AppUsageUiItem(record.packageName, fallbackAppName, null, record.usageTimeMillis, DateUtil.formatDuration(record.usageTimeMillis), record.packageName)
+                    AppUsageUiItem(record.packageName, fallbackAppName, null, record.usageTimeMillis, record.packageName)
                 } catch (e: Exception) {
                     Log.e("MainViewModel", "Error processing usage app data for ${record.packageName}", e)
                     null
@@ -279,6 +256,9 @@ class MainViewModel(
         totalScrollToday.map {
             ConversionUtil.formatScrollDistance(it, application.applicationContext)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0 m" to "0.00 miles") // Reverted
+
+    private val _totalScrollTodayFormatted = MutableStateFlow("0m")
+    val totalScrollTodayFormatted: StateFlow<String> = _totalScrollTodayFormatted
 
 
     // --- Data for HISTORICAL USAGE SCREEN (Reacts to _selectedDateForHistory) ---
@@ -850,4 +830,14 @@ class MainViewModel(
             }
         }
     }
+}
+
+/**
+ * Represents the different theme variants available in the app.
+ */
+enum class ThemeVariant {
+    SYSTEM,
+    LIGHT,
+    DARK,
+    OLED
 }

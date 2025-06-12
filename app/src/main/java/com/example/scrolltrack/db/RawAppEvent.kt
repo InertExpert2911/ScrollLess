@@ -3,8 +3,14 @@ package com.example.scrolltrack.db
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import androidx.room.Index
 
-@Entity(tableName = "raw_app_events")
+@Entity(tableName = "raw_app_events",
+    indices = [
+        // Add this for super-fast daily aggregation queries
+        Index(value = ["event_date_string", "event_timestamp"])
+    ]
+)
 data class RawAppEvent(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

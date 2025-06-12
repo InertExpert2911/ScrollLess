@@ -7,7 +7,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-// import android.graphics.drawable.Drawable // Retaining for now, might be used by App*UiItem previews or direct composable later
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
@@ -23,36 +22,18 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-// import androidx.compose.foundation.shape.RoundedCornerShape // Not directly used by name in this file after changes
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.*
-import androidx.compose.material.icons.outlined.History
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -60,10 +41,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp // Used in PermissionRow
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-// import androidx.lifecycle.compose.collectAsStateWithLifecycle // Duplicate import
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -74,28 +53,26 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import coil.compose.rememberAsyncImagePainter
-import com.example.scrolltrack.data.AppScrollData
-import com.example.scrolltrack.data.ScrollDataRepositoryImpl
-import com.example.scrolltrack.ui.main.AppScrollUiItem
-import com.example.scrolltrack.ui.main.AppUsageUiItem
-import com.example.scrolltrack.db.* // Wildcard for db package
+import com.example.scrolltrack.data.ScrollDataRepository
+import com.example.scrolltrack.db.AppScrollDataPerDate
+import com.example.scrolltrack.db.DailyAppUsageRecord
+import com.example.scrolltrack.db.ScrollSessionRecord
 import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.detail.AppDetailScreen
 import com.example.scrolltrack.ui.detail.ScrollDetailScreen
 import com.example.scrolltrack.ui.historical.HistoricalUsageScreen
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.ui.main.MainViewModelFactory
-import com.example.scrolltrack.ui.theme.* // Wildcard for theme package
-import com.example.scrolltrack.util.ConversionUtil
+import com.example.scrolltrack.ui.model.AppScrollUiItem
+import com.example.scrolltrack.ui.model.AppUsageUiItem
+import com.example.scrolltrack.ui.theme.*
 import com.example.scrolltrack.util.DateUtil
-import com.example.scrolltrack.util.GreetingUtil
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
-import java.util.*
 
 // Constants for theme variants to be used by the Switch logic
-// Moved to top level for accessibility by ThemeModeSwitch
 private const val THEME_LIGHT = "light"
 private const val THEME_OLED_DARK = "oled_dark"
 
@@ -212,10 +189,16 @@ class MainActivity : ComponentActivity() {
     private fun hasUsageStatsPermission(context: Context): Boolean {
         val appOpsManager = context.getSystemService(APP_OPS_SERVICE) as? AppOpsManager
         return if (appOpsManager != null) {
-            val mode = appOpsManager.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName)
+            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                appOpsManager.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName)
+            } else {
+                @Suppress("DEPRECATION")
+                appOpsManager.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName)
+            }
             mode == AppOpsManager.MODE_ALLOWED
         } else false
     }
+
 
     // --- Notification Permission Handling (Android 13+) ---
     private fun requestNotificationPermission() {
@@ -323,7 +306,7 @@ fun AppNavigationHost(
             route = ScreenRoutes.ScrollDetailRoute.route,
             arguments = listOf(navArgument("date") { type = NavType.StringType })
         ) {
-            backStackEntry ->
+                backStackEntry ->
             val date = backStackEntry.arguments?.getString("date")
             if (date != null) {
                 ScrollDetailScreen(
@@ -425,7 +408,7 @@ fun TodaySummaryScreen(
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
             )
         }
-        
+
         if (!isAccessibilityServiceEnabled || !isUsageStatsPermissionGranted) {
             Spacer(modifier = Modifier.height(8.dp))
         }
@@ -630,7 +613,7 @@ fun TopWeeklyAppCard(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "${topApp.formattedUsageTime} (Last 7 Days)",
+                    text = "${DateUtil.formatDuration(topApp.usageTimeMillis)} (Last 7 Days)",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     textAlign = TextAlign.Center
@@ -646,9 +629,9 @@ fun TopWeeklyAppCard(
                     text = "Top Weekly App",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
-                     textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center
                 )
-                 Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "No data yet",
                     style = MaterialTheme.typography.bodySmall,
@@ -773,49 +756,31 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
     val context = LocalContext.current
     val app = context.applicationContext as Application
 
-    // Create dummy DAOs for preview
-    val dummyScrollSessionDao = object : ScrollSessionDao {
-        override fun getAllSessionsFlow(): Flow<List<ScrollSessionRecord>> = flowOf(emptyList())
-        override suspend fun insertSession(session: ScrollSessionRecord) {}
-        override fun getTotalScrollForDate(dateString: String): Flow<Long?> = flowOf(0L)
-        override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> = flowOf(emptyList())
-        override suspend fun getAllSessions(): List<ScrollSessionRecord> = emptyList()
-        override suspend fun getTotalScrollForAppOnDate(pkgName: String, dateString: String): Long? = null
-        override suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate> = emptyList<AppScrollDataPerDate>()
-    }
-    val dummyDailyAppUsageDao = object : DailyAppUsageDao {
-        override fun getUsageForDate(dateString: String): Flow<List<DailyAppUsageRecord>> = flowOf(emptyList())
-        override fun getUsageRecordsForDateRange(startDateString: String, endDateString: String): Flow<List<DailyAppUsageRecord>> = flowOf(emptyList())
-        override suspend fun insertOrUpdateUsage(dailyAppUsageRecord: DailyAppUsageRecord) {}
-        override suspend fun insertAllUsage(records: List<DailyAppUsageRecord>) {}
-        override suspend fun clearAllUsageData() {}
-        override suspend fun getSpecificAppUsageForDate(packageName: String, dateString: String): DailyAppUsageRecord? = null
-        override fun getTotalUsageTimeMillisForDate(dateString: String): Flow<Long?> = flowOf(0L)
-        override suspend fun deleteOldUsageData(timestampMillis: Long): Int = 0
-        override suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord> = emptyList()
-        override suspend fun deleteUsageForDate(dateString: String) {}
-        override suspend fun getUsageCountForDateString(dateString: String): Int = 0
-    }
+    // A dummy ViewModel that provides static data for the preview
+    val fakeViewModel: MainViewModel = viewModel(factory = object : MainViewModelFactory(app, null) {
+        override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+            val vm = MainViewModel(object : ScrollDataRepository {
+                override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<com.example.scrolltrack.data.AppScrollData>> = flowOf(emptyList())
+                override fun getTotalScrollForDate(dateString: String): Flow<Long?> = flowOf(0L)
+                override fun getAllSessions(): Flow<List<ScrollSessionRecord>> = flowOf(emptyList())
+                override suspend fun getTotalUsageTimeMillisForDate(dateString: String): Long? = 0L
+                override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean = true
+                override fun getDailyUsageRecordsForDate(dateString: String): Flow<List<DailyAppUsageRecord>> = flowOf(emptyList())
+                override fun getUsageRecordsForDateRange(startDateString: String, endDateString: String): Flow<List<DailyAppUsageRecord>> = flowOf(emptyList())
+                override suspend fun updateTodayAppUsageStats(): Boolean = true
+                override suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord> = emptyList()
+                override suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate> = emptyList()
+                override suspend fun getAggregatedScrollForDateUi(dateString: String): List<AppScrollUiItem> = emptyList()
+            }, app)
+            @Suppress("UNCHECKED_CAST")
+            return vm as T
+        }
+    })
 
-    val dummyRawAppEventDao = object : com.example.scrolltrack.db.RawAppEventDao {
-        override suspend fun insertEvent(event: com.example.scrolltrack.db.RawAppEvent) {}
-        override suspend fun insertEvents(events: List<com.example.scrolltrack.db.RawAppEvent>) {}
-        override fun getEventsForDate(dateString: String): Flow<List<com.example.scrolltrack.db.RawAppEvent>> = flowOf(emptyList())
-        override suspend fun getEventsForPeriod(startTime: Long, endTime: Long): List<com.example.scrolltrack.db.RawAppEvent> = emptyList()
-        override suspend fun getEventsForPackageNameInPeriod(packageName: String, startTime: Long, endTime: Long): List<com.example.scrolltrack.db.RawAppEvent> = emptyList()
-        override suspend fun deleteOldEvents(cutoffTimestamp: Long) {}
-        override suspend fun getFirstEventTimestamp(): Long? = null
-        override suspend fun getLastEventTimestamp(): Long? = null
-        override suspend fun deleteEventsForDateString(dateString: String) {}
-        override suspend fun getLatestEventTimestampForDate(dateString: String): Long? = null
-    }
-
-    val fakeRepo = ScrollDataRepositoryImpl(dummyScrollSessionDao, dummyDailyAppUsageDao, dummyRawAppEventDao, app)
-    val fakeViewModel: MainViewModel = viewModel(factory = MainViewModelFactory(application = app, repositoryOverride = fakeRepo))
-    ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) { 
+    ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) {
         TodaySummaryScreen(
             navController = rememberNavController(),
-            viewModel = fakeViewModel, 
+            viewModel = fakeViewModel,
             greeting = "Good Morning! ☀️",
             isAccessibilityServiceEnabled = false,
             onEnableAccessibilityClick = {},
@@ -838,56 +803,40 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
 fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
     val context = LocalContext.current
     val app = context.applicationContext as Application
+    val topAppExample = AppUsageUiItem(
+        id = "com.example.topapp",
+        appName = "Social Butterfly",
+        icon = null,
+        usageTimeMillis = (10 * 60 * 60 * 1000).toLong(),
+        packageName = "com.example.topapp"
+    )
 
-    // Create dummy DAOs for preview (can share the same dummy implementations)
-    val dummyScrollSessionDao = object : ScrollSessionDao {
-        override fun getAllSessionsFlow(): Flow<List<ScrollSessionRecord>> = flowOf(emptyList())
-        override suspend fun insertSession(session: ScrollSessionRecord) {}
-        override fun getTotalScrollForDate(dateString: String): Flow<Long?> = flowOf(0L)
-        override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> = flowOf(emptyList())
-        override suspend fun getAllSessions(): List<ScrollSessionRecord> = emptyList()
-        override suspend fun getTotalScrollForAppOnDate(pkgName: String, dateString: String): Long? = null
-        override suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate> = emptyList<AppScrollDataPerDate>()
-    }
-    val dummyDailyAppUsageDao = object : DailyAppUsageDao {
-        override fun getUsageForDate(dateString: String): Flow<List<DailyAppUsageRecord>> = flowOf(emptyList())
-        override fun getUsageRecordsForDateRange(startDateString: String, endDateString: String): Flow<List<DailyAppUsageRecord>> = flowOf(emptyList())
-        override suspend fun insertOrUpdateUsage(dailyAppUsageRecord: DailyAppUsageRecord) {}
-        override suspend fun insertAllUsage(records: List<DailyAppUsageRecord>) {}
-        override suspend fun clearAllUsageData() {}
-        override suspend fun getSpecificAppUsageForDate(packageName: String, dateString: String): DailyAppUsageRecord? = null
-        override fun getTotalUsageTimeMillisForDate(dateString: String): Flow<Long?> = flowOf(0L)
-        override suspend fun deleteOldUsageData(timestampMillis: Long): Int = 0
-        override suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord> = emptyList()
-        override suspend fun deleteUsageForDate(dateString: String) {}
-        override suspend fun getUsageCountForDateString(dateString: String): Int = 0
-    }
+    // A dummy ViewModel that provides static data for the.
+    val fakeViewModel: MainViewModel = viewModel(factory = object : MainViewModelFactory(app, null) {
+        override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+            val vm = MainViewModel(object : ScrollDataRepository {
+                override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<com.example.scrolltrack.data.AppScrollData>> = flowOf(emptyList())
+                override fun getTotalScrollForDate(dateString: String): Flow<Long?> = flowOf(13106L)
+                override fun getAllSessions(): Flow<List<ScrollSessionRecord>> = flowOf(emptyList())
+                override suspend fun getTotalUsageTimeMillisForDate(dateString: String): Long? = (2.75 * 60 * 60 * 1000).toLong()
+                override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean = true
+                override fun getDailyUsageRecordsForDate(dateString: String): Flow<List<DailyAppUsageRecord>> = flowOf(emptyList())
+                override fun getUsageRecordsForDateRange(startDateString: String, endDateString: String): Flow<List<DailyAppUsageRecord>> = flowOf(emptyList())
+                override suspend fun updateTodayAppUsageStats(): Boolean = true
+                override suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord> = emptyList()
+                override suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate> = emptyList()
+                override suspend fun getAggregatedScrollForDateUi(dateString: String): List<AppScrollUiItem> = flowOf(listOf(
+                    AppScrollUiItem("settings", "Settings", null, 7294, "com.android.settings"))).first()
+            }, app)
+            // Manually set state for preview
+            (vm.topUsedAppLast7Days as MutableStateFlow).value = topAppExample
+            @Suppress("UNCHECKED_CAST")
+            return vm as T
+        }
+    })
 
-    val dummyRawAppEventDao = object : com.example.scrolltrack.db.RawAppEventDao {
-        override suspend fun insertEvent(event: com.example.scrolltrack.db.RawAppEvent) {}
-        override suspend fun insertEvents(events: List<com.example.scrolltrack.db.RawAppEvent>) {}
-        override fun getEventsForDate(dateString: String): Flow<List<com.example.scrolltrack.db.RawAppEvent>> = flowOf(emptyList())
-        override suspend fun getEventsForPeriod(startTime: Long, endTime: Long): List<com.example.scrolltrack.db.RawAppEvent> = emptyList()
-        override suspend fun getEventsForPackageNameInPeriod(packageName: String, startTime: Long, endTime: Long): List<com.example.scrolltrack.db.RawAppEvent> = emptyList()
-        override suspend fun deleteOldEvents(cutoffTimestamp: Long) {}
-        override suspend fun getFirstEventTimestamp(): Long? = null
-        override suspend fun getLastEventTimestamp(): Long? = null
-        override suspend fun deleteEventsForDateString(dateString: String) {}
-        override suspend fun getLatestEventTimestampForDate(dateString: String): Long? = null
-    }
-
-    val fakeRepo = ScrollDataRepositoryImpl(dummyScrollSessionDao, dummyDailyAppUsageDao, dummyRawAppEventDao, app)
-    val fakeViewModel: MainViewModel = viewModel(factory = MainViewModelFactory(application = app, repositoryOverride = fakeRepo))
-    ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) { 
+    ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) {
         val exampleTimeMillis = (2.75 * 60 * 60 * 1000).toLong()
-        val topAppExample = AppUsageUiItem(
-            id = "com.example.topapp",
-            appName = "Social Butterfly",
-            icon = null,
-            usageTimeMillis = (10 * 60 * 60 * 1000).toLong(),
-            formattedUsageTime = "10h 0m",
-            packageName = "com.example.topapp"
-        )
         TodaySummaryScreen(
             navController = rememberNavController(),
             viewModel = fakeViewModel,
@@ -917,13 +866,12 @@ fun TopWeeklyAppCardPreview() {
         val topAppExample = AppUsageUiItem(
             id = "com.example.topapp",
             appName = "Social Media Pro",
-            icon = null, 
+            icon = null,
             usageTimeMillis = (15 * 60 * 60 * 1000).toLong(),
-            formattedUsageTime = "15h 0m",
             packageName = "com.example.topapp"
         )
         Box(modifier = Modifier.padding(16.dp).width(200.dp).height(180.dp)) {
-             TopWeeklyAppCard(topApp = topAppExample, modifier = Modifier.fillMaxSize(), onClick = {})
+            TopWeeklyAppCard(topApp = topAppExample, modifier = Modifier.fillMaxSize(), onClick = {})
         }
     }
 }
@@ -932,7 +880,7 @@ fun TopWeeklyAppCardPreview() {
 @Composable
 fun TopWeeklyAppCardNoDataPreview() {
     ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) {
-         Box(modifier = Modifier.padding(16.dp).width(200.dp).height(180.dp)) {
+        Box(modifier = Modifier.padding(16.dp).width(200.dp).height(180.dp)) {
             TopWeeklyAppCard(topApp = null, modifier = Modifier.fillMaxSize(), onClick = {})
         }
     }

@@ -26,7 +26,7 @@ import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.R // For fallback icon
 import com.example.scrolltrack.navigation.ScreenRoutes // For potential navigation from item
-import com.example.scrolltrack.ui.main.AppScrollUiItem
+import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.ui.main.MainViewModelFactory
 import com.example.scrolltrack.util.ConversionUtil

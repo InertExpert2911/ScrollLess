@@ -13,8 +13,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  */
 @Database(
     entities = [ScrollSessionRecord::class, DailyAppUsageRecord::class, RawAppEvent::class],
-    version = 3, // Keep version as is, or increment if schema actually changed since last successful build
-    exportSchema = true
+    version = 4, // Keep version as is, or increment if schema actually changed since last successful build
+    exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
 

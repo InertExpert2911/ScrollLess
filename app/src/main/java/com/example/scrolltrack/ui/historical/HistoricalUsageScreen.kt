@@ -24,7 +24,7 @@ import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.R
 import com.example.scrolltrack.navigation.ScreenRoutes
-import com.example.scrolltrack.ui.main.AppUsageUiItem // Ensure this is imported
+import com.example.scrolltrack.ui.model.AppUsageUiItem // Ensure this is imported
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.util.DateUtil
 
@@ -169,7 +169,7 @@ fun AppUsageRowItem(
         }
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = usageItem.formattedUsageTime,
+            text = DateUtil.formatDuration(usageItem.usageTimeMillis),
             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.primary
         )

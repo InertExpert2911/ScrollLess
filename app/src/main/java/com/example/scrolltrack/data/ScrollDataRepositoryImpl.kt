@@ -24,6 +24,9 @@ import kotlin.math.min // Added for minOf
 import kotlinx.coroutines.withContext // Ensure this is imported
 import kotlinx.coroutines.Dispatchers // Ensure this is imported
 import android.annotation.SuppressLint
+import com.example.scrolltrack.ui.model.AppScrollUiItem
+import com.example.scrolltrack.ui.model.AppUsageUiItem
+import com.example.scrolltrack.ui.model.AppDailyDetailData
 
 class ScrollDataRepositoryImpl(
     private val scrollSessionDao: ScrollSessionDao,
@@ -54,6 +57,30 @@ class ScrollDataRepositoryImpl(
     internal fun isFilteredPackage(packageName: String): Boolean {
         return packageName == "com.example.scrolltrack" ||
                 packageName.contains("launcher")
+    }
+
+    /**
+     * Private helper to process a single scroll data record into a UI-ready item,
+     * handling package manager lookups.
+     */
+    private suspend fun processScrollDataToUiItem(appScrollData: AppScrollData): AppScrollUiItem? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val appInfo = packageManager.getApplicationInfo(appScrollData.packageName, 0)
+                val appName = packageManager.getApplicationLabel(appInfo).toString()
+                val icon = packageManager.getApplicationIcon(appScrollData.packageName)
+                AppScrollUiItem(
+                    id = appScrollData.packageName,
+                    appName = appName,
+                    icon = icon,
+                    totalScroll = appScrollData.totalScroll,
+                    packageName = appScrollData.packageName
+                )
+            } catch (e: PackageManager.NameNotFoundException) {
+                // Handle cases where the app might have been uninstalled
+                null
+            }
+        }
     }
 
     companion object {
@@ -516,8 +543,14 @@ class ScrollDataRepositoryImpl(
         return dailyAppUsageDao.getUsageForPackageAndDates(packageName, dateStrings)
     }
 
+
     override suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate> {
         return scrollSessionDao.getAggregatedScrollForPackageAndDates(packageName, dateStrings)
+    }
+
+    override suspend fun getAggregatedScrollForDateUi(dateString: String): List<AppScrollUiItem> {
+        val aggregatedData = scrollSessionDao.getAggregatedScrollDataForDate(dateString).first()
+        return aggregatedData.mapNotNull { processScrollDataToUiItem(it) }
     }
 }
 

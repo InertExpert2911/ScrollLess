@@ -16,7 +16,7 @@ interface RawAppEventDao {
     suspend fun insertEvents(events: List<RawAppEvent>)
 
     @Query("SELECT * FROM raw_app_events WHERE event_date_string = :dateString ORDER BY event_timestamp ASC")
-    fun getEventsForDate(dateString: String): Flow<List<RawAppEvent>>
+    suspend fun getEventsForDate(dateString: String): List<RawAppEvent>
 
     @Query("SELECT * FROM raw_app_events WHERE event_timestamp >= :startTime AND event_timestamp < :endTime ORDER BY event_timestamp ASC")
     suspend fun getEventsForPeriod(startTime: Long, endTime: Long): List<RawAppEvent>

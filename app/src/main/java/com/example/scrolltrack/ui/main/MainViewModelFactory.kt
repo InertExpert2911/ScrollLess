@@ -7,7 +7,7 @@ import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.data.ScrollDataRepositoryImpl
 import com.example.scrolltrack.db.AppDatabase
 
-class MainViewModelFactory(
+open class MainViewModelFactory(
     private val application: Application,
     private val repositoryOverride: ScrollDataRepository? = null // Optional repository override
 ) : ViewModelProvider.Factory {
