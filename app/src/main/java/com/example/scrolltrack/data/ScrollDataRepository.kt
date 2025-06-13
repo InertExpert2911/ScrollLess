@@ -74,4 +74,10 @@ interface ScrollDataRepository {
      * Retrieves aggregated scroll data for a specific date, mapped to UI-ready items.
      */
     suspend fun getAggregatedScrollForDateUi(dateString: String): List<AppScrollUiItem>
+
+    /**
+     * Inserts a new scroll session into the database.
+     * @param session The scroll session to be inserted.
+     */
+    suspend fun insertScrollSession(session: ScrollSessionRecord)
 }

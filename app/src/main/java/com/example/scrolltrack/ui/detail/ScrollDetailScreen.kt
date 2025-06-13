@@ -23,32 +23,30 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import androidx.navigation.compose.rememberNavController
 import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.R // For fallback icon
 import com.example.scrolltrack.navigation.ScreenRoutes // For potential navigation from item
 import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.ui.main.MainViewModelFactory
+import com.example.scrolltrack.ui.main.FakeScrollDataRepository
+import com.example.scrolltrack.ui.main.FakeSettingsRepository
+import com.example.scrolltrack.ui.theme.ScrollTrackTheme
 import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
 import java.util.Calendar
 import java.util.Date
+import androidx.compose.ui.tooling.preview.Preview
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScrollDetailScreen(
     navController: NavController,
-    initialSelectedDate: String,
-    viewModel: MainViewModel = viewModel(factory = MainViewModelFactory(LocalContext.current.applicationContext as android.app.Application))
+    selectedDateString: String,
+    scrollData: List<AppScrollUiItem>,
+    onDateSelected: (Long) -> Unit
 ) {
-    LaunchedEffect(initialSelectedDate) {
-        DateUtil.parseLocalDateString(initialSelectedDate)?.time?.let {
-            viewModel.updateSelectedDateForScrollDetail(it)
-        }
-    }
-
-    val selectedDateString by viewModel.selectedDateForScrollDetail.collectAsState()
-    val scrollData by viewModel.aggregatedScrollDataForSelectedDate.collectAsState()
     val context = LocalContext.current
 
     var showDatePickerDialog by remember { mutableStateOf(false) }
@@ -121,7 +119,7 @@ fun ScrollDetailScreen(
                 confirmButton = {
                     TextButton(onClick = {
                         datePickerState.selectedDateMillis?.let {
-                            viewModel.updateSelectedDateForScrollDetail(it)
+                            onDateSelected(it)
                         }
                         showDatePickerDialog = false
                     }) { Text("OK") }
@@ -182,6 +180,22 @@ fun AppScrollDetailItemEntry(
             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
             color = MaterialTheme.colorScheme.primary,
             textAlign = TextAlign.End
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun ScrollDetailScreenPreview() {
+    ScrollTrackTheme(themeVariant = "oled_dark") {
+        ScrollDetailScreen(
+            navController = rememberNavController(),
+            selectedDateString = "2023-10-27",
+            scrollData = listOf(
+                AppScrollUiItem("app1", "App One", null, 1234, "com.example.app1"),
+                AppScrollUiItem("app2", "App Two", null, 5678, "com.example.app2")
+            ),
+            onDateSelected = {}
         )
     }
 } 

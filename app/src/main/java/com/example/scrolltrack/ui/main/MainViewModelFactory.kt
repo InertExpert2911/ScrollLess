@@ -4,27 +4,22 @@ import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.example.scrolltrack.data.ScrollDataRepository
-import com.example.scrolltrack.data.ScrollDataRepositoryImpl
+import com.example.scrolltrack.data.SettingsRepository
+import com.example.scrolltrack.data.SettingsRepositoryImpl
 import com.example.scrolltrack.db.AppDatabase
 
-open class MainViewModelFactory(
+class MainViewModelFactory(
     private val application: Application,
-    private val repositoryOverride: ScrollDataRepository? = null // Optional repository override
+    private val repository: ScrollDataRepository?, // Nullable for previews
+    private val settingsRepository: SettingsRepository? // Nullable for previews
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(MainViewModel::class.java)) {
-            val repository = repositoryOverride ?: run {
-                val database = AppDatabase.getDatabase(application)
-                ScrollDataRepositoryImpl(
-                    database.scrollSessionDao(),
-                    database.dailyAppUsageDao(),
-                    database.rawAppEventDao(),
-                    application
-                )
-            }
+            val repo = repository ?: (application as com.example.scrolltrack.ScrollTrackApplication).repository
+            val settingsRepo = settingsRepository ?: SettingsRepositoryImpl(application)
             @Suppress("UNCHECKED_CAST")
-            return MainViewModel(repository, application) as T
+            return MainViewModel(repo, settingsRepo, application) as T
         }
-        throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+        throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
