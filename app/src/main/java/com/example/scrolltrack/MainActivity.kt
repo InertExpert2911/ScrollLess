@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val viewModelFactory = MainViewModelFactory(application, null, null)
+        val viewModelFactory = MainViewModelFactory(application)
         viewModel = ViewModelProvider(this, viewModelFactory)[MainViewModel::class.java]
 
         // Request notification permission if on Android 13+

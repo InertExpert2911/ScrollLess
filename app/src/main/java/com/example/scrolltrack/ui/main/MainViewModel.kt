@@ -73,6 +73,9 @@ class MainViewModel(
 
         // Trigger the one-time historical data backfill
         runHistoricalBackfill(10)
+
+        // Refresh today's data on initialization
+        refreshDataForToday()
     }
 
     fun updateThemeVariant(newVariant: String) {
@@ -710,24 +713,23 @@ class MainViewModel(
     fun changeChartPeriod(packageName: String, newPeriod: ChartPeriodType) {
         if (newPeriod != _currentChartPeriodType.value) {
             _currentChartPeriodType.value = newPeriod
-            _currentChartReferenceDate.value = DateUtil.getCurrentLocalDateString()
-            loadAppDetailChartData(packageName, _currentChartPeriodType.value, _currentChartReferenceDate.value)
+            // When period changes, we reload the data for the same reference date
+            loadAppDetailChartData(packageName, newPeriod, _currentChartReferenceDate.value)
         }
     }
 
-    fun navigateChartDate(packageName: String, direction: Int) { // 1 for next, -1 for previous
-        val currentPeriod = _currentChartPeriodType.value
-        val currentRefDate = _currentChartReferenceDate.value
-        val calendar = Calendar.getInstance()
-        DateUtil.parseLocalDateString(currentRefDate)?.let { calendar.time = it }
-
-        when (currentPeriod) {
-            ChartPeriodType.DAILY -> calendar.add(Calendar.DAY_OF_YEAR, direction)
-            ChartPeriodType.WEEKLY -> calendar.add(Calendar.WEEK_OF_YEAR, direction)
-            ChartPeriodType.MONTHLY -> calendar.add(Calendar.MONTH, direction)
+    fun navigateChartDate(packageName: String, direction: Int) {
+        val cal = Calendar.getInstance().apply {
+            time = DateUtil.parseLocalDateString(_currentChartReferenceDate.value) ?: Date()
         }
-        _currentChartReferenceDate.value = DateUtil.formatDateToYyyyMmDdString(calendar.time)
-        loadAppDetailChartData(packageName, currentPeriod, _currentChartReferenceDate.value)
+        when (_currentChartPeriodType.value) {
+            ChartPeriodType.DAILY -> cal.add(Calendar.DAY_OF_YEAR, direction)
+            ChartPeriodType.WEEKLY -> cal.add(Calendar.WEEK_OF_YEAR, direction)
+            ChartPeriodType.MONTHLY -> cal.add(Calendar.MONTH, direction)
+        }
+        val newDateStr = DateUtil.formatDateToYyyyMmDdString(cal.time)
+        _currentChartReferenceDate.value = newDateStr
+        loadAppDetailChartData(packageName, _currentChartPeriodType.value, newDateStr)
     }
 
     fun setFocusedDate(packageName: String, newDate: String) {
@@ -743,9 +745,9 @@ class MainViewModel(
     }
 
     private fun runHistoricalBackfill(days: Int) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val backfillDone = settingsRepository.isHistoricalBackfillDone()
-            if (!backfillDone) {
+        val backfillDone = settingsRepository.isHistoricalBackfillDone()
+        if (!backfillDone) {
+            viewModelScope.launch(Dispatchers.IO) {
                 Log.d("MainViewModel", "Starting historical data backfill for $days days.")
                 val success = repository.backfillHistoricalAppUsageData(days)
                 if (success) {
@@ -754,9 +756,9 @@ class MainViewModel(
                 } else {
                     Log.e("MainViewModel", "Historical backfill failed.")
                 }
-            } else {
-                Log.d("MainViewModel", "Historical backfill already completed. Skipping.")
             }
+        } else {
+            Log.d("MainViewModel", "Historical backfill already completed. Skipping.")
         }
     }
 }

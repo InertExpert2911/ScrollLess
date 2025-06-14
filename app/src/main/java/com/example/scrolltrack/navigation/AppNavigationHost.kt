@@ -74,48 +74,14 @@ fun AppNavigationHost(
         ) { backStackEntry ->
             val packageName = backStackEntry.arguments?.getString("packageName")
             if (packageName != null) {
-                val appName by viewModel.appDetailAppName.collectAsStateWithLifecycle()
-                val appIcon by viewModel.appDetailAppIcon.collectAsStateWithLifecycle()
-                val chartData by viewModel.appDetailChartData.collectAsStateWithLifecycle()
-                val currentPeriodType by viewModel.currentChartPeriodType.collectAsStateWithLifecycle()
-                val focusedUsageDisplay by viewModel.appDetailFocusedUsageDisplay.collectAsStateWithLifecycle()
-                val focusedPeriodDisplay by viewModel.appDetailFocusedPeriodDisplay.collectAsStateWithLifecycle()
-                val comparisonText by viewModel.appDetailComparisonText.collectAsStateWithLifecycle()
-                val comparisonIconType by viewModel.appDetailComparisonIconType.collectAsStateWithLifecycle()
-                val comparisonColorType by viewModel.appDetailComparisonColorType.collectAsStateWithLifecycle()
-                val weekNumberDisplay by viewModel.appDetailWeekNumberDisplay.collectAsStateWithLifecycle()
-                val periodDescriptionText by viewModel.appDetailPeriodDescriptionText.collectAsStateWithLifecycle()
-                val focusedScrollDisplay by viewModel.appDetailFocusedScrollDisplay.collectAsStateWithLifecycle()
-                val canNavigateForward by viewModel.canNavigateChartForward.collectAsStateWithLifecycle()
-                val focusedDate by viewModel.appDetailFocusedDate.collectAsStateWithLifecycle()
-
-                LaunchedEffect(packageName) {
-                    viewModel.loadAppDetailsInfo(packageName)
-                }
-
                 AppDetailScreen(
                     navController = navController,
-                    appName = appName,
-                    appIcon = appIcon,
-                    chartData = chartData,
-                    currentPeriodType = currentPeriodType,
-                    focusedUsageDisplay = focusedUsageDisplay,
-                    focusedPeriodDisplay = focusedPeriodDisplay,
-                    comparisonText = comparisonText,
-                    comparisonIconType = comparisonIconType,
-                    comparisonColorType = comparisonColorType,
-                    weekNumberDisplay = weekNumberDisplay,
-                    periodDescriptionText = periodDescriptionText,
-                    focusedScrollDisplay = focusedScrollDisplay,
-                    canNavigateForward = canNavigateForward,
-                    focusedDate = focusedDate,
-                    onPeriodChange = { viewModel.changeChartPeriod(packageName, it) },
-                    onNavigateDate = { viewModel.navigateChartDate(packageName, it) },
-                    onSetFocusedDate = { viewModel.setFocusedDate(packageName, it) }
+                    viewModel = viewModel,
+                    packageName = packageName
                 )
             } else {
-                // Handle error or navigate back
-                Text("Error: Package name not found.")
+                // Handle error: navigate back or show an error message
+                navController.popBackStack()
             }
         }
         composable(
