@@ -258,22 +258,29 @@ class ScrollTrackService : AccessibilityService() {
                 }
 
                 if (determinedPackageName == currentAppPackage) {
-                    // Prioritize using scrollDelta if available and valid. Fallback to scrollY/X.
-                    val deltaY = if (event.scrollDeltaY != 0) event.scrollDeltaY else event.scrollY
-                    val deltaX = if (event.scrollDeltaX != 0) event.scrollDeltaX else event.scrollX
-
+                    // Only use scrollDeltaY and scrollDeltaX if they are non-zero.
+                    // Do not fall back to event.scrollY/X as they represent absolute positions.
+                    val deltaY = event.scrollDeltaY
+                    val deltaX = event.scrollDeltaX
                     val totalDelta = abs(deltaY) + abs(deltaX)
 
                     if (totalDelta > SCROLL_THRESHOLD) {
                         currentAppScrollAccumulator += totalDelta
                         Log.d(
                             TAG,
-                            "Scroll in $determinedPackageName ($currentAppActivity): Delta(X:$deltaX,Y:$deltaY), Added:$totalDelta, SessionTotal:$currentAppScrollAccumulator"
+                            "Scroll in $determinedPackageName ($currentAppActivity): Valid Delta(X:$deltaX,Y:$deltaY), Added:$totalDelta, SessionTotal:$currentAppScrollAccumulator"
                         )
                         // Also log this significant scroll as a raw event for analysis
                         logAccessibilityRawEvent(RawAppEvent.EVENT_TYPE_ACCESSIBILITY_SCROLLED, determinedPackageName, eventClassName, actualEventTimeUTC)
                         scheduleSharedPrefsWrite()
+                    } else if (event.scrollDeltaY != 0 || event.scrollDeltaX != 0) {
+                        // Log if deltas were provided but didn't meet the threshold
+                        Log.v(
+                            TAG,
+                            "Scroll in $determinedPackageName ($currentAppActivity) below threshold: Delta(X:$deltaX,Y:$deltaY)"
+                        )
                     }
+                    // If scrollDeltaY and scrollDeltaX are both zero, we effectively ignore the event for scroll accumulation.
                 }
             }
 
@@ -418,7 +425,7 @@ class ScrollTrackService : AccessibilityService() {
                             sessionEndReason = reason // Or a specific reason like "SPLIT_MIDNIGHT_START"
                         )
                         scrollSessionDao.insertSession(record1)
-                        Log.i(TAG, "Split session (part 1) for $pkgName saved for $startLocalDateString. Scroll: $scrollForStartDay. DurationPart: $durationInStartDay ms.")
+                        Log.i(TAG, "Split session (part 1) for $pkgName saved for $startLocalDateString. Scroll: $scrollForStartDay. DurationPart: $durationInStartDay ms. OriginalTotalScroll: $accumulatedScroll, OriginalTotalDuration: $totalSessionDuration ms.")
                     }
 
                     // Part 2: For endLocalDateString (and potentially intermediate days)
@@ -440,7 +447,7 @@ class ScrollTrackService : AccessibilityService() {
                                 sessionEndReason = reason // Or "SPLIT_MIDNIGHT_END"
                             )
                             scrollSessionDao.insertSession(record2)
-                            Log.i(TAG, "Split session (part 2) for $pkgName saved for $endLocalDateString. Scroll: ${scrollForEndDay.coerceAtLeast(0L)}. DurationPart: ${(effectiveSessionEndTimeUTC - effectiveStartOfEndDay)} ms.")
+                            Log.i(TAG, "Split session (part 2) for $pkgName saved for $endLocalDateString. Scroll: ${scrollForEndDay.coerceAtLeast(0L)}. DurationPart: ${(effectiveSessionEndTimeUTC - effectiveStartOfEndDay)} ms. OriginalTotalScroll: $accumulatedScroll, OriginalTotalDuration: $totalSessionDuration ms.")
                         }
                     }
                 }

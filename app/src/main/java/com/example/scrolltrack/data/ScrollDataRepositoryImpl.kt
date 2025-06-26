@@ -334,10 +334,11 @@ class ScrollDataRepositoryImpl(
             
             try {
                 // If we already have usage records for this day, assume it's processed and skip.
-                if (dailyAppUsageDao.getUsageCountForDateString(historicalDateLocalString) > 0) {
-                    Log.d(TAG_REPO, "Skipping backfill for $historicalDateLocalString, already has usage records.")
-                    continue
-                }
+                // MODIFICATION: Removed the check for existing dailyAppUsageDao.getUsageCountForDateString()
+                // We will now always attempt to fetch system events and re-aggregate.
+                // Duplication of raw system events is handled by checking existing timestamps before insertion.
+                // Duplication of aggregated daily records is handled by deleting before inserting.
+                Log.d(TAG_REPO, "Processing backfill for $historicalDateLocalString. Will attempt to fetch system events and re-aggregate.")
 
                 val startOfDayUTC = DateUtil.getStartOfDayUtcMillis(historicalDateLocalString)
                 val endOfDayUTC = DateUtil.getEndOfDayUtcMillis(historicalDateLocalString)
