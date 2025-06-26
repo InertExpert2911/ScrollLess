@@ -115,6 +115,7 @@ fun AppDetailScreen(
     val weekNumberDisplay by viewModel.appDetailWeekNumberDisplay.collectAsStateWithLifecycle()
     val periodDescriptionText by viewModel.appDetailPeriodDescriptionText.collectAsStateWithLifecycle()
     val focusedScrollDisplay by viewModel.appDetailFocusedScrollDisplay.collectAsStateWithLifecycle()
+    val focusedActiveUsageDisplay by viewModel.appDetailFocusedActiveUsageDisplay.collectAsStateWithLifecycle()
 
     val canNavigateForward by remember(currentPeriodType, currentReferenceDateStr) {
         derivedStateOf {
@@ -245,12 +246,24 @@ fun AppDetailScreen(
                         style = MaterialTheme.typography.displaySmall,
                         textAlign = TextAlign.Center
                     )
-                    Text(
-                        text = "Scroll: $focusedScrollDisplay",
-                        style = MaterialTheme.typography.titleMedium,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Active: $focusedActiveUsageDisplay",
+                            style = MaterialTheme.typography.titleMedium,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                        Text(
+                            text = "Scroll: $focusedScrollDisplay",
+                            style = MaterialTheme.typography.titleMedium,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                         Text(
@@ -614,6 +627,25 @@ fun UsageBarScrollLineChart(
                             close()
                         }
                         drawPath(path, color = currentBarColor)
+                    }
+
+                    // --- Draw Active Time Bar ---
+                    if (detail.activeTimeMillis > 0) {
+                        val activeBarHeightNorm = (detail.activeTimeMillis.toFloat() / actualMaxUsageTime.toFloat()).coerceIn(0f, 1f)
+                        val activeBarActualHeight = (activeBarHeightNorm * chartHeight).coerceAtLeast(2.dp.toPx())
+                        val activeBarTop = topMargin + chartHeight - activeBarActualHeight
+                        val activeBarWidth = barWidth * 0.6f // Make it slightly thinner
+                        val activeBarLeft = barLeft + (barWidth - activeBarWidth) / 2
+
+                        drawRect(
+                            color = currentBarColor.copy(
+                                red = currentBarColor.red * 0.75f,
+                                green = currentBarColor.green * 0.75f,
+                                blue = currentBarColor.blue * 0.75f
+                            ), // A darker version of the main bar color
+                            topLeft = Offset(activeBarLeft, activeBarTop),
+                            size = androidx.compose.ui.geometry.Size(activeBarWidth, activeBarActualHeight)
+                        )
                     }
                 }
             }

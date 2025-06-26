@@ -6,5 +6,6 @@ package com.example.scrolltrack.ui.model
 data class AppDailyDetailData(
     val date: String,
     val usageTimeMillis: Long,
+    val activeTimeMillis: Long,
     val scrollUnits: Long
 ) 

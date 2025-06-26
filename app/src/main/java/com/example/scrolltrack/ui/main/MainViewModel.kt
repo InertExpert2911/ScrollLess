@@ -136,6 +136,9 @@ class MainViewModel(
     private val _appDetailFocusedUsageDisplay = MutableStateFlow("0m")
     val appDetailFocusedUsageDisplay: StateFlow<String> = _appDetailFocusedUsageDisplay.asStateFlow()
 
+    private val _appDetailFocusedActiveUsageDisplay = MutableStateFlow("0m")
+    val appDetailFocusedActiveUsageDisplay: StateFlow<String> = _appDetailFocusedActiveUsageDisplay.asStateFlow()
+
     private val _appDetailPeriodDescriptionText = MutableStateFlow<String?>(null)
     val appDetailPeriodDescriptionText: StateFlow<String?> = _appDetailPeriodDescriptionText.asStateFlow()
 
@@ -507,6 +510,7 @@ class MainViewModel(
             _appDetailFocusedUsageDisplay.value = "..."
             _appDetailFocusedPeriodDisplay.value = "..."
             _appDetailFocusedScrollDisplay.value = "..."
+            _appDetailFocusedActiveUsageDisplay.value = "..."
             _appDetailComparisonText.value = null
             _appDetailWeekNumberDisplay.value = null
             _appDetailPeriodDescriptionText.value = null
@@ -518,6 +522,7 @@ class MainViewModel(
                 Log.w("MainViewModel", "Date strings for current period resulted in empty list.")
                 _appDetailChartData.value = emptyList()
                 _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(0L)
+                _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(0L)
                 _appDetailFocusedPeriodDisplay.value = ""
                 _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(0L, application.applicationContext).first
                 return@launch
@@ -536,6 +541,7 @@ class MainViewModel(
                 AppDailyDetailData(
                     date = dateStr,
                     usageTimeMillis = currentUsageMap[dateStr]?.usageTimeMillis ?: 0L,
+                    activeTimeMillis = currentUsageMap[dateStr]?.activeTimeMillis ?: 0L,
                     scrollUnits = currentScrollMap[dateStr]?.totalScroll ?: 0L
                 )
             }
@@ -552,6 +558,7 @@ class MainViewModel(
                 ChartPeriodType.DAILY -> {
                     val focusedDayData = currentCombinedData.firstOrNull { it.date == referenceDate }
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(focusedDayData?.usageTimeMillis ?: 0L)
+                    _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(focusedDayData?.activeTimeMillis ?: 0L)
                     _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(focusedDayData?.scrollUnits ?: 0L, application.applicationContext).first
                     _appDetailPeriodDescriptionText.value = "Daily Summary"
                     _appDetailFocusedPeriodDisplay.value = sdfDisplay.format(calendar.time)
@@ -561,6 +568,8 @@ class MainViewModel(
                 ChartPeriodType.WEEKLY -> {
                     val currentPeriodAverageUsage = calculateAverageUsage(currentCombinedData)
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageUsage)
+                    val currentPeriodAverageActiveUsage = calculateAverageActiveUsage(currentCombinedData)
+                    _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageActiveUsage)
                     val currentPeriodAverageScroll = calculateAverageScroll(currentCombinedData)
                     _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(currentPeriodAverageScroll, application.applicationContext).first
                     _appDetailPeriodDescriptionText.value = "Weekly Average"
@@ -580,6 +589,8 @@ class MainViewModel(
                 ChartPeriodType.MONTHLY -> {
                     val currentPeriodAverageUsage = calculateAverageUsage(currentCombinedData)
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageUsage)
+                    val currentPeriodAverageActiveUsage = calculateAverageActiveUsage(currentCombinedData)
+                    _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageActiveUsage)
                     val currentPeriodAverageScroll = calculateAverageScroll(currentCombinedData)
                     _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(currentPeriodAverageScroll, application.applicationContext).first
 
@@ -607,6 +618,11 @@ class MainViewModel(
     private fun calculateAverageUsage(data: List<AppDailyDetailData>): Long {
         if (data.isEmpty()) return 0L
         return data.sumOf { it.usageTimeMillis } / data.size
+    }
+
+    private fun calculateAverageActiveUsage(data: List<AppDailyDetailData>): Long {
+        if (data.isEmpty()) return 0L
+        return data.sumOf { it.activeTimeMillis } / data.size
     }
 
     private fun calculateAverageScroll(data: List<AppDailyDetailData>): Long {

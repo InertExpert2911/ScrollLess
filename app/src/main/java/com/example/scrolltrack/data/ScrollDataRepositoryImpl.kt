@@ -178,6 +178,9 @@ class ScrollDataRepositoryImpl(
         val endOfTodayUTC = System.currentTimeMillis() // Query up to the present moment for today's data
 
         try {
+            // First, calculate active time from today's raw interaction events.
+            val activeTimeMap = calculateActiveTimesForDay(todayDateString)
+
             val usageStatsList = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startOfDayUTC, endOfTodayUTC)
 
             // Even if the list is null or empty, we must clear out any old data for today
@@ -203,7 +206,7 @@ class ScrollDataRepositoryImpl(
                     packageName = stat.packageName,
                     dateString = todayDateString,
                     usageTimeMillis = stat.totalTimeInForeground,
-                    activeTimeMillis = 0L, // Active time calculation is not supported by this simpler, more robust method
+                    activeTimeMillis = activeTimeMap[stat.packageName] ?: 0L,
                     lastUpdatedTimestamp = System.currentTimeMillis()
                 )
             }
@@ -218,6 +221,30 @@ class ScrollDataRepositoryImpl(
         }
         
         return@withContext true
+    }
+
+    /**
+     * Calculates the active time for each app on a given day based on stored interaction events.
+     * @param dateString The date to calculate active time for.
+     * @return A map of package name to its total active time in milliseconds.
+     */
+    private suspend fun calculateActiveTimesForDay(dateString: String): Map<String, Long> = withContext(Dispatchers.IO) {
+        val startOfDayUTC = DateUtil.getStartOfDayUtcMillis(dateString)
+        val endOfDayUTC = DateUtil.getEndOfDayUtcMillis(dateString)
+
+        val interactionEvents = rawAppEventDao.getEventsForPeriod(startOfDayUTC, endOfDayUTC)
+            .filter { RawAppEvent.isAccessibilityEvent(it.eventType) }
+
+        if (interactionEvents.isEmpty()) return@withContext emptyMap()
+
+        val eventsByPackage = interactionEvents.groupBy { it.packageName }
+        val activeTimeByPackage = mutableMapOf<String, Long>()
+
+        for ((pkg, events) in eventsByPackage) {
+            val interactionTimestamps = events.map { it.eventTimestamp }.sorted()
+            activeTimeByPackage[pkg] = calculateActiveTimeFromInteractions(interactionTimestamps, startOfDayUTC, endOfDayUTC)
+        }
+        return@withContext activeTimeByPackage
     }
 
     private fun calculateActiveTimeFromInteractions(interactionTimestamps: List<Long>, sessionStartTime: Long, sessionEndTime: Long): Long {
@@ -336,6 +363,9 @@ class ScrollDataRepositoryImpl(
             val endOfDayUTC = DateUtil.getEndOfDayUtcMillis(historicalDateString)
 
             try {
+                // First, calculate active time from any raw events we might have for this historical day
+                val activeTimeMap = calculateActiveTimesForDay(historicalDateString)
+
                 val usageStatsList = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startOfDayUTC, endOfDayUTC)
 
                 if (usageStatsList.isNullOrEmpty()) {
@@ -358,7 +388,7 @@ class ScrollDataRepositoryImpl(
                         packageName = stat.packageName,
                         dateString = historicalDateString,
                         usageTimeMillis = stat.totalTimeInForeground,
-                        activeTimeMillis = 0L,
+                        activeTimeMillis = activeTimeMap[stat.packageName] ?: 0L,
                         lastUpdatedTimestamp = System.currentTimeMillis()
                     )
                 }

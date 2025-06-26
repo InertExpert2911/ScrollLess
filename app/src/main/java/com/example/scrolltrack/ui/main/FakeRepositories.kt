@@ -21,6 +21,7 @@ class FakeSettingsRepository : SettingsRepository {
 
 class FakeScrollDataRepository : ScrollDataRepository {
     override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> =
+
         flowOf(emptyList())
 
     override fun getTotalScrollForDate(dateString: String): Flow<Long?> = flowOf(13106L)
