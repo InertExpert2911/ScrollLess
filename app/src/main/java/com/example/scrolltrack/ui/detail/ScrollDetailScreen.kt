@@ -50,13 +50,20 @@ fun ScrollDetailScreen(
     val context = LocalContext.current
 
     var showDatePickerDialog by remember { mutableStateOf(false) }
+    val selectableDatesMillis by viewModel.selectableDatesForScrollDetail.collectAsStateWithLifecycle() // Use the correct StateFlow
+
     val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = remember(selectedDateString) { // React to changes in selectedDateString
+        initialSelectedDateMillis = remember(selectedDateString) {
             DateUtil.parseLocalDateString(selectedDateString)?.time ?: System.currentTimeMillis()
         },
         selectableDates = object : SelectableDates {
             override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                return utcTimeMillis <= System.currentTimeMillis() // Allow selection up to today
+                val dateToCompare = DateUtil.getStartOfDayUtcMillis(DateUtil.formatUtcTimestampToLocalDateString(utcTimeMillis))
+                return utcTimeMillis <= System.currentTimeMillis() &&
+                        (selectableDatesMillis.contains(dateToCompare) || AndroidDateUtils.isToday(utcTimeMillis))
+            }
+            override fun isSelectableYear(year: Int): Boolean {
+                return true // Allow all years for now
             }
         }
     )

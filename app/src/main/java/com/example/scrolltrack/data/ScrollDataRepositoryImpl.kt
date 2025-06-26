@@ -426,4 +426,12 @@ class ScrollDataRepositoryImpl(
         val aggregatedData = scrollSessionDao.getAggregatedScrollDataForDate(dateString).first()
         return aggregatedData.mapNotNull { processScrollDataToUiItem(it) }
     }
+
+    override fun getAllDistinctUsageDateStrings(): Flow<List<String>> {
+        return dailyAppUsageDao.getAllDistinctUsageDateStrings()
+    }
+
+    override fun getAllDistinctScrollDateStrings(): Flow<List<String>> {
+        return scrollSessionDao.getAllDistinctScrollDateStrings()
+    }
 } 

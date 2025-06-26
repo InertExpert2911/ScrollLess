@@ -80,4 +80,7 @@ interface ScrollDataRepository {
      * @param session The scroll session to be inserted.
      */
     suspend fun insertScrollSession(session: ScrollSessionRecord)
+
+    fun getAllDistinctUsageDateStrings(): Flow<List<String>>
+    fun getAllDistinctScrollDateStrings(): Flow<List<String>>
 }

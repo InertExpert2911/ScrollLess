@@ -236,6 +236,24 @@ class MainViewModel(
     val totalScrollTodayFormatted: StateFlow<String> = _totalScrollTodayFormatted
 
 
+    // --- Date Picker Availability States ---
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val selectableDatesForScrollDetail: StateFlow<Set<Long>> =
+        repository.getAllDistinctScrollDateStrings()
+            .map { dateStrings ->
+                dateStrings.mapNotNull { DateUtil.parseLocalDateString(it)?.time }.toSet()
+            }
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptySet())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val selectableDatesForHistoricalUsage: StateFlow<Set<Long>> =
+        repository.getAllDistinctUsageDateStrings()
+            .map { dateStrings ->
+                dateStrings.mapNotNull { DateUtil.parseLocalDateString(it)?.time }.toSet()
+            }
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptySet())
+
+
     // --- Data for HISTORICAL USAGE SCREEN (Reacts to _selectedDateForHistory) ---
     val dailyAppUsageForSelectedDateHistory: StateFlow<List<AppUsageUiItem>> =
         selectedDateForHistory.flatMapLatest { dateString ->

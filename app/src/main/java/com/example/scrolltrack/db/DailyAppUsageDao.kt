@@ -93,6 +93,9 @@ interface DailyAppUsageDao {
      */
     @Query("SELECT COUNT(*) FROM daily_app_usage WHERE date_string = :dateString")
     suspend fun getUsageCountForDateString(dateString: String): Int
+
+    @Query("SELECT DISTINCT date_string FROM daily_app_usage ORDER BY date_string DESC")
+    fun getAllDistinctUsageDateStrings(): Flow<List<String>>
 }
 
 /**

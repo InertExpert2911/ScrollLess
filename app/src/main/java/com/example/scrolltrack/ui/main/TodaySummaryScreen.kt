@@ -50,7 +50,7 @@ fun TodaySummaryScreen(
     topWeeklyApp: AppUsageUiItem?,
     totalScrollUnits: Long,
     scrollDistanceMeters: String,
-    appScrollData: List<AppScrollUiItem>,
+    // appScrollData: List<AppScrollUiItem>, // Removed
     onNavigateToHistoricalUsage: () -> Unit,
     onNavigateToAppDetail: (String) -> Unit,
     onThemeChange: (String) -> Unit,
@@ -90,7 +90,7 @@ fun TodaySummaryScreen(
         }
 
         Text(
-            text = "Manage your daily digital habits.",
+            text = stringResource(id = R.string.greeting_manage_habits), // Replaced
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
@@ -103,9 +103,9 @@ fun TodaySummaryScreen(
         ) {
             PermissionRequestCard(
                 leadingIcon = { Icon(Icons.Filled.AccessibilityNew, contentDescription = "Accessibility Service Icon", modifier = Modifier.size(28.dp)) },
-                title = "Enable Accessibility Service",
-                description = "Required to track scrolls & calculate distance in other apps.",
-                buttonText = "Open Settings",
+                title = stringResource(id = R.string.permission_accessibility_title), // Replaced
+                description = stringResource(id = R.string.permission_accessibility_description), // Replaced
+                buttonText = stringResource(id = R.string.permission_button_open_settings), // Replaced
                 onButtonClick = onEnableAccessibilityClick,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
             )
@@ -118,9 +118,9 @@ fun TodaySummaryScreen(
         ) {
             PermissionRequestCard(
                 leadingIcon = { Icon(Icons.Filled.QueryStats, contentDescription = "Usage Access Icon", modifier = Modifier.size(28.dp)) },
-                title = "Grant Usage Access",
-                description = "Needed to show your phone usage time and app breakdown.",
-                buttonText = "Grant Access",
+                title = stringResource(id = R.string.permission_usage_stats_title), // Replaced
+                description = stringResource(id = R.string.permission_usage_stats_description), // Replaced
+                buttonText = stringResource(id = R.string.permission_button_grant_access), // Replaced
                 onButtonClick = onEnableUsageStatsClick,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
             )
@@ -258,7 +258,7 @@ fun PhoneUsageCard(
         ) {
             Icon(Icons.Filled.PhoneAndroid, contentDescription = "Phone Usage", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp).padding(bottom = 8.dp))
             Text(
-                text = "PHONE USAGE (Today)",
+                text = stringResource(id = R.string.card_title_phone_usage_today), // Replaced
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                 textAlign = TextAlign.Center
@@ -274,7 +274,7 @@ fun PhoneUsageCard(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "View Details",
+                text = stringResource(id = R.string.card_button_view_details), // Replaced
                 style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
@@ -330,7 +330,7 @@ fun TopWeeklyAppCard(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "${DateUtil.formatDuration(topApp.usageTimeMillis)} (Last 7 Days)",
+                    text = "${DateUtil.formatDuration(topApp.usageTimeMillis)} ${stringResource(id = R.string.suffix_last_7_days)}", // Replaced
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     textAlign = TextAlign.Center
@@ -343,14 +343,14 @@ fun TopWeeklyAppCard(
                     tint = MaterialTheme.colorScheme.onSecondaryContainer
                 )
                 Text(
-                    text = "Top Weekly App",
+                    text = stringResource(id = R.string.card_title_top_weekly_app), // Replaced
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "No data yet",
+                    text = stringResource(id = R.string.text_no_data_yet), // Replaced
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     textAlign = TextAlign.Center
@@ -387,7 +387,7 @@ fun ScrollStatsCard(
         ) {
             Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = "Scroll Stats", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(32.dp).padding(bottom = 8.dp))
             Text(
-                text = "SCROLL STATS (Today)",
+                text = stringResource(id = R.string.card_title_scroll_stats_today), // Replaced
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                 textAlign = TextAlign.Center
