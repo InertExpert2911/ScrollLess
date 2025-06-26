@@ -136,7 +136,7 @@ class ScrollTrackService : AccessibilityService() {
 
             try {
             if(::dataRepository.isInitialized) { // Check if repository is initialized before using
-                val todayUsageMillis = dataRepository.getTotalUsageTimeMillisForDate(todayDateString) ?: 0L
+                val todayUsageMillis = dataRepository.getTotalUsageTimeMillisForDate(todayDateString).firstOrNull() ?: 0L
                 usageText = "Total Usage: ${DateUtil.formatDuration(todayUsageMillis)}"
             } else {
                 Log.w(TAG, "DataRepository not initialized in updateNotificationTextAndStartForeground.")

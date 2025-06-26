@@ -16,23 +16,27 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
 import com.example.scrolltrack.navigation.AppNavigationHost
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.ui.main.MainViewModelFactory
 import com.example.scrolltrack.ui.theme.*
 import com.example.scrolltrack.util.PermissionUtils
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 // Constants for theme variants to be used by the Switch logic
 private const val THEME_LIGHT = "light"
 private const val THEME_OLED_DARK = "oled_dark"
+private const val PREFS_GLOBAL = "ScrollTrackGlobalPrefs"
+private const val KEY_BACKFILL_DONE = "historical_backfill_done"
 
 class MainActivity : ComponentActivity() {
 
     private val TAG = "MainActivity"
-    private var isAccessibilityEnabledState by mutableStateOf(false)
-    private var isUsageStatsGrantedState by mutableStateOf(false)
     private lateinit var viewModel: MainViewModel
+    private lateinit var globalPrefs: SharedPreferences
 
     private companion object {
         const val NOTIFICATION_PERMISSION_REQUEST_CODE = 123
@@ -40,9 +44,32 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        globalPrefs = getSharedPreferences(PREFS_GLOBAL, Context.MODE_PRIVATE)
 
         val viewModelFactory = MainViewModelFactory(application)
         viewModel = ViewModelProvider(this, viewModelFactory)[MainViewModel::class.java]
+
+        // --- One-Time Historical Backfill (Now permission-aware) ---
+        lifecycleScope.launch {
+            // Wait until the permission is granted.
+            viewModel.isUsagePermissionGranted.first { it }
+
+            // Once permission is confirmed, check if backfill has already been done.
+            val isBackfillDone = globalPrefs.getBoolean(KEY_BACKFILL_DONE, false)
+            if (!isBackfillDone) {
+                Log.i(TAG, "Usage permission is granted and backfill has not been run. Triggering now.")
+                viewModel.performHistoricalUsageDataBackfill(10) { success ->
+                    if (success) {
+                        globalPrefs.edit().putBoolean(KEY_BACKFILL_DONE, true).apply()
+                        Log.i(TAG, "Historical backfill completed successfully and flag was set.")
+                    } else {
+                        Log.e(TAG, "Historical backfill failed. Flag will not be set.")
+                    }
+                }
+            } else {
+                Log.d(TAG, "Historical backfill flag is already set. Skipping check after permission grant.")
+            }
+        }
 
         // Request notification permission if on Android 13+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -51,13 +78,16 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val selectedTheme by viewModel.selectedThemeVariant.collectAsStateWithLifecycle()
+            val isAccessibilityEnabled by viewModel.isAccessibilityServiceEnabled.collectAsStateWithLifecycle()
+            val isUsageStatsGranted by viewModel.isUsagePermissionGranted.collectAsStateWithLifecycle()
+
             ScrollTrackTheme(themeVariant = selectedTheme, dynamicColor = false) {
                 val navController = rememberNavController()
                 AppNavigationHost(
                     navController = navController,
                     viewModel = viewModel,
-                    isAccessibilityEnabledState = isAccessibilityEnabledState,
-                    isUsageStatsGrantedState = isUsageStatsGrantedState,
+                    isAccessibilityEnabledState = isAccessibilityEnabled,
+                    isUsageStatsGrantedState = isUsageStatsGranted,
                     onEnableAccessibilityClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
                     onEnableUsageStatsClick = {
                         try {
@@ -74,34 +104,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        updateAccessibilityServiceStatus()
-        updateUsageStatsPermissionStatus()
-        // Check notification permission status on resume as well, in case it changed
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Optionally, update UI or state based on notification permission status here
-            // For now, just logging if it's granted or not.
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-                Log.i(TAG, "Notification permission is granted.")
-            } else {
-                Log.i(TAG, "Notification permission is NOT granted.")
-            }
-        }
-    }
-
-    private fun updateAccessibilityServiceStatus() {
-        isAccessibilityEnabledState = PermissionUtils.isAccessibilityServiceEnabled(this, ScrollTrackService::class.java)
-    }
-
-    private fun updateUsageStatsPermissionStatus() {
-        isUsageStatsGrantedState = PermissionUtils.hasUsageStatsPermission(this)
-        if (isUsageStatsGrantedState) {
-            Log.i(TAG, "Usage stats permission is granted.")
-            if (::viewModel.isInitialized) {
-                viewModel.refreshDataForToday()
-            }
-        } else {
-            Log.i(TAG, "Usage stats permission is NOT granted.")
-        }
+        // Always check permissions on resume and refresh data if needed
+        viewModel.checkAllPermissions()
+        viewModel.refreshDataForToday()
     }
 
     // --- Notification Permission Handling (Android 13+) ---

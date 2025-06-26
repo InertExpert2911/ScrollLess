@@ -8,6 +8,8 @@ import android.os.Process
 import android.provider.Settings
 import android.text.TextUtils
 import android.view.accessibility.AccessibilityManager
+import android.content.ComponentName
+import android.util.Log
 
 object PermissionUtils {
 
@@ -15,12 +17,19 @@ object PermissionUtils {
         val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
         val runningServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
 
-        val serviceNameToCheck = serviceClass.name
+        val serviceClassName = serviceClass.name
+        Log.d("PermissionUtils", "Checking for running service class: $serviceClassName")
+
         for (service in runningServices) {
-            if (service.id.equals(context.packageName + "/" + serviceNameToCheck, ignoreCase = true)) {
+            val serviceComponent = ComponentName.unflattenFromString(service.id)
+            if (serviceComponent != null &&
+                serviceComponent.packageName == context.packageName &&
+                serviceComponent.className == serviceClassName) {
+                Log.i("PermissionUtils", "Match found for ${service.id}. Service is enabled.")
                 return true
             }
         }
+        Log.w("PermissionUtils", "No running service matched ${context.packageName}/$serviceClassName.")
         return false
     }
 

@@ -175,50 +175,49 @@ class ScrollDataRepositoryImpl(
 
         val todayDateString = DateUtil.getCurrentLocalDateString()
         val startOfDayUTC = DateUtil.getStartOfDayUtcMillis(todayDateString)
-        val endOfTodayUTC = DateUtil.getEndOfDayUtcMillis(todayDateString)
-        
-        val lastStoredEventTimestamp = rawAppEventDao.getLatestEventTimestampForDate(todayDateString) ?: startOfDayUTC
-        val queryStartTime = max(startOfDayUTC, lastStoredEventTimestamp - EVENT_FETCH_OVERLAP_MS)
+        val endOfTodayUTC = System.currentTimeMillis() // Query up to the present moment for today's data
 
-        val usageEvents = usageStatsManager.queryEvents(queryStartTime, endOfTodayUTC)
-        val rawEventsToInsert = mutableListOf<RawAppEvent>()
-        usageEvents?.let {
-            val event = UsageEvents.Event()
-            while (it.hasNextEvent()) {
-                it.getNextEvent(event)
-                if (event.timeStamp >= lastStoredEventTimestamp) {
-                     mapUsageEventToRawAppEvent(event)?.let { rawEvent ->
-                        rawEventsToInsert.add(rawEvent)
-                    }
-                }
+        try {
+            val usageStatsList = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startOfDayUTC, endOfTodayUTC)
+
+            // Even if the list is null or empty, we must clear out any old data for today
+            // to ensure the UI reflects that there is now no data.
+            dailyAppUsageDao.deleteUsageForDate(todayDateString)
+
+            if (usageStatsList.isNullOrEmpty()) {
+                Log.d(TAG_REPO, "No usage stats returned from system for today ($todayDateString). Previous data for today cleared.")
+                return@withContext true
             }
-        }
-        
-        if (rawEventsToInsert.isNotEmpty()) {
-            rawAppEventDao.insertEvents(rawEventsToInsert)
-        }
 
-        val allEventsForToday = rawAppEventDao.getEventsForPeriod(startOfDayUTC, endOfTodayUTC)
-        if (allEventsForToday.isEmpty()) return@withContext true
+            val relevantStats = usageStatsList.filter {
+                !isFilteredPackage(it.packageName) && it.totalTimeInForeground > 0
+            }
 
-        dailyAppUsageDao.deleteUsageForDate(todayDateString)
+            if (relevantStats.isEmpty()) {
+                Log.d(TAG_REPO, "No relevant app usage found for today ($todayDateString) after filtering.")
+                return@withContext true
+            }
 
-        val appUsageAggregator = aggregateUsage(allEventsForToday, endOfTodayUTC)
-        if (appUsageAggregator.isNotEmpty()) {
-            val dailyRecordsToInsert = appUsageAggregator.map { (key, totals) ->
-                val (pkg, dateStr) = key
-                val (foregroundDuration, activeDuration) = totals
+            val recordsToInsert = relevantStats.map { stat ->
                 DailyAppUsageRecord(
-                    packageName = pkg,
-                    dateString = dateStr,
-                    usageTimeMillis = foregroundDuration,
-                    activeTimeMillis = activeDuration,
+                    packageName = stat.packageName,
+                    dateString = todayDateString,
+                    usageTimeMillis = stat.totalTimeInForeground,
+                    activeTimeMillis = 0L, // Active time calculation is not supported by this simpler, more robust method
                     lastUpdatedTimestamp = System.currentTimeMillis()
                 )
             }
-            dailyAppUsageDao.insertAllUsage(dailyRecordsToInsert)
+
+            // The delete operation was moved to the top to handle all cases
+            dailyAppUsageDao.insertAllUsage(recordsToInsert)
+            Log.i(TAG_REPO, "Successfully updated ${recordsToInsert.size} usage records for today ($todayDateString).")
+
+        } catch (e: Exception) {
+            Log.e(TAG_REPO, "Error during today's usage update for $todayDateString: ${e.message}", e)
+            return@withContext false
         }
-        true
+        
+        return@withContext true
     }
 
     private fun calculateActiveTimeFromInteractions(interactionTimestamps: List<Long>, sessionStartTime: Long, sessionEndTime: Long): Long {
@@ -315,8 +314,8 @@ class ScrollDataRepositoryImpl(
         return aggregator
     }
 
-    override suspend fun getTotalUsageTimeMillisForDate(dateString: String): Long? {
-        return dailyAppUsageDao.getTotalUsageTimeMillisForDate(dateString).first()
+    override fun getTotalUsageTimeMillisForDate(dateString: String): Flow<Long?> {
+        return dailyAppUsageDao.getTotalUsageTimeMillisForDate(dateString)
     }
 
     override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean = withContext(Dispatchers.IO) {
@@ -332,73 +331,44 @@ class ScrollDataRepositoryImpl(
                 timeInMillis = today.timeInMillis
                 add(Calendar.DAY_OF_YEAR, -i)
             }
-            val historicalDateLocalString = DateUtil.formatDateToYyyyMmDdString(calendar.time)
-            
+            val historicalDateString = DateUtil.formatDateToYyyyMmDdString(calendar.time)
+            val startOfDayUTC = DateUtil.getStartOfDayUtcMillis(historicalDateString)
+            val endOfDayUTC = DateUtil.getEndOfDayUtcMillis(historicalDateString)
+
             try {
-                // If we already have usage records for this day, assume it's processed and skip.
-                // MODIFICATION: Removed the check for existing dailyAppUsageDao.getUsageCountForDateString()
-                // We will now always attempt to fetch system events and re-aggregate.
-                // Duplication of raw system events is handled by checking existing timestamps before insertion.
-                // Duplication of aggregated daily records is handled by deleting before inserting.
-                Log.d(TAG_REPO, "Processing backfill for $historicalDateLocalString. Will attempt to fetch system events and re-aggregate.")
+                val usageStatsList = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startOfDayUTC, endOfDayUTC)
 
-                val startOfDayUTC = DateUtil.getStartOfDayUtcMillis(historicalDateLocalString)
-                val endOfDayUTC = DateUtil.getEndOfDayUtcMillis(historicalDateLocalString)
-
-                // Step 1: Fetch historical UsageEvents from UsageStatsManager
-                val events = usageStatsManager.queryEvents(startOfDayUTC, endOfDayUTC)
-                val rawEventsFromUsageManager = mutableListOf<RawAppEvent>()
-                events?.let {
-                    val event = UsageEvents.Event()
-                    while (it.hasNextEvent()) {
-                        it.getNextEvent(event)
-                        mapUsageEventToRawAppEvent(event)?.let { rawEvent ->
-                           rawEventsFromUsageManager.add(rawEvent)
-                       }
-                    }
-                }
-                
-                // Step 2: Persist these historical system events to our RawAppEvent table
-                if (rawEventsFromUsageManager.isNotEmpty()) {
-                    // We check for existing events to avoid duplicates if backfill is run multiple times.
-                    val existingTimestamps = rawAppEventDao.getEventTimestampsForPeriod(startOfDayUTC, endOfDayUTC).toSet()
-                    val newEventsToInsert = rawEventsFromUsageManager.filter { it.eventTimestamp !in existingTimestamps }
-                    if (newEventsToInsert.isNotEmpty()) {
-                        rawAppEventDao.insertEvents(newEventsToInsert)
-                        Log.d(TAG_REPO, "Inserted ${newEventsToInsert.size} new historical system events for $historicalDateLocalString")
-                    }
-                }
-
-                // Step 3: Retrieve ALL events for the day from our DB (now including the system events we just added)
-                // This will include any accessibility events that were logged on that day.
-                val allDbEventsForDay = rawAppEventDao.getEventsForPeriod(startOfDayUTC, endOfDayUTC)
-
-                if (allDbEventsForDay.isEmpty()) {
-                    Log.d(TAG_REPO, "No events found for $historicalDateLocalString after query and DB check. Skipping.")
+                if (usageStatsList.isNullOrEmpty()) {
+                    Log.d(TAG_REPO, "No usage stats returned from system for $historicalDateString. Skipping.")
                     continue
                 }
 
-                // Step 4: Aggregate usage from the complete set of events for that day.
-                dailyAppUsageDao.deleteUsageForDate(historicalDateLocalString)
-                val appUsageAggregator = aggregateUsage(allDbEventsForDay, endOfDayUTC)
-
-                if (appUsageAggregator.isNotEmpty()) {
-                    val recordsToInsert = appUsageAggregator.map { (key, totals) ->
-                        val (pkg, date) = key
-                        val (usage, active) = totals
-                        DailyAppUsageRecord(
-                            packageName = pkg,
-                            dateString = date,
-                            usageTimeMillis = usage,
-                            activeTimeMillis = active,
-                            lastUpdatedTimestamp = System.currentTimeMillis()
-                        )
-                    }
-                    dailyAppUsageDao.insertAllUsage(recordsToInsert)
-                    Log.d(TAG_REPO, "Successfully processed and stored ${recordsToInsert.size} usage records for $historicalDateLocalString")
+                // Filter out system apps and apps with no usage
+                val relevantStats = usageStatsList.filter {
+                    !isFilteredPackage(it.packageName) && it.totalTimeInForeground > 0
                 }
+
+                if(relevantStats.isEmpty()) {
+                    Log.d(TAG_REPO, "No relevant app usage found for $historicalDateString after filtering.")
+                    continue
+                }
+
+                val recordsToInsert = relevantStats.map { stat ->
+                    DailyAppUsageRecord(
+                        packageName = stat.packageName,
+                        dateString = historicalDateString,
+                        usageTimeMillis = stat.totalTimeInForeground,
+                        activeTimeMillis = 0L,
+                        lastUpdatedTimestamp = System.currentTimeMillis()
+                    )
+                }
+
+                dailyAppUsageDao.deleteUsageForDate(historicalDateString)
+                dailyAppUsageDao.insertAllUsage(recordsToInsert)
+                Log.i(TAG_REPO, "Successfully backfilled ${recordsToInsert.size} usage records for $historicalDateString.")
+
             } catch (e: Exception) {
-                Log.e(TAG_REPO, "Error during backfill for $historicalDateLocalString: ${e.message}", e)
+                Log.e(TAG_REPO, "Error during backfill for $historicalDateString: ${e.message}", e)
                 overallSuccess = false
             }
         }
@@ -426,7 +396,13 @@ class ScrollDataRepositoryImpl(
 
     override suspend fun getAggregatedScrollForDateUi(dateString: String): List<AppScrollUiItem> {
         val aggregatedData = scrollSessionDao.getAggregatedScrollDataForDate(dateString).first()
-        return aggregatedData.mapNotNull { processScrollDataToUiItem(it) }
+        val uiItems = mutableListOf<AppScrollUiItem>()
+        for (data in aggregatedData) {
+            processScrollDataToUiItem(data)?.let {
+                uiItems.add(it)
+            }
+        }
+        return uiItems
     }
 
     override fun getAllDistinctUsageDateStrings(): Flow<List<String>> {
