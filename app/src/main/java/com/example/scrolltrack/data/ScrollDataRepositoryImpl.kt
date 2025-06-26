@@ -116,6 +116,7 @@ class ScrollDataRepositoryImpl(
         scrollSessionDao.insertSession(session)
     }
 
+    @Suppress("DEPRECATION")
     private fun mapUsageEventTypeToInternal(eventType: Int): Int {
         return when (eventType) {
             UsageEvents.Event.NONE -> RawAppEvent.EVENT_TYPE_UNKNOWN
@@ -134,6 +135,7 @@ class ScrollDataRepositoryImpl(
         }
     }
 
+    @Suppress("DEPRECATION")
     fun mapUsageEventToRawAppEvent(event: android.app.usage.UsageEvents.Event): RawAppEvent? {
         val packageName = event.packageName ?: return null
         val eventTimestampUTC = event.timeStamp

@@ -30,7 +30,6 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
             topWeeklyApp = null,
             totalScrollUnits = 0L,
             scrollDistanceMeters = "0 m",
-            appScrollData = emptyList(),
             onNavigateToHistoricalUsage = {},
             onNavigateToAppDetail = {},
             onThemeChange = {},
@@ -64,9 +63,6 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
             topWeeklyApp = topAppExample,
             totalScrollUnits = 13106L,
             scrollDistanceMeters = "1,230 m",
-            appScrollData = listOf(
-                AppScrollUiItem("settings", "Settings", null, 7294, "com.android.settings")
-            ),
             onNavigateToHistoricalUsage = {},
             onNavigateToAppDetail = {},
             onThemeChange = {},

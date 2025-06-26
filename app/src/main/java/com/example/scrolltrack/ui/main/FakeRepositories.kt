@@ -64,4 +64,8 @@ class FakeScrollDataRepository : ScrollDataRepository {
         )
 
     override suspend fun insertScrollSession(session: ScrollSessionRecord) {}
+
+    override fun getAllDistinctUsageDateStrings(): Flow<List<String>> = flowOf(emptyList())
+
+    override fun getAllDistinctScrollDateStrings(): Flow<List<String>> = flowOf(emptyList())
 } 

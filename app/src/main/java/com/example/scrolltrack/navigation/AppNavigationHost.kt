@@ -102,6 +102,7 @@ fun AppNavigationHost(
 
                 ScrollDetailScreen(
                     navController = navController,
+                    viewModel = viewModel,
                     selectedDateString = selectedDateString,
                     scrollData = scrollData,
                     onDateSelected = { viewModel.updateSelectedDateForScrollDetail(it) }

@@ -27,6 +27,7 @@ import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.model.AppUsageUiItem // Ensure this is imported
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.util.DateUtil
+import android.text.format.DateUtils as AndroidDateUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -112,7 +113,7 @@ fun HistoricalUsageScreen(
                             usageItem = usageItem,
                             onClick = { navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(usageItem.packageName)) }
                         )
-                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
                 }
             }

@@ -35,6 +35,7 @@ import com.example.scrolltrack.ui.theme.UsageStatusGreen
 import com.example.scrolltrack.ui.theme.UsageStatusOrange
 import com.example.scrolltrack.ui.theme.UsageStatusRed
 import com.example.scrolltrack.util.DateUtil
+import androidx.compose.ui.res.stringResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,7 +51,6 @@ fun TodaySummaryScreen(
     topWeeklyApp: AppUsageUiItem?,
     totalScrollUnits: Long,
     scrollDistanceMeters: String,
-    // appScrollData: List<AppScrollUiItem>, // Removed
     onNavigateToHistoricalUsage: () -> Unit,
     onNavigateToAppDetail: (String) -> Unit,
     onThemeChange: (String) -> Unit,

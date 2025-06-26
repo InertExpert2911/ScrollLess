@@ -35,6 +35,7 @@ import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.data.SettingsRepository
 import android.text.format.DateUtils as AndroidDateUtils
+import android.os.Build
 
 // Data class for cached app metadata
 private data class CachedAppMetadata(val appName: String, val icon: Drawable?)
@@ -369,14 +370,15 @@ class MainViewModel(
     }
 
     // Corrected helper to check permission
+    @Suppress("DEPRECATION")
     private fun isUsageStatsPermissionGrantedByAppOps(): Boolean {
         val appOpsManager = application.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
         return if (appOpsManager != null) {
-            val mode = appOpsManager.checkOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS,
-                Process.myUid(),
-                application.packageName
-            )
+            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                appOpsManager.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), application.packageName)
+            } else {
+                appOpsManager.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), application.packageName)
+            }
             mode == AppOpsManager.MODE_ALLOWED
         } else {
             Log.w("MainViewModel", "AppOpsManager was null, cannot check usage stats permission.")

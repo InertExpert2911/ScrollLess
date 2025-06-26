@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
@@ -38,11 +39,13 @@ import com.example.scrolltrack.util.DateUtil
 import java.util.Calendar
 import java.util.Date
 import androidx.compose.ui.tooling.preview.Preview
+import android.text.format.DateUtils as AndroidDateUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScrollDetailScreen(
     navController: NavController,
+    viewModel: MainViewModel,
     selectedDateString: String,
     scrollData: List<AppScrollUiItem>,
     onDateSelected: (Long) -> Unit
@@ -50,7 +53,7 @@ fun ScrollDetailScreen(
     val context = LocalContext.current
 
     var showDatePickerDialog by remember { mutableStateOf(false) }
-    val selectableDatesMillis by viewModel.selectableDatesForScrollDetail.collectAsStateWithLifecycle() // Use the correct StateFlow
+    val selectableDatesMillis by viewModel.selectableDatesForScrollDetail.collectAsStateWithLifecycle()
 
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = remember(selectedDateString) {
@@ -194,9 +197,12 @@ fun AppScrollDetailItemEntry(
 @Preview(showBackground = true)
 @Composable
 fun ScrollDetailScreenPreview() {
+    val context = LocalContext.current
+    val fakeViewModel = MainViewModel(FakeScrollDataRepository(), FakeSettingsRepository(), context.applicationContext as android.app.Application)
     ScrollTrackTheme(themeVariant = "oled_dark") {
         ScrollDetailScreen(
             navController = rememberNavController(),
+            viewModel = fakeViewModel,
             selectedDateString = "2023-10-27",
             scrollData = listOf(
                 AppScrollUiItem("app1", "App One", null, 1234, "com.example.app1"),

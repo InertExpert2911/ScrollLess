@@ -25,6 +25,7 @@ import com.example.scrolltrack.db.ScrollSessionDao
 import com.example.scrolltrack.db.ScrollSessionRecord
 import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
+import com.example.scrolltrack.util.SessionManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -135,7 +136,7 @@ class ScrollTrackService : AccessibilityService() {
 
             try {
             if(::dataRepository.isInitialized) { // Check if repository is initialized before using
-                val todayUsageMillis = dataRepository.getTotalUsageTimeMillisForDate(todayDateString).firstOrNull() ?: 0L
+                val todayUsageMillis = dataRepository.getTotalUsageTimeMillisForDate(todayDateString) ?: 0L
                 usageText = "Total Usage: ${DateUtil.formatDuration(todayUsageMillis)}"
             } else {
                 Log.w(TAG, "DataRepository not initialized in updateNotificationTextAndStartForeground.")
