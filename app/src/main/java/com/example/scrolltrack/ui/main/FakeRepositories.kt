@@ -12,12 +12,6 @@ import kotlinx.coroutines.flow.flowOf
 
 class FakeSettingsRepository : SettingsRepository {
     private var theme = "oled_dark"
-    private var backfillDone = true
-
-    override fun isHistoricalBackfillDone(): Boolean = backfillDone
-    override fun setHistoricalBackfillDone(value: Boolean) {
-        backfillDone = value
-    }
 
     override fun getSelectedTheme(): String = theme
     override fun setSelectedTheme(theme: String) {

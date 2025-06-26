@@ -72,8 +72,8 @@ class MainViewModel(
         // Load saved theme or use default
         Log.d("MainViewModel", "Initial theme loaded: ${settingsRepository.getSelectedTheme()}")
 
-        // Trigger the one-time historical data backfill
-        runHistoricalBackfill(10)
+        // Trigger the historical data backfill. This is designed to be safe to run multiple times.
+        performHistoricalUsageDataBackfill(10)
 
         // Refresh today's data on initialization
         refreshDataForToday()
@@ -761,24 +761,6 @@ class MainViewModel(
                 Log.w("MainViewModel", "setFocusedDate called with period type ${_currentChartPeriodType.value}. Expected DAILY.")
                 loadAppDetailChartData(packageName, _currentChartPeriodType.value, newDate)
             }
-        }
-    }
-
-    private fun runHistoricalBackfill(days: Int) {
-        val backfillDone = settingsRepository.isHistoricalBackfillDone()
-        if (!backfillDone) {
-            viewModelScope.launch(Dispatchers.IO) {
-                Log.d("MainViewModel", "Starting historical data backfill for $days days.")
-                val success = repository.backfillHistoricalAppUsageData(days)
-                if (success) {
-                    settingsRepository.setHistoricalBackfillDone(true)
-                    Log.d("MainViewModel", "Historical backfill completed successfully.")
-                } else {
-                    Log.e("MainViewModel", "Historical backfill failed.")
-                }
-            }
-        } else {
-            Log.d("MainViewModel", "Historical backfill already completed. Skipping.")
         }
     }
 }
