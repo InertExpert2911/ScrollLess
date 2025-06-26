@@ -50,7 +50,7 @@ fun AppNavigationHost(
                 topWeeklyApp = topWeeklyApp,
                 totalScrollUnits = totalScrollUnits,
                 scrollDistanceMeters = scrollDistance.first,
-                appScrollData = appScrollItems,
+                // appScrollData = appScrollItems, // Removed: Not directly displayed on TodaySummaryScreen
                 onNavigateToHistoricalUsage = {
                     viewModel.resetSelectedDateToToday()
                     navController.navigate(ScreenRoutes.HistoricalUsageRoute.route)
@@ -102,6 +102,7 @@ fun AppNavigationHost(
 
                 ScrollDetailScreen(
                     navController = navController,
+                    viewModel = viewModel,
                     selectedDateString = selectedDateString,
                     scrollData = scrollData,
                     onDateSelected = { viewModel.updateSelectedDateForScrollDetail(it) }

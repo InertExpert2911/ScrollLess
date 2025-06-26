@@ -10,23 +10,12 @@ class SettingsRepositoryImpl(context: Context) : SettingsRepository {
 
     private companion object {
         const val PREFS_APP_SETTINGS = "ScrollTrackAppSettings"
-        const val KEY_HISTORICAL_BACKFILL_DONE = "historical_backfill_done"
         const val KEY_SELECTED_THEME = "selected_theme_variant"
         const val DEFAULT_THEME = "oled_dark"
     }
 
     init {
         appPrefs = context.getSharedPreferences(PREFS_APP_SETTINGS, Context.MODE_PRIVATE)
-    }
-
-    override fun isHistoricalBackfillDone(): Boolean {
-        return appPrefs.getBoolean(KEY_HISTORICAL_BACKFILL_DONE, false)
-    }
-
-    override fun setHistoricalBackfillDone(value: Boolean) {
-        appPrefs.edit {
-            putBoolean(KEY_HISTORICAL_BACKFILL_DONE, value)
-        }
     }
 
     override fun getSelectedTheme(): String {

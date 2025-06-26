@@ -12,12 +12,6 @@ import kotlinx.coroutines.flow.flowOf
 
 class FakeSettingsRepository : SettingsRepository {
     private var theme = "oled_dark"
-    private var backfillDone = true
-
-    override fun isHistoricalBackfillDone(): Boolean = backfillDone
-    override fun setHistoricalBackfillDone(value: Boolean) {
-        backfillDone = value
-    }
 
     override fun getSelectedTheme(): String = theme
     override fun setSelectedTheme(theme: String) {
@@ -33,8 +27,8 @@ class FakeScrollDataRepository : ScrollDataRepository {
 
     override fun getAllSessions(): Flow<List<ScrollSessionRecord>> = flowOf(emptyList())
 
-    override suspend fun getTotalUsageTimeMillisForDate(dateString: String): Long? =
-        (2.75 * 60 * 60 * 1000).toLong()
+    override fun getTotalUsageTimeMillisForDate(dateString: String): Flow<Long?> =
+        flowOf((2.75 * 60 * 60 * 1000).toLong())
 
     override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean = true
 
@@ -64,4 +58,8 @@ class FakeScrollDataRepository : ScrollDataRepository {
         )
 
     override suspend fun insertScrollSession(session: ScrollSessionRecord) {}
+
+    override fun getAllDistinctUsageDateStrings(): Flow<List<String>> = flowOf(emptyList())
+
+    override fun getAllDistinctScrollDateStrings(): Flow<List<String>> = flowOf(emptyList())
 } 

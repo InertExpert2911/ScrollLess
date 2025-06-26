@@ -54,6 +54,8 @@ interface ScrollSessionDao {
     """)
     suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate>
 
+    @Query("SELECT DISTINCT date_string FROM scroll_sessions ORDER BY date_string DESC")
+    fun getAllDistinctScrollDateStrings(): Flow<List<String>>
 }
 
 // New data class to hold scroll data along with its date, as AppScrollData only has packageName and totalScroll

@@ -32,7 +32,7 @@ interface ScrollDataRepository {
      * @param dateString The date in "YYYY-MM-DD" format.
      * @return Total usage time in milliseconds, or null if permission is denied or an error occurs.
      */
-    suspend fun getTotalUsageTimeMillisForDate(dateString: String): Long?
+    fun getTotalUsageTimeMillisForDate(dateString: String): Flow<Long?>
 
     /**
      * Fetches and stores historical per-app usage data for the specified number of past days.
@@ -80,4 +80,7 @@ interface ScrollDataRepository {
      * @param session The scroll session to be inserted.
      */
     suspend fun insertScrollSession(session: ScrollSessionRecord)
+
+    fun getAllDistinctUsageDateStrings(): Flow<List<String>>
+    fun getAllDistinctScrollDateStrings(): Flow<List<String>>
 }

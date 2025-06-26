@@ -50,15 +50,29 @@ object ConversionUtil {
         
         val inches = scrollUnits.toDouble() / ydpi
         val meters = inches / INCHES_PER_METER
+        val miles = meters / METERS_PER_MILE
 
-        val metricDistance: String = if (meters >= 1000) {
-            String.format(Locale.US, "%.2f km", meters / 1000)
+        val numberFormat = NumberFormat.getNumberInstance(Locale.getDefault())
+        numberFormat.maximumFractionDigits = 2 // Apply to all initially
+
+        val metricDistance: String = if (meters >= METERS_PER_KILOMETER) {
+            numberFormat.format(meters / METERS_PER_KILOMETER) + " km"
         } else {
-            String.format(Locale.US, "%.2f m", meters)
+            // For meters, typically we might want fewer or no decimals unless very small
+            val meterFormat = NumberFormat.getNumberInstance(Locale.getDefault())
+            if (meters < 1.0 && meters > 0.0) {
+                meterFormat.maximumFractionDigits = 2
+            } else {
+                meterFormat.maximumFractionDigits = 0
+            }
+            meterFormat.format(meters) + " m"
         }
 
-        val miles = meters / METERS_PER_MILE
-        val imperialDistance = String.format(Locale.US, "%.2f miles", miles)
+        // For miles, Locale.US formatting is common, but can also use Locale.getDefault()
+        // Using Locale.getDefault() for consistency here.
+        val imperialFormat = NumberFormat.getNumberInstance(Locale.getDefault())
+        imperialFormat.maximumFractionDigits = 2
+        val imperialDistance = imperialFormat.format(miles) + " miles"
 
         return metricDistance to imperialDistance
     }

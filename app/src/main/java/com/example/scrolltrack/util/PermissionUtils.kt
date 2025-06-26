@@ -1,32 +1,35 @@
 package com.example.scrolltrack.util
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.AppOpsManager
 import android.content.Context
 import android.os.Build
 import android.os.Process
 import android.provider.Settings
 import android.text.TextUtils
+import android.view.accessibility.AccessibilityManager
+import android.content.ComponentName
+import android.util.Log
 
 object PermissionUtils {
 
     fun isAccessibilityServiceEnabled(context: Context, serviceClass: Class<*>): Boolean {
-        val accessibilityEnabled = Settings.Secure.getInt(context.applicationContext.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0)
-        if (accessibilityEnabled == 0) return false
-        val settingValue = Settings.Secure.getString(context.applicationContext.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
-        if (settingValue != null) {
-            val colonSplitter = TextUtils.SimpleStringSplitter(':')
-            colonSplitter.setString(settingValue)
-            val serviceSimpleName = serviceClass.simpleName ?: return false // Handle null simpleName gracefully
-            val serviceNameToCheckShort = "." + serviceSimpleName
-            val serviceNameToCheckFull = context.packageName + "/" + serviceClass.name
-            while (colonSplitter.hasNext()) {
-                val componentName = colonSplitter.next()
-                if (componentName.equals(serviceNameToCheckFull, ignoreCase = true) ||
-                    componentName.equals(context.packageName + serviceNameToCheckShort, ignoreCase = true)) {
-                    return true
-                }
+        val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+        val runningServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+
+        val serviceClassName = serviceClass.name
+        Log.d("PermissionUtils", "Checking for running service class: $serviceClassName")
+
+        for (service in runningServices) {
+            val serviceComponent = ComponentName.unflattenFromString(service.id)
+            if (serviceComponent != null &&
+                serviceComponent.packageName == context.packageName &&
+                serviceComponent.className == serviceClassName) {
+                Log.i("PermissionUtils", "Match found for ${service.id}. Service is enabled.")
+                return true
             }
         }
+        Log.w("PermissionUtils", "No running service matched ${context.packageName}/$serviceClassName.")
         return false
     }
 

@@ -35,6 +35,9 @@ import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.data.SettingsRepository
 import android.text.format.DateUtils as AndroidDateUtils
+import android.os.Build
+import com.example.scrolltrack.ScrollTrackService
+import com.example.scrolltrack.util.PermissionUtils
 
 // Data class for cached app metadata
 private data class CachedAppMetadata(val appName: String, val icon: Drawable?)
@@ -55,6 +58,13 @@ class MainViewModel(
     // --- App Metadata Cache ---
     private val metadataCache = LruCache<String, CachedAppMetadata>(100) // Cache up to 100 items
 
+    // --- Permission States ---
+    private val _isAccessibilityServiceEnabled = MutableStateFlow(false)
+    val isAccessibilityServiceEnabled: StateFlow<Boolean> = _isAccessibilityServiceEnabled.asStateFlow()
+
+    private val _isUsagePermissionGranted = MutableStateFlow(false)
+    val isUsagePermissionGranted: StateFlow<Boolean> = _isUsagePermissionGranted.asStateFlow()
+
     // --- Theme Management ---
     private val _selectedThemeVariant = MutableStateFlow(settingsRepository.getSelectedTheme())
     val selectedThemeVariant: StateFlow<String> = _selectedThemeVariant.asStateFlow()
@@ -70,11 +80,9 @@ class MainViewModel(
     init {
         // Load saved theme or use default
         Log.d("MainViewModel", "Initial theme loaded: ${settingsRepository.getSelectedTheme()}")
-
-        // Trigger the one-time historical data backfill
-        runHistoricalBackfill(10)
-
-        // Refresh today's data on initialization
+        // Check initial permission state
+        checkAllPermissions()
+        // Initial data refresh
         refreshDataForToday()
     }
 
@@ -83,6 +91,25 @@ class MainViewModel(
             _selectedThemeVariant.value = newVariant
             settingsRepository.setSelectedTheme(newVariant)
             Log.d("MainViewModel", "Theme updated and saved: $newVariant")
+        }
+    }
+
+    /**
+     * Checks the status of all required permissions and updates the public StateFlows.
+     * This should be called from the Activity's onResume.
+     */
+    fun checkAllPermissions() {
+        val accessibilityStatus = PermissionUtils.isAccessibilityServiceEnabled(application, ScrollTrackService::class.java)
+        val usageStatus = isUsageStatsPermissionGrantedByAppOps()
+
+        if (_isAccessibilityServiceEnabled.value != accessibilityStatus) {
+            _isAccessibilityServiceEnabled.value = accessibilityStatus
+            Log.i("MainViewModel", "Accessibility Service status updated: $accessibilityStatus")
+        }
+
+        if (_isUsagePermissionGranted.value != usageStatus) {
+            _isUsagePermissionGranted.value = usageStatus
+            Log.i("MainViewModel", "Usage Stats permission status updated: $usageStatus")
         }
     }
 
@@ -208,9 +235,10 @@ class MainViewModel(
             .map { records -> processUsageRecords(records) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
-    val totalPhoneUsageTodayMillis: StateFlow<Long> = flow {
-        emit(repository.getTotalUsageTimeMillisForDate(_todayDateString) ?: 0L)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
+    val totalPhoneUsageTodayMillis: StateFlow<Long> =
+        repository.getTotalUsageTimeMillisForDate(_todayDateString)
+            .map { it ?: 0L }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
 
     val totalPhoneUsageTodayFormatted: StateFlow<String> =
         totalPhoneUsageTodayMillis.map {
@@ -234,6 +262,24 @@ class MainViewModel(
 
     private val _totalScrollTodayFormatted = MutableStateFlow("0m")
     val totalScrollTodayFormatted: StateFlow<String> = _totalScrollTodayFormatted
+
+
+    // --- Date Picker Availability States ---
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val selectableDatesForScrollDetail: StateFlow<Set<Long>> =
+        repository.getAllDistinctScrollDateStrings()
+            .map { dateStrings ->
+                dateStrings.mapNotNull { DateUtil.parseLocalDateString(it)?.time }.toSet()
+            }
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptySet())
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val selectableDatesForHistoricalUsage: StateFlow<Set<Long>> =
+        repository.getAllDistinctUsageDateStrings()
+            .map { dateStrings ->
+                dateStrings.mapNotNull { DateUtil.parseLocalDateString(it)?.time }.toSet()
+            }
+            .stateIn(viewModelScope, SharingStarted.Lazily, emptySet())
 
 
     // --- Data for HISTORICAL USAGE SCREEN (Reacts to _selectedDateForHistory) ---
@@ -351,14 +397,15 @@ class MainViewModel(
     }
 
     // Corrected helper to check permission
+    @Suppress("DEPRECATION")
     private fun isUsageStatsPermissionGrantedByAppOps(): Boolean {
         val appOpsManager = application.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
         return if (appOpsManager != null) {
-            val mode = appOpsManager.checkOpNoThrow(
-                AppOpsManager.OPSTR_GET_USAGE_STATS,
-                Process.myUid(),
-                application.packageName
-            )
+            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                appOpsManager.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), application.packageName)
+            } else {
+                appOpsManager.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), application.packageName)
+            }
             mode == AppOpsManager.MODE_ALLOWED
         } else {
             Log.w("MainViewModel", "AppOpsManager was null, cannot check usage stats permission.")
@@ -390,21 +437,26 @@ class MainViewModel(
         }
     }
 
-    fun performHistoricalUsageDataBackfill(days: Int = 10) {
+    fun performHistoricalUsageDataBackfill(days: Int = 10, onComplete: (Boolean) -> Unit) {
         viewModelScope.launch {
             Log.i("MainViewModel", "Starting historical usage data backfill for $days days.")
             val success = repository.backfillHistoricalAppUsageData(days)
             if (success) {
                 Log.i("MainViewModel", "Historical data backfill completed successfully.")
-                val currentHistoryDate = _selectedDateForHistory.value
-                if (currentHistoryDate != _todayDateString) {
-                    _selectedDateForHistory.value = ""
-                    _selectedDateForHistory.value = currentHistoryDate
+                // Refresh today's data and potentially the historical screen if it's open
+                withContext(Dispatchers.Main) {
+                    val currentHistoryDate = _selectedDateForHistory.value
+                    if (currentHistoryDate != _todayDateString) {
+                        // Force a reload of historical data by changing the state value
+                        _selectedDateForHistory.value = ""
+                        _selectedDateForHistory.value = currentHistoryDate
+                    }
+                    refreshDataForToday()
                 }
-                refreshDataForToday()
             } else {
                 Log.w("MainViewModel", "Historical data backfill failed or had issues.")
             }
+            onComplete(success)
         }
     }
 
@@ -741,24 +793,6 @@ class MainViewModel(
                 Log.w("MainViewModel", "setFocusedDate called with period type ${_currentChartPeriodType.value}. Expected DAILY.")
                 loadAppDetailChartData(packageName, _currentChartPeriodType.value, newDate)
             }
-        }
-    }
-
-    private fun runHistoricalBackfill(days: Int) {
-        val backfillDone = settingsRepository.isHistoricalBackfillDone()
-        if (!backfillDone) {
-            viewModelScope.launch(Dispatchers.IO) {
-                Log.d("MainViewModel", "Starting historical data backfill for $days days.")
-                val success = repository.backfillHistoricalAppUsageData(days)
-                if (success) {
-                    settingsRepository.setHistoricalBackfillDone(true)
-                    Log.d("MainViewModel", "Historical backfill completed successfully.")
-                } else {
-                    Log.e("MainViewModel", "Historical backfill failed.")
-                }
-            }
-        } else {
-            Log.d("MainViewModel", "Historical backfill already completed. Skipping.")
         }
     }
 }

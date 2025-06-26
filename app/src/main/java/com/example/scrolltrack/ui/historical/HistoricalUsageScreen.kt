@@ -27,6 +27,7 @@ import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.model.AppUsageUiItem // Ensure this is imported
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.util.DateUtil
+import android.text.format.DateUtils as AndroidDateUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,13 +42,24 @@ fun HistoricalUsageScreen(
     val appUsageListForSelectedDate by viewModel.dailyAppUsageForSelectedDateHistory.collectAsStateWithLifecycle()
 
     var showDatePickerDialog by remember { mutableStateOf(false) }
+    val selectableDatesMillis by viewModel.selectableDatesForHistoricalUsage.collectAsStateWithLifecycle()
+
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = remember(selectedDateString) {
             DateUtil.parseLocalDateString(selectedDateString)?.time ?: System.currentTimeMillis()
         },
         selectableDates = object : SelectableDates {
             override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                return utcTimeMillis <= System.currentTimeMillis()
+                // Allow selection if it's today or if it's in the set of dates with data.
+                // Convert utcTimeMillis to the start of its day in UTC for comparison.
+                val dateToCompare = DateUtil.getStartOfDayUtcMillis(DateUtil.formatUtcTimestampToLocalDateString(utcTimeMillis))
+                return utcTimeMillis <= System.currentTimeMillis() &&
+                        (selectableDatesMillis.contains(dateToCompare) || AndroidDateUtils.isToday(utcTimeMillis))
+            }
+
+            override fun isSelectableYear(year: Int): Boolean {
+                // Allow all years for now, or implement more specific logic if needed
+                return true
             }
         }
     )
@@ -101,7 +113,7 @@ fun HistoricalUsageScreen(
                             usageItem = usageItem,
                             onClick = { navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(usageItem.packageName)) }
                         )
-                        Divider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
                 }
             }
