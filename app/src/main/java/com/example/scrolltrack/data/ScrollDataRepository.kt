@@ -81,12 +81,6 @@ interface ScrollDataRepository {
      */
     suspend fun insertScrollSession(session: ScrollSessionRecord)
 
-    /**
-     * Increments the notification count for a specific app on the current day.
-     * If no record exists for the app today, it creates one.
-     */
-    suspend fun incrementNotificationCount(packageName: String)
-
     fun getTotalUnlockCountForDate(dateString: String): Flow<Int>
 
     fun getTotalNotificationCountForDate(dateString: String): Flow<Int>
