@@ -1,5 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Base application theme. -->
     <style name="Theme.ScrollTrack" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Light Theme attributes -->
+        <item name="colorPrimary">@color/colorPrimaryLight</item>
+        <item name="colorOnPrimary">@color/colorOnPrimaryLight</item>
+        <item name="colorSecondary">@color/colorSecondaryLight</item>
+        <item name="colorOnSecondary">@color/colorOnSecondaryLight</item>
+        <item name="android:colorBackground">@color/colorBackgroundLight</item> <!-- M3 uses android:colorBackground -->
+        <item name="colorOnBackground">@color/colorOnBackgroundLight</item>
+        <item name="colorSurface">@color/colorSurfaceLight</item>
+        <item name="colorOnSurface">@color/colorOnSurfaceLight</item>
+        <item name="colorError">@color/colorErrorLight</item>
+        <item name="colorOnError">@color/colorOnErrorLight</item>
+
+        <!-- Custom chart colors -->
+        <item name="chartColor1">@color/chartColor1Light</item>
+        <item name="chartColor2">@color/chartColor2Light</item>
+        <item name="chartColor3">@color/chartColor3Light</item>
+        <item name="chartColor4">@color/chartColor4Light</item>
+        <item name="chartColor5">@color/chartColor5Light</item>
     </style>
 </resources>

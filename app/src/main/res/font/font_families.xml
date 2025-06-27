@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<font-family xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <!-- Pixelify Sans for titles and headings -->
+    <font
+        android:font="@font/pixelifysans_variable"
+        android:fontStyle="normal"
+        android:fontWeight="400"
+        app:font="@font/pixelifysans_variable"
+        app:fontStyle="normal"
+        app:fontWeight="400" />
+
+    <!-- Inter for all other text -->
+    <font
+        android:font="@font/inter_variable"
+        android:fontStyle="normal"
+        android:fontWeight="400"
+        app:font="@font/inter_variable"
+        app:fontStyle="normal"
+        app:fontWeight="400" />
+
+    <!-- Inter Italic (if you have a separate italic file, otherwise the system may try to faux italic) -->
+    <font
+        android:font="@font/inter_italic_variable"
+        android:fontStyle="italic"
+        android:fontWeight="400"
+        app:font="@font/inter_italic_variable"
+        app:fontStyle="italic"
+        app:fontWeight="400" />
+
+</font-family>

@@ -36,7 +36,6 @@ fun HistoricalUsageScreen(
     viewModel: MainViewModel,
     modifier: Modifier = Modifier
 ) {
-    // Collect states specific to the historical view from the ViewModel
     val selectedDateString by viewModel.selectedDateForHistory.collectAsStateWithLifecycle()
     val totalUsageTimeForSelectedDate by viewModel.totalUsageTimeForSelectedDateHistoryFormatted.collectAsStateWithLifecycle()
     val appUsageListForSelectedDate by viewModel.dailyAppUsageForSelectedDateHistory.collectAsStateWithLifecycle()
@@ -50,70 +49,72 @@ fun HistoricalUsageScreen(
         },
         selectableDates = object : SelectableDates {
             override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-                // Allow selection if it's today or if it's in the set of dates with data.
-                // Convert utcTimeMillis to the start of its day in UTC for comparison.
                 val dateToCompare = DateUtil.getStartOfDayUtcMillis(DateUtil.formatUtcTimestampToLocalDateString(utcTimeMillis))
                 return utcTimeMillis <= System.currentTimeMillis() &&
                         (selectableDatesMillis.contains(dateToCompare) || AndroidDateUtils.isToday(utcTimeMillis))
             }
-
-            override fun isSelectableYear(year: Int): Boolean {
-                // Allow all years for now, or implement more specific logic if needed
-                return true
-            }
+            override fun isSelectableYear(year: Int): Boolean = true
         }
     )
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Historical Usage") },
+                title = { Text("Historical Usage", style = MaterialTheme.typography.titleLarge) }, // Use Pixelify Sans
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     TextButton(onClick = { showDatePickerDialog = true }) {
-                        Text(selectedDateString) // Display the selected date for history
+                        Text(selectedDateString, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
                         Spacer(Modifier.width(4.dp))
-                        Icon(Icons.Filled.CalendarToday, "Select Date")
+                        Icon(Icons.Filled.CalendarToday, "Select Date", tint = MaterialTheme.colorScheme.primary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    containerColor = MaterialTheme.colorScheme.surface, // Use primary surface
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.statusBarsPadding()
             )
         },
-        modifier = modifier
+        modifier = modifier.navigationBarsPadding().background(MaterialTheme.colorScheme.background)
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(16.dp),
+                .padding(innerPadding) // Apply scaffold padding
+                .padding(horizontal = 16.dp, vertical = 12.dp), // Consistent screen padding
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                "Total Usage on $selectedDateString: $totalUsageTimeForSelectedDate",
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.padding(bottom = 16.dp)
+            Text( // More prominent display for total usage
+                text = "Total Usage: $totalUsageTimeForSelectedDate",
+                style = MaterialTheme.typography.headlineSmall.copy(color = MaterialTheme.colorScheme.primary), // Pixelify Sans, primary color
+                modifier = Modifier.padding(bottom = 20.dp) // Increased spacing
             )
 
             if (appUsageListForSelectedDate.isEmpty()) {
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Text("No usage data found for $selectedDateString.")
+                    Text(
+                        "No usage data found for $selectedDateString.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             } else {
-                LazyColumn(modifier = Modifier.weight(1f)) {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp) // Spacing between items
+                ) {
                     items(items = appUsageListForSelectedDate, key = { it.id }) { usageItem ->
-                        AppUsageRowItem(
+                        AppUsageRowItem( // AppUsageRowItem will be styled with Card
                             usageItem = usageItem,
                             onClick = { navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(usageItem.packageName)) }
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
                 }
             }
@@ -123,67 +124,110 @@ fun HistoricalUsageScreen(
             DatePickerDialog(
                 onDismissRequest = { showDatePickerDialog = false },
                 confirmButton = {
-                    TextButton(onClick = {
-                        datePickerState.selectedDateMillis?.let {
-                            viewModel.updateSelectedDateForHistory(it) // Call the correct update function
-                        }
+                    Button(onClick = { // Standard Button
+                        datePickerState.selectedDateMillis?.let(viewModel::updateSelectedDateForHistory)
                         showDatePickerDialog = false
                     }) { Text("OK") }
                 },
                 dismissButton = {
                     TextButton(onClick = { showDatePickerDialog = false }) { Text("Cancel") }
-                }
+                },
+                colors = DatePickerDefaults.colors( // Apply theme colors
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    headlineContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    weekdayContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    dayContentColor = MaterialTheme.colorScheme.onSurface,
+                    disabledDayContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                    selectedDayContentColor = MaterialTheme.colorScheme.onPrimary,
+                    disabledSelectedDayContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.38f),
+                    selectedDayContainerColor = MaterialTheme.colorScheme.primary,
+                    todayContentColor = MaterialTheme.colorScheme.primary,
+                    todayDateBorderColor = MaterialTheme.colorScheme.primary,
+                )
             ) {
-                DatePicker(state = datePickerState)
+                DatePicker(
+                    state = datePickerState,
+                    colors = DatePickerDefaults.colors( // Apply same colors to DatePicker itself
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        headlineContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        weekdayContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        dayContentColor = MaterialTheme.colorScheme.onSurface,
+                        disabledDayContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                        selectedDayContentColor = MaterialTheme.colorScheme.onPrimary,
+                        disabledSelectedDayContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.38f),
+                        selectedDayContainerColor = MaterialTheme.colorScheme.primary,
+                        todayContentColor = MaterialTheme.colorScheme.primary,
+                        todayDateBorderColor = MaterialTheme.colorScheme.primary,
+                        yearContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        selectedYearContentColor = MaterialTheme.colorScheme.onPrimary,
+                        selectedYearContainerColor = MaterialTheme.colorScheme.primary,
+                        currentYearContentColor = MaterialTheme.colorScheme.primary,
+                    )
+                )
             }
         }
     }
 }
 
+// Updated AppUsageRowItem with Card styling
 @Composable
 fun AppUsageRowItem(
     usageItem: AppUsageUiItem,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Row(
+    Card( // Wrap item in a Card
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant, // Subtle background
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Image(
-            painter = rememberAsyncImagePainter(
-                model = usageItem.icon ?: R.mipmap.ic_launcher_round
-            ),
-            contentDescription = "${usageItem.appName} icon",
+        Row(
             modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape),
-            contentScale = ContentScale.Fit
-        )
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = usageItem.appName,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp), // Standard padding
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = rememberAsyncImagePainter(model = usageItem.icon ?: R.mipmap.ic_launcher_round),
+                contentDescription = "${usageItem.appName} icon",
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape),
+                contentScale = ContentScale.Fit
             )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = usageItem.appName,
+                    style = MaterialTheme.typography.titleSmall, // Consistent typography
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant // Ensure text color
+                )
+                Text(
+                    text = usageItem.packageName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), // Subtler text
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp)) // Increased spacing
             Text(
-                text = usageItem.packageName,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                text = DateUtil.formatDuration(usageItem.usageTimeMillis),
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary // Highlight with primary color
+                )
             )
         }
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = DateUtil.formatDuration(usageItem.usageTimeMillis),
-            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.primary
-        )
     }
 }

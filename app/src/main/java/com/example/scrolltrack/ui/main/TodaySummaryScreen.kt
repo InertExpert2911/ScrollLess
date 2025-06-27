@@ -12,7 +12,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.AccessibilityNew
+import androidx.compose.material.icons.filled.Brightness2
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.QueryStats
+import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -30,12 +39,17 @@ import com.example.scrolltrack.R
 import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.ui.model.AppUsageUiItem
-import com.example.scrolltrack.ui.theme.CaveatFontFamily
-import com.example.scrolltrack.ui.theme.UsageStatusGreen
-import com.example.scrolltrack.ui.theme.UsageStatusOrange
-import com.example.scrolltrack.ui.theme.UsageStatusRed
+// Removed CaveatFontFamily import as PixelifySans and Inter are now primary fonts
+// import com.example.scrolltrack.ui.theme.CaveatFontFamily
+// UsageStatus colors will now be derived from the theme or defined more semantically
+// import com.example.scrolltrack.ui.theme.UsageStatusGreen
+// import com.example.scrolltrack.ui.theme.UsageStatusOrange
+// import com.example.scrolltrack.ui.theme.UsageStatusRed
 import com.example.scrolltrack.util.DateUtil
 import androidx.compose.ui.res.stringResource
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.Dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,10 +75,11 @@ fun TodaySummaryScreen(
     currentThemeVariant: String,
     modifier: Modifier = Modifier
 ) {
+    // Determine phone usage color based on theme attributes or semantic colors
     val phoneUsageColor = when {
-        totalUsageTimeMillis <= 2.5 * 60 * 60 * 1000 -> UsageStatusGreen
-        totalUsageTimeMillis <= 5 * 60 * 60 * 1000 -> UsageStatusOrange
-        else -> UsageStatusRed
+        totalUsageTimeMillis <= 2.5 * 60 * 60 * 1000 -> MaterialTheme.colorScheme.tertiary // Example: Use tertiary for "good"
+        totalUsageTimeMillis <= 5 * 60 * 60 * 1000 -> MaterialTheme.colorScheme.secondary // Example: Use secondary for "warning"
+        else -> MaterialTheme.colorScheme.error // Use error color for "high usage"
     }
 
     Column(
@@ -72,132 +87,121 @@ fun TodaySummaryScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
-            .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 16.dp)
+            .padding(16.dp) // Consistent padding
     ) {
+        // Header Section
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp)
-                .padding(top = 24.dp),
+                .padding(bottom = 16.dp), // Spacing after header
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
                 text = greeting,
-                style = MaterialTheme.typography.headlineMedium.copy(fontFamily = CaveatFontFamily),
+                style = MaterialTheme.typography.headlineLarge, // Using Pixelify Sans
                 color = MaterialTheme.colorScheme.onBackground,
             )
-            ThemeModeSwitch(
+            ThemeModeSwitch( // Assuming ThemeModeSwitch is updated or uses appropriate tints
                 currentThemeVariant = currentThemeVariant,
                 onThemeChange = onThemeChange
             )
         }
 
+        // Sub-greeting or motivational text
         Text(
-            text = stringResource(id = R.string.greeting_manage_habits), // Replaced
-            style = MaterialTheme.typography.titleSmall,
+            text = stringResource(id = R.string.greeting_manage_habits),
+            style = MaterialTheme.typography.titleMedium, // Using Inter
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
+            modifier = Modifier.padding(bottom = 24.dp) // More spacing
         )
 
-        AnimatedVisibility(
-            visible = !isAccessibilityServiceEnabled,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            PermissionRequestCard(
-                leadingIcon = { Icon(Icons.Filled.AccessibilityNew, contentDescription = "Accessibility Service Icon", modifier = Modifier.size(28.dp)) },
-                title = stringResource(id = R.string.permission_accessibility_title), // Replaced
-                description = stringResource(id = R.string.permission_accessibility_description), // Replaced
-                buttonText = stringResource(id = R.string.permission_button_open_settings), // Replaced
-                onButtonClick = onEnableAccessibilityClick,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
-            )
+        // Permissions Section - Using a consistent Card style
+        val permissionsNeeded = !isAccessibilityServiceEnabled || !isUsageStatsPermissionGranted || !isNotificationListenerEnabled
+        AnimatedVisibility(visible = permissionsNeeded) {
+            Column {
+                if (!isAccessibilityServiceEnabled) {
+                    PermissionRequestCard(
+                        leadingIcon = { Icon(Icons.Filled.AccessibilityNew, contentDescription = "Accessibility Service Icon", tint = MaterialTheme.colorScheme.onSecondaryContainer) },
+                        title = stringResource(id = R.string.permission_accessibility_title),
+                        description = stringResource(id = R.string.permission_accessibility_description),
+                        buttonText = stringResource(id = R.string.permission_button_open_settings),
+                        onButtonClick = onEnableAccessibilityClick,
+                        modifier = Modifier.padding(bottom = 12.dp) // Spacing between permission cards
+                    )
+                }
+                if (!isUsageStatsPermissionGranted) {
+                    PermissionRequestCard(
+                        leadingIcon = { Icon(Icons.Filled.QueryStats, contentDescription = "Usage Access Icon", tint = MaterialTheme.colorScheme.onSecondaryContainer) },
+                        title = stringResource(id = R.string.permission_usage_stats_title),
+                        description = stringResource(id = R.string.permission_usage_stats_description),
+                        buttonText = stringResource(id = R.string.permission_button_grant_access),
+                        onButtonClick = onEnableUsageStatsClick,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                }
+                if (!isNotificationListenerEnabled) {
+                    PermissionRequestCard(
+                        leadingIcon = { Icon(Icons.Filled.NotificationsActive, contentDescription = "Notification Access Icon", tint = MaterialTheme.colorScheme.onSecondaryContainer) },
+                        title = stringResource(id = R.string.permission_notification_listener_title),
+                        description = stringResource(id = R.string.permission_notification_listener_description),
+                        buttonText = stringResource(id = R.string.permission_button_grant_access),
+                        onButtonClick = onEnableNotificationListenerClick,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp)) // Space after permissions block
+            }
         }
 
-        AnimatedVisibility(
-            visible = !isUsageStatsPermissionGranted,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            PermissionRequestCard(
-                leadingIcon = { Icon(Icons.Filled.QueryStats, contentDescription = "Usage Access Icon", modifier = Modifier.size(28.dp)) },
-                title = stringResource(id = R.string.permission_usage_stats_title), // Replaced
-                description = stringResource(id = R.string.permission_usage_stats_description), // Replaced
-                buttonText = stringResource(id = R.string.permission_button_grant_access), // Replaced
-                onButtonClick = onEnableUsageStatsClick,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
-            )
-        }
-
-        AnimatedVisibility(
-            visible = !isNotificationListenerEnabled,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            PermissionRequestCard(
-                leadingIcon = { Icon(Icons.Filled.NotificationsActive, contentDescription = "Notification Access Icon", modifier = Modifier.size(28.dp)) },
-                title = stringResource(id = R.string.permission_notification_listener_title),
-                description = stringResource(id = R.string.permission_notification_listener_description),
-                buttonText = stringResource(id = R.string.permission_button_grant_access),
-                onButtonClick = onEnableNotificationListenerClick,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
-            )
-        }
-
-        if (!isAccessibilityServiceEnabled || !isUsageStatsPermissionGranted || !isNotificationListenerEnabled) {
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
+        // Main Stats Grid - Using a 2x2 or similar layout for key metrics
+        // Row 1 of Stats
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(IntrinsicSize.Min)
-                .padding(horizontal = 4.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(bottom = 12.dp), // Spacing between stat rows
+            horizontalArrangement = Arrangement.spacedBy(12.dp) // Spacing between cards in a row
         ) {
             PhoneUsageCard(
                 modifier = Modifier.weight(1f),
                 totalUsageTime = totalUsageTime,
-                usageTimeColor = phoneUsageColor,
+                usageTimeColor = phoneUsageColor, // Already determined based on theme/logic
                 onNavigateToHistoricalUsage = onNavigateToHistoricalUsage
             )
             TopWeeklyAppCard(
                 modifier = Modifier.weight(1f),
                 topApp = topWeeklyApp,
-                onClick = { packageName ->
-                    onNavigateToAppDetail(packageName)
-                }
+                onClick = onNavigateToAppDetail // Simplified lambda
             )
         }
 
+        // Row 2 of Stats (Unlocks & Notifications)
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(IntrinsicSize.Min)
-                .padding(horizontal = 4.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             InfoCard(
                 modifier = Modifier.weight(1f),
                 title = "Screen Unlocks",
                 value = totalUnlocks.toString(),
                 icon = Icons.Filled.LockOpen,
-                iconTint = MaterialTheme.colorScheme.tertiary
+                // iconTint is now handled by InfoCard's contentColor or can be explicitly set to a theme color
             )
             InfoCard(
                 modifier = Modifier.weight(1f),
                 title = "Notifications",
                 value = totalNotifications.toString(),
                 icon = Icons.Filled.Notifications,
-                iconTint = MaterialTheme.colorScheme.secondary
             )
         }
 
+        // Scroll Stats Card - Prominent and clear
         ScrollStatsCard(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 4.dp),
+                .padding(bottom = 16.dp), // Space before next section or end
             scrollDistanceMeters = scrollDistanceMeters,
             totalScrollUnits = totalScrollUnits,
             onClick = {
@@ -206,10 +210,13 @@ fun TodaySummaryScreen(
             }
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        // Optional: Add a section for "Quick Actions" or "Tips" if desired later
+
+        Spacer(modifier = Modifier.height(16.dp)) // Final spacing at the bottom
     }
 }
 
+// Updated PermissionRequestCard for new styling
 @Composable
 fun PermissionRequestCard(
     leadingIcon: (@Composable () -> Unit)?,
@@ -219,37 +226,36 @@ fun PermissionRequestCard(
     onButtonClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    ElevatedCard(
+    Card( // Using standard Card for a flatter, more integrated look
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+        shape = MaterialTheme.shapes.medium, // Slightly less rounded
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer, // Using a theme color
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
         ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp) // Subtle elevation
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (leadingIcon != null) {
-                Box(modifier = Modifier.padding(end = 16.dp)) {
-                    leadingIcon()
-                }
+            leadingIcon?.let {
+                Box(modifier = Modifier.padding(end = 16.dp)) { it() }
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    style = MaterialTheme.typography.titleSmall, // Adjusted style
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.Top) {
+                Row(verticalAlignment = Alignment.CenterVertically) { // Aligned icon with text
                     Icon(
                         imageVector = Icons.Filled.Info,
                         contentDescription = "Information",
-                        modifier = Modifier.padding(end = 8.dp, top = 2.dp).size(16.dp),
+                        modifier = Modifier.size(16.dp).padding(end = 8.dp),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer // Themed tint
                     )
                     Text(
                         text = description,
@@ -257,73 +263,80 @@ fun PermissionRequestCard(
                     )
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                FilledTonalButton(
+                Button( // Using standard Button for primary action emphasis
                     onClick = onButtonClick,
                     modifier = Modifier.align(Alignment.End),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
                     ),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)
                 ) {
-                    Text(buttonText, style = MaterialTheme.typography.labelMedium)
+                    Text(buttonText, style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
     }
 }
 
+
+// Updated PhoneUsageCard with new styling
 @Composable
 fun PhoneUsageCard(
     modifier: Modifier = Modifier,
     totalUsageTime: String,
-    usageTimeColor: Color,
+    usageTimeColor: Color, // This color is passed based on logic (good, warning, error)
     onNavigateToHistoricalUsage: () -> Unit
 ) {
     Card(
         modifier = modifier
-            .fillMaxHeight()
+            .fillMaxHeight() // Ensure it fills height in a row
             .clickable { onNavigateToHistoricalUsage() },
-        shape = MaterialTheme.shapes.large,
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            containerColor = MaterialTheme.colorScheme.surfaceVariant, // Neutral background
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier
                 .padding(16.dp)
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center // Center content
         ) {
-            Icon(Icons.Filled.PhoneAndroid, contentDescription = "Phone Usage", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp).padding(bottom = 8.dp))
-            Text(
-                text = stringResource(id = R.string.card_title_phone_usage_today), // Replaced
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                textAlign = TextAlign.Center
+            Icon(
+                Icons.Filled.PhoneAndroid,
+                contentDescription = "Phone Usage",
+                tint = MaterialTheme.colorScheme.primary, // Use primary color for icon
+                modifier = Modifier.size(36.dp).padding(bottom = 8.dp)
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = stringResource(id = R.string.card_title_phone_usage_today),
+                style = MaterialTheme.typography.titleMedium, // Clearer title
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
             Text(
                 text = totalUsageTime,
-                style = MaterialTheme.typography.headlineMedium.copy(
+                style = MaterialTheme.typography.headlineSmall.copy( // Slightly smaller headline
                     fontWeight = FontWeight.Bold,
-                    color = usageTimeColor
+                    color = usageTimeColor // Dynamic color based on usage
                 ),
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(bottom = 8.dp)
             )
-            Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = stringResource(id = R.string.card_button_view_details), // Replaced
-                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                color = MaterialTheme.colorScheme.onPrimaryContainer
+                text = stringResource(id = R.string.card_button_view_details),
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), // Bolder label
+                color = MaterialTheme.colorScheme.primary // Action text in primary color
             )
         }
     }
 }
 
+// Updated TopWeeklyAppCard with new styling
 @Composable
 fun TopWeeklyAppCard(
     modifier: Modifier = Modifier,
@@ -334,74 +347,71 @@ fun TopWeeklyAppCard(
         modifier = modifier
             .fillMaxHeight()
             .clickable(enabled = topApp != null) {
-                topApp?.packageName?.let { onClick(it) }
+                topApp?.packageName?.let(onClick)
             },
-        shape = MaterialTheme.shapes.large,
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier
                 .padding(16.dp)
-                .fillMaxSize(),
+                .fillMaxSize(), // Fill available space
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center // Center content
         ) {
             if (topApp != null) {
                 Image(
-                    painter = rememberAsyncImagePainter(
-                        model = topApp.icon ?: R.mipmap.ic_launcher_round
-                    ),
+                    painter = rememberAsyncImagePainter(model = topApp.icon ?: R.mipmap.ic_launcher_round),
                     contentDescription = "${topApp.appName} icon",
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(48.dp) // Larger icon
                         .clip(CircleShape)
-                        .padding(bottom = 8.dp),
+                        .padding(bottom = 12.dp), // More space below icon
                     contentScale = ContentScale.Fit
                 )
                 Text(
                     text = topApp.appName,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall, // Adjusted style
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(bottom = 2.dp)
                 )
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "${DateUtil.formatDuration(topApp.usageTimeMillis)} ${stringResource(id = R.string.suffix_last_7_days)}", // Replaced
+                    text = "${DateUtil.formatDuration(topApp.usageTimeMillis)} ${stringResource(id = R.string.suffix_last_7_days)}",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
                     textAlign = TextAlign.Center
                 )
             } else {
                 Icon(
                     Icons.Filled.HourglassEmpty,
                     contentDescription = "No top app data",
-                    modifier = Modifier.size(36.dp).padding(bottom = 8.dp),
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                    modifier = Modifier.size(40.dp).padding(bottom = 12.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f) // Slightly faded
                 )
                 Text(
-                    text = stringResource(id = R.string.card_title_top_weekly_app), // Replaced
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    textAlign = TextAlign.Center
+                    text = stringResource(id = R.string.card_title_top_weekly_app),
+                    style = MaterialTheme.typography.titleSmall,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(bottom = 2.dp)
                 )
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = stringResource(id = R.string.text_no_data_yet), // Replaced
+                    text = stringResource(id = R.string.text_no_data_yet),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                 )
             }
         }
     }
 }
 
+
+// Updated ScrollStatsCard with new styling
 @Composable
 fun ScrollStatsCard(
     modifier: Modifier = Modifier,
@@ -409,48 +419,60 @@ fun ScrollStatsCard(
     totalScrollUnits: Long,
     onClick: () -> Unit
 ) {
-    ElevatedCard(
+    Card( // Changed from ElevatedCard for consistency
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant, // Use a consistent container
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
         ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(
+        Row( // Using Row for better horizontal layout of icon and text
             modifier = Modifier
                 .padding(16.dp)
                 .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween // Space out elements
         ) {
-            Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = "Scroll Stats", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(32.dp).padding(bottom = 8.dp))
-            Text(
-                text = stringResource(id = R.string.card_title_scroll_stats_today), // Replaced
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.AutoMirrored.Filled.TrendingUp,
+                    contentDescription = "Scroll Stats",
+                    tint = MaterialTheme.colorScheme.primary, // Primary color for icon
+                    modifier = Modifier.size(40.dp).padding(end = 12.dp) // Larger icon, padding
+                )
+                Column {
+                    Text(
+                        text = stringResource(id = R.string.card_title_scroll_stats_today),
+                        style = MaterialTheme.typography.titleMedium, // Clear title
+                    )
+                    Text( // Sub-text for units if desired
+                        text = "$totalScrollUnits units",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    )
+                }
+            }
+            Text( // Distance on the right, more prominent
                 text = scrollDistanceMeters,
-                style = MaterialTheme.typography.titleLarge.copy(color = MaterialTheme.colorScheme.onPrimaryContainer),
-                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.headlineSmall.copy( // Prominent display
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary // Primary color for value
+                ),
+                textAlign = TextAlign.End,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = "$totalScrollUnits units",
-                style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold),
-                textAlign = TextAlign.Center
             )
         }
     }
 }
 
+
+// AppScrollItemEntry - Assuming this is for a list elsewhere, keeping its style for now
+// If it appears on the dashboard, it would need similar styling updates.
 @Composable
 fun AppScrollItemEntry(
     appData: AppScrollUiItem,
@@ -460,21 +482,23 @@ fun AppScrollItemEntry(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .clickable(onClick = onClick)
+            .padding(vertical = 4.dp), // Add some vertical padding if it's in a list
         shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface, // Standard surface for list items
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp) // Subtle elevation for list items
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 16.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp), // Standard padding
             verticalAlignment = Alignment.CenterVertically
         ) {
             Image(
-                painter = rememberAsyncImagePainter(
-                    model = appData.icon ?: R.mipmap.ic_launcher_round
-                ),
+                painter = rememberAsyncImagePainter(model = appData.icon ?: R.mipmap.ic_launcher_round),
                 contentDescription = "${appData.appName} icon",
                 modifier = Modifier
                     .size(40.dp)
@@ -485,13 +509,12 @@ fun AppScrollItemEntry(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = appData.appName,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall, // Consistent typography
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurface
+                    overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = appData.packageName,
+                    text = appData.packageName, // If useful, otherwise can be removed for cleaner UI
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -501,70 +524,74 @@ fun AppScrollItemEntry(
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = "${appData.totalScroll} units",
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                 textAlign = TextAlign.End,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary // Highlight primary stat
             )
         }
     }
 }
 
+
+// Updated ThemeModeSwitch
 @Composable
 fun ThemeModeSwitch(
     currentThemeVariant: String,
     onThemeChange: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isDarkMode = currentThemeVariant != "light"
+    val isDarkMode = currentThemeVariant != "light" // Assumes "light" is the only light variant
 
-    Switch(
-        modifier = modifier,
-        checked = isDarkMode,
-        onCheckedChange = {
-            val newTheme = if (it) "oled_dark" else "light"
+    IconButton( // Using IconButton for better touch target and visual integration
+        onClick = {
+            val newTheme = if (isDarkMode) "light" else "oled_dark" // Toggle between "light" and "oled_dark"
             onThemeChange(newTheme)
         },
-        thumbContent = {
-            Icon(
-                imageVector = if (isDarkMode) Icons.Filled.Brightness2 else Icons.Filled.WbSunny,
-                contentDescription = if (isDarkMode) "Dark Mode" else "Light Mode",
-                modifier = Modifier.size(SwitchDefaults.IconSize)
-            )
-        }
-    )
+        modifier = modifier
+    ) {
+        Icon(
+            imageVector = if (isDarkMode) Icons.Filled.Brightness2 else Icons.Filled.WbSunny,
+            contentDescription = if (isDarkMode) "Switch to Light Mode" else "Switch to Dark Mode",
+            tint = MaterialTheme.colorScheme.primary // Use primary color for the icon
+        )
+    }
 }
 
+
+// Updated InfoCard
 @Composable
 fun InfoCard(
     modifier: Modifier = Modifier,
     title: String,
     value: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
-    iconTint: Color
+    // iconTint is removed, tint will be MaterialTheme.colorScheme.primary by default for the icon
 ) {
     Card(
-        modifier = modifier.fillMaxHeight(),
-        shape = MaterialTheme.shapes.large,
+        modifier = modifier.fillMaxHeight(), // Ensure it fills height in a row
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant,
             contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier
                 .padding(16.dp)
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Center // Center content
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = title,
-                tint = iconTint,
-                modifier = Modifier.size(32.dp).padding(bottom = 8.dp)
+                tint = MaterialTheme.colorScheme.primary, // Icon tinted with primary color
+                modifier = Modifier.size(36.dp).padding(bottom = 8.dp) // Larger icon
             )
             Text(
                 text = title,
+                style = MaterialTheme.typography.titleSmall, // Clear title
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                 textAlign = TextAlign.Center
             )

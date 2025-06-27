@@ -51,7 +51,6 @@ fun ScrollDetailScreen(
     onDateSelected: (Long) -> Unit
 ) {
     val context = LocalContext.current
-
     var showDatePickerDialog by remember { mutableStateOf(false) }
     val selectableDatesMillis by viewModel.selectableDatesForScrollDetail.collectAsStateWithLifecycle()
 
@@ -65,59 +64,67 @@ fun ScrollDetailScreen(
                 return utcTimeMillis <= System.currentTimeMillis() &&
                         (selectableDatesMillis.contains(dateToCompare) || AndroidDateUtils.isToday(utcTimeMillis))
             }
-            override fun isSelectableYear(year: Int): Boolean {
-                return true // Allow all years for now
-            }
+            override fun isSelectableYear(year: Int): Boolean = true
         }
     )
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Scroll Breakdown") }, // Simplified title
+                title = { Text("Scroll Breakdown", style = MaterialTheme.typography.titleLarge) }, // Use Pixelify Sans
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MaterialTheme.colorScheme.onSurface)
                     }
                 },
                 actions = {
                     TextButton(onClick = { showDatePickerDialog = true }) {
-                        Text(selectedDateString) 
+                        Text(selectedDateString, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge) // Themed text
                         Spacer(Modifier.width(4.dp))
-                        Icon(Icons.Filled.CalendarToday, "Select Date")
+                        Icon(Icons.Filled.CalendarToday, "Select Date", tint = MaterialTheme.colorScheme.primary) // Themed icon
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant, // Match HistoricalUsageScreen
-                    titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    containerColor = MaterialTheme.colorScheme.surface, // Use primary surface
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.primary // Action items often use primary
+                ),
+                modifier = Modifier.statusBarsPadding()
             )
-        }
+        },
+        modifier = Modifier.navigationBarsPadding().background(MaterialTheme.colorScheme.background)
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp, vertical = 8.dp) // Adjusted padding
+                .padding(paddingValues) // Apply scaffold padding
+                .padding(horizontal = 16.dp, vertical = 12.dp) // Consistent screen padding
         ) {
             if (scrollData.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("No scroll data recorded for $selectedDateString.")
+                    Text(
+                        text = "No scroll data recorded for $selectedDateString.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp) // Add spacing between items
+                ) {
                     items(items = scrollData, key = { it.id }) { appItem ->
                         AppScrollDetailItemEntry(
                             appItem = appItem,
-                            // Pass context for ConversionUtil
                             formattedDistance = ConversionUtil.formatScrollDistance(appItem.totalScroll, context).first,
                             onClick = { navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(appItem.packageName)) }
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        // Consider removing HorizontalDivider if Card elevation provides enough separation
+                        // HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
                     }
                 }
             }
@@ -127,70 +134,113 @@ fun ScrollDetailScreen(
             DatePickerDialog(
                 onDismissRequest = { showDatePickerDialog = false },
                 confirmButton = {
-                    TextButton(onClick = {
-                        datePickerState.selectedDateMillis?.let {
-                            onDateSelected(it)
-                        }
+                    Button(onClick = { // Use standard Button
+                        datePickerState.selectedDateMillis?.let(onDateSelected)
                         showDatePickerDialog = false
                     }) { Text("OK") }
                 },
                 dismissButton = {
                     TextButton(onClick = { showDatePickerDialog = false }) { Text("Cancel") }
-                }
+                },
+                colors = DatePickerDefaults.colors( // Apply theme colors to DatePicker
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    headlineContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    weekdayContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    dayContentColor = MaterialTheme.colorScheme.onSurface,
+                    disabledDayContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                    selectedDayContentColor = MaterialTheme.colorScheme.onPrimary,
+                    disabledSelectedDayContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.38f),
+                    selectedDayContainerColor = MaterialTheme.colorScheme.primary,
+                    todayContentColor = MaterialTheme.colorScheme.primary,
+                    todayDateBorderColor = MaterialTheme.colorScheme.primary,
+                )
             ) {
-                DatePicker(state = datePickerState)
+                DatePicker(
+                    state = datePickerState,
+                    colors = DatePickerDefaults.colors( // Apply same colors to DatePicker itself
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        headlineContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        weekdayContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        dayContentColor = MaterialTheme.colorScheme.onSurface,
+                        disabledDayContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                        selectedDayContentColor = MaterialTheme.colorScheme.onPrimary,
+                        disabledSelectedDayContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.38f),
+                        selectedDayContainerColor = MaterialTheme.colorScheme.primary,
+                        todayContentColor = MaterialTheme.colorScheme.primary,
+                        todayDateBorderColor = MaterialTheme.colorScheme.primary,
+                        yearContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        selectedYearContentColor = MaterialTheme.colorScheme.onPrimary,
+                        selectedYearContainerColor = MaterialTheme.colorScheme.primary,
+                        currentYearContentColor = MaterialTheme.colorScheme.primary,
+                    )
+                )
             }
         }
     }
 }
 
+// Updated AppScrollDetailItemEntry with Card styling
 @Composable
 fun AppScrollDetailItemEntry(
     appItem: AppScrollUiItem,
-    formattedDistance: String, // Now passed in
+    formattedDistance: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Row(
+    Card( // Wrap item in a Card
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant, // Use a subtle background
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Image(
-            painter = rememberAsyncImagePainter(
-                model = appItem.icon ?: R.mipmap.ic_launcher_round // Fallback icon
-            ),
-            contentDescription = "${appItem.appName} icon",
+        Row(
             modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape),
-            contentScale = ContentScale.Fit
-        )
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = appItem.appName,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp), // Standard padding
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = rememberAsyncImagePainter(model = appItem.icon ?: R.mipmap.ic_launcher_round),
+                contentDescription = "${appItem.appName} icon",
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape),
+                contentScale = ContentScale.Fit
             )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = appItem.appName,
+                    style = MaterialTheme.typography.titleSmall, // Consistent typography
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant // Ensure text color
+                )
+                Text(
+                    text = "${appItem.totalScroll} units",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), // Subtler text
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp)) // Increased spacing
             Text(
-                text = "${appItem.totalScroll} units", // Display raw units
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                text = formattedDistance,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary // Highlight with primary color
+                ),
+                textAlign = TextAlign.End
             )
         }
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = formattedDistance, // Display formatted distance (e.g., "123 m")
-            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.primary,
-            textAlign = TextAlign.End
-        )
     }
 }
 

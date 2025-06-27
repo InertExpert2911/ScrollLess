@@ -1,10 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
-    <color name="teal_200">#FF03DAC5</color>
-    <color name="teal_700">#FF018786</color>
-    <color name="black">#FF000000</color>
-    <color name="white">#FFFFFFFF</color>
+    <!-- Base Palette -->
+    <color name="brand_black">#18191e</color>
+    <color name="brand_green">#44c98e</color>
+    <color name="brand_orange">#fd8537</color>
+    <color name="brand_blue">#479bba</color>
+    <color name="brand_white">#FFFFFF</color>
+
+    <!-- Light Theme -->
+    <color name="colorPrimaryLight">@color/brand_blue</color>
+    <color name="colorOnPrimaryLight">@color/brand_white</color>
+    <color name="colorSecondaryLight">@color/brand_green</color>
+    <color name="colorOnSecondaryLight">@color/brand_black</color>
+    <color name="colorSurfaceLight">@color/brand_white</color>
+    <color name="colorOnSurfaceLight">@color/brand_black</color>
+    <color name="colorBackgroundLight">#F7F7F7</color>
+    <color name="colorOnBackgroundLight">@color/brand_black</color>
+    <color name="colorErrorLight">#B00020</color>
+    <color name="colorOnErrorLight">@color/brand_white</color>
+
+    <color name="chartColor1Light">@color/brand_blue</color>
+    <color name="chartColor2Light">@color/brand_green</color>
+    <color name="chartColor3Light">@color/brand_orange</color>
+    <color name="chartColor4Light">#EF5350</color>
+    <color name="chartColor5Light">#AB47BC</color>
+
+
+    <!-- Dark Theme -->
+    <color name="colorPrimaryDark">@color/brand_blue</color>
+    <color name="colorOnPrimaryDark">@color/brand_white</color>
+    <color name="colorSecondaryDark">@color/brand_green</color>
+    <color name="colorOnSecondaryDark">@color/brand_black</color>
+    <color name="colorSurfaceDark">@color/brand_black</color>
+    <color name="colorOnSurfaceDark">@color/brand_white</color>
+    <color name="colorBackgroundDark">#121212</color>
+    <color name="colorOnBackgroundDark">@color/brand_white</color>
+    <color name="colorErrorDark">#CF6679</color>
+    <color name="colorOnErrorDark">@color/brand_black</color>
+
+    <color name="chartColor1Dark">@color/brand_blue</color>
+    <color name="chartColor2Dark">@color/brand_green</color>
+    <color name="chartColor3Dark">@color/brand_orange</color>
+    <color name="chartColor4Dark">#EF5350</color>
+    <color name="chartColor5Dark">#AB47BC</color>
+
 </resources>
