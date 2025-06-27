@@ -32,7 +32,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch // Keep Switch if it's used, or ensure IconButton is used for ThemeModeSwitch
+import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -51,6 +51,10 @@ import com.example.scrolltrack.R
 import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.ui.model.AppUsageUiItem
+import com.example.scrolltrack.ui.theme.BrandWhite
+import com.example.scrolltrack.ui.theme.ButterYellow
+import com.example.scrolltrack.ui.theme.DillGreen
+import com.example.scrolltrack.ui.theme.OledBlack
 // Removed CaveatFontFamily import as PixelifySans and Inter are now primary fonts
 // import com.example.scrolltrack.ui.theme.CaveatFontFamily
 // UsageStatus colors will now be derived from the theme or defined more semantically
@@ -99,8 +103,9 @@ fun TodaySummaryScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
-            .padding(16.dp) // Consistent padding
+            .padding(horizontal = 16.dp, vertical = 8.dp) // Adjust padding
     ) {
+        Spacer(modifier = Modifier.height(32.dp)) // Increased spacer to push content down
         // Header Section
         Row(
             modifier = Modifier
@@ -240,12 +245,12 @@ fun PermissionRequestCard(
 ) {
     Card( // Using standard Card for a flatter, more integrated look
         modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium, // Slightly less rounded
+        shape = MaterialTheme.shapes.large, // More rounded corners
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer, // Using a theme color
-            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh, // Use a theme-consistent container
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp) // Subtle elevation
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp) // Subtle elevation
     ) {
         Row(
             modifier = Modifier
@@ -304,12 +309,12 @@ fun PhoneUsageCard(
         modifier = modifier
             .fillMaxHeight() // Ensure it fills height in a row
             .clickable { onNavigateToHistoricalUsage() },
-        shape = MaterialTheme.shapes.medium,
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant, // Neutral background
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            containerColor = MaterialTheme.colorScheme.surface, // Use main surface color
+            contentColor = MaterialTheme.colorScheme.onSurface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp) // Increased elevation
     ) {
         Column(
             modifier = Modifier
@@ -361,12 +366,12 @@ fun TopWeeklyAppCard(
             .clickable(enabled = topApp != null) {
                 topApp?.packageName?.let(onClick)
             },
-        shape = MaterialTheme.shapes.medium,
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp) // Increased elevation
     ) {
         Column(
             modifier = Modifier
@@ -435,12 +440,12 @@ fun ScrollStatsCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.medium,
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant, // Use a consistent container
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            containerColor = MaterialTheme.colorScheme.surface, // Use main surface color
+            contentColor = MaterialTheme.colorScheme.onSurface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp) // Increased elevation
     ) {
         Row( // Using Row for better horizontal layout of icon and text
             modifier = Modifier
@@ -552,21 +557,34 @@ fun ThemeModeSwitch(
     onThemeChange: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isDarkMode = currentThemeVariant != "light" // Assumes "light" is the only light variant
+    val isDarkMode = currentThemeVariant != "light"
 
-    IconButton( // Using IconButton for better touch target and visual integration
-        onClick = {
-            val newTheme = if (isDarkMode) "light" else "oled_dark" // Toggle between "light" and "oled_dark"
-            onThemeChange(newTheme)
-        },
-        modifier = modifier
-    ) {
-        Icon(
-            imageVector = if (isDarkMode) Icons.Filled.Brightness2 else Icons.Filled.WbSunny,
-            contentDescription = if (isDarkMode) "Switch to Light Mode" else "Switch to Dark Mode",
-            tint = MaterialTheme.colorScheme.primary // Use primary color for the icon
-        )
+    val thumbIcon: @Composable () -> Unit = {
+        if (isDarkMode) {
+            Icon(Icons.Filled.Brightness2, "Dark Mode", tint = OledBlack)
+        } else {
+            Icon(Icons.Filled.WbSunny, "Light Mode", tint = BrandWhite)
+        }
     }
+
+    Switch(
+        modifier = modifier,
+        checked = isDarkMode,
+        onCheckedChange = { isChecked ->
+            onThemeChange(if (isChecked) "oled_dark" else "light")
+        },
+        thumbContent = thumbIcon,
+        colors = SwitchDefaults.colors(
+            checkedThumbColor = ButterYellow,
+            checkedTrackColor = ButterYellow.copy(alpha = 0.5f),
+            checkedBorderColor = Color.Transparent,
+            checkedIconColor = OledBlack, // Should be same as thumb icon tint
+            uncheckedThumbColor = DillGreen,
+            uncheckedTrackColor = DillGreen.copy(alpha = 0.5f),
+            uncheckedBorderColor = Color.Transparent,
+            uncheckedIconColor = BrandWhite // Should be same as thumb icon tint
+        )
+    )
 }
 
 
@@ -581,12 +599,12 @@ fun InfoCard(
 ) {
     Card(
         modifier = modifier.fillMaxHeight(), // Ensure it fills height in a row
-        shape = MaterialTheme.shapes.medium,
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp) // Increased elevation
     ) {
         Column(
             modifier = Modifier
@@ -603,7 +621,6 @@ fun InfoCard(
             )
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleSmall, // Clear title
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                 textAlign = TextAlign.Center
             )

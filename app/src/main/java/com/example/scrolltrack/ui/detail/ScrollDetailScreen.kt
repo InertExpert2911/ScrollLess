@@ -71,6 +71,7 @@ import java.util.Calendar
 import java.util.Date
 import androidx.compose.ui.tooling.preview.Preview
 import android.text.format.DateUtils as AndroidDateUtils
+import androidx.compose.foundation.background
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -185,6 +186,10 @@ fun ScrollDetailScreen(
                     selectedDayContainerColor = MaterialTheme.colorScheme.primary,
                     todayContentColor = MaterialTheme.colorScheme.primary,
                     todayDateBorderColor = MaterialTheme.colorScheme.primary,
+                    yearContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    selectedYearContentColor = MaterialTheme.colorScheme.onPrimary,
+                    selectedYearContainerColor = MaterialTheme.colorScheme.primary,
+                    currentYearContentColor = MaterialTheme.colorScheme.primary
                 )
             ) {
                 DatePicker(
@@ -204,7 +209,7 @@ fun ScrollDetailScreen(
                         yearContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         selectedYearContentColor = MaterialTheme.colorScheme.onPrimary,
                         selectedYearContainerColor = MaterialTheme.colorScheme.primary,
-                        currentYearContentColor = MaterialTheme.colorScheme.primary,
+                        currentYearContentColor = MaterialTheme.colorScheme.primary
                     )
                 )
             }
@@ -224,10 +229,10 @@ fun AppScrollDetailItemEntry(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.medium,
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant, // Use a subtle background
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            containerColor = MaterialTheme.colorScheme.surface, // Use main surface
+            contentColor = MaterialTheme.colorScheme.onSurface
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -279,7 +284,9 @@ fun AppScrollDetailItemEntry(
 @Composable
 fun ScrollDetailScreenPreview() {
     val context = LocalContext.current
-    val fakeViewModel = MainViewModel(FakeScrollDataRepository(), FakeSettingsRepository(), context.applicationContext as android.app.Application)
+    val fakeViewModel: MainViewModel = viewModel(
+        factory = MainViewModelFactory(context.applicationContext as android.app.Application, useFakeRepos = true)
+    )
     ScrollTrackTheme(darkTheme = true) { // Updated call
         ScrollDetailScreen(
             navController = rememberNavController(),

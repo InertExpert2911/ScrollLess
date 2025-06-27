@@ -176,14 +176,14 @@ fun AppDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant, // Reverted to default
-                    titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant, // Reverted to default
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant, // Reverted to default
-                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant // Reverted to default
+                    containerColor = MaterialTheme.colorScheme.surface, // Use main surface color
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
-        modifier = modifier.background(MaterialTheme.colorScheme.background) // Reverted to default
+        modifier = modifier.background(MaterialTheme.colorScheme.background)
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -283,9 +283,9 @@ fun AppDetailScreen(
                     }
                     comparisonText?.let {
                         val (cardContainerColor, cardContentColor) = when (comparisonColorType) {
-                            ComparisonColorType.GREEN -> Color(0xFFC8E6C9) to Color(0xFF388E3C)
+                            ComparisonColorType.GREEN -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
                             ComparisonColorType.RED -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
-                            ComparisonColorType.GREY -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+                            ComparisonColorType.GREY -> MaterialTheme.colorScheme.surfaceContainerHigh to MaterialTheme.colorScheme.onSurfaceVariant
                         }
                         val iconVector = when (comparisonIconType) {
                             ComparisonIconType.UP -> Icons.Filled.ArrowUpward
@@ -296,7 +296,7 @@ fun AppDetailScreen(
 
                         Card(
                             modifier = Modifier.padding(top = 8.dp),
-                            shape = MaterialTheme.shapes.medium,
+                            shape = MaterialTheme.shapes.large,
                             colors = CardDefaults.cardColors(
                                 containerColor = cardContainerColor,
                                 contentColor = cardContentColor

@@ -48,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -59,6 +60,7 @@ import com.example.scrolltrack.ui.model.AppUsageUiItem // Ensure this is importe
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.util.DateUtil
 import android.text.format.DateUtils as AndroidDateUtils
+import androidx.compose.foundation.background
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -175,6 +177,10 @@ fun HistoricalUsageScreen(
                     selectedDayContainerColor = MaterialTheme.colorScheme.primary,
                     todayContentColor = MaterialTheme.colorScheme.primary,
                     todayDateBorderColor = MaterialTheme.colorScheme.primary,
+                    yearContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    selectedYearContentColor = MaterialTheme.colorScheme.onPrimary,
+                    selectedYearContainerColor = MaterialTheme.colorScheme.primary,
+                    currentYearContentColor = MaterialTheme.colorScheme.primary,
                 )
             ) {
                 DatePicker(
@@ -213,10 +219,10 @@ fun AppUsageRowItem(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.medium,
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant, // Subtle background
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            containerColor = MaterialTheme.colorScheme.surface, // Use main surface
+            contentColor = MaterialTheme.colorScheme.onSurface
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -257,7 +263,8 @@ fun AppUsageRowItem(
                 style = MaterialTheme.typography.bodyLarge.copy(
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.primary // Highlight with primary color
-                )
+                ),
+                textAlign = TextAlign.End
             )
         }
     }

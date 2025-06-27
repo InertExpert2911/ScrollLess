@@ -10,84 +10,72 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-// Updated Light Color Scheme using the expanded Color.kt definitions
+// Updated Light Color Scheme using the new palette
 private val AppLightColorScheme = lightColorScheme(
-    primary = LightPrimary,
-    onPrimary = LightOnPrimary,
-    primaryContainer = LightPrimaryContainer,
-    onPrimaryContainer = LightOnPrimaryContainer,
-    secondary = LightSecondary,
-    onSecondary = LightOnSecondary,
-    secondaryContainer = LightSecondaryContainer,
-    onSecondaryContainer = LightOnSecondaryContainer,
-    tertiary = LightTertiary,
-    onTertiary = LightOnTertiary,
-    tertiaryContainer = LightTertiaryContainer,
-    onTertiaryContainer = LightOnTertiaryContainer,
-    background = LightBackground,
-    onBackground = LightOnBackground,
-    surface = LightSurface,
-    onSurface = LightOnSurface,
-    surfaceVariant = LightSurfaceVariant,
-    onSurfaceVariant = LightOnSurfaceVariant,
-    error = LightError,
-    onError = LightOnError,
-    errorContainer = LightErrorContainer,
-    onErrorContainer = LightOnErrorContainer,
-    outline = LightOutline,
-    outlineVariant = LightOutlineVariant,
-    surfaceDim = LightSurfaceDim,
-    surfaceBright = LightSurfaceBright,
-    surfaceContainerLowest = LightSurfaceContainerLowest,
-    surfaceContainerLow = LightSurfaceContainerLow,
-    surfaceContainer = LightSurfaceContainer,
-    surfaceContainerHigh = LightSurfaceContainerHigh,
-    surfaceContainerHighest = LightSurfaceContainerHighest,
-    // inversePrimary, inverseSurface, inverseOnSurface are typically generated
-    // but can be overridden if specific behavior is needed.
-    // scrim is also usually generated.
+    primary = CherryRed,
+    onPrimary = BrandWhite,
+    primaryContainer = CherryRed.copy(alpha = 0.2f),
+    onPrimaryContainer = CherryRed,
+
+    secondary = DillGreen,
+    onSecondary = BrandWhite,
+    secondaryContainer = DillGreen.copy(alpha = 0.2f),
+    onSecondaryContainer = DillGreen,
+
+    tertiary = AuraIndigo,
+    onTertiary = OledBlack,
+    tertiaryContainer = AuraIndigo.copy(alpha = 0.3f),
+    onTertiaryContainer = Color(0xFF282335),
+
+    background = AlpineOat,
+    onBackground = OledBlack,
+
+    surface = BrandWhite,
+    onSurface = OledBlack,
+    surfaceVariant = Color(0xFFF5F0E9), // Slightly off-white, derived from AlpineOat
+    onSurfaceVariant = OledBlack.copy(alpha = 0.7f),
+
+    error = Color(0xFFB00020),
+    onError = BrandWhite,
+
+    outline = CherryRed.copy(alpha = 0.5f)
 )
 
-// Updated Dark Color Scheme using the expanded Color.kt definitions
+// Updated Dark Color Scheme using the new palette
 private val AppDarkColorScheme = darkColorScheme(
-    primary = DarkPrimary,
-    onPrimary = DarkOnPrimary,
-    primaryContainer = DarkPrimaryContainer,
-    onPrimaryContainer = DarkOnPrimaryContainer,
-    secondary = DarkSecondary,
-    onSecondary = DarkOnSecondary,
-    secondaryContainer = DarkSecondaryContainer,
-    onSecondaryContainer = DarkOnSecondaryContainer,
-    tertiary = DarkTertiary,
-    onTertiary = DarkOnTertiary,
-    tertiaryContainer = DarkTertiaryContainer,
-    onTertiaryContainer = DarkOnTertiaryContainer,
-    background = DarkBackground,
-    onBackground = DarkOnBackground,
-    surface = DarkSurface,
-    onSurface = DarkOnSurface,
-    surfaceVariant = DarkSurfaceVariant,
-    onSurfaceVariant = DarkOnSurfaceVariant,
-    error = DarkError,
-    onError = DarkOnError,
-    errorContainer = DarkErrorContainer,
-    onErrorContainer = DarkOnErrorContainer,
-    outline = DarkOutline,
-    outlineVariant = DarkOutlineVariant,
-    surfaceDim = DarkSurfaceDim,
-    surfaceBright = DarkSurfaceBright,
-    surfaceContainerLowest = DarkSurfaceContainerLowest,
-    surfaceContainerLow = DarkSurfaceContainerLow,
-    surfaceContainer = DarkSurfaceContainer,
-    surfaceContainerHigh = DarkSurfaceContainerHigh,
-    surfaceContainerHighest = DarkSurfaceContainerHighest
-    // inversePrimary, inverseSurface, inverseOnSurface are typically generated
-    // scrim is also usually generated.
+    primary = ButterYellow,
+    onPrimary = OledBlack,
+    primaryContainer = ButterYellow.copy(alpha = 0.2f),
+    onPrimaryContainer = ButterYellow,
+
+    secondary = AuraIndigo,
+    onSecondary = OledBlack,
+    secondaryContainer = AuraIndigo.copy(alpha = 0.2f),
+    onSecondaryContainer = AuraIndigo,
+
+    tertiary = DillGreen,
+    onTertiary = BrandWhite,
+    tertiaryContainer = DillGreen.copy(alpha = 0.2f),
+    onTertiaryContainer = DillGreen,
+
+    background = OledBlack,
+    onBackground = BrandWhite,
+
+    surface = TrueGray,
+    onSurface = BrandWhite,
+    surfaceVariant = TrueGray.copy(alpha = 0.8f),
+    onSurfaceVariant = BrandWhite.copy(alpha = 0.8f),
+
+    error = Color(0xFFCF6679),
+    onError = OledBlack,
+
+    outline = ButterYellow.copy(alpha = 0.5f)
 )
 
 @Composable
