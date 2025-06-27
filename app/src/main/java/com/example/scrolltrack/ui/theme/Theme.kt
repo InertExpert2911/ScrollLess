@@ -15,48 +15,85 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-// Light Color Scheme using Brand Colors
+// Updated Light Color Scheme using the expanded Color.kt definitions
 private val AppLightColorScheme = lightColorScheme(
     primary = LightPrimary,
     onPrimary = LightOnPrimary,
+    primaryContainer = LightPrimaryContainer,
+    onPrimaryContainer = LightOnPrimaryContainer,
     secondary = LightSecondary,
     onSecondary = LightOnSecondary,
+    secondaryContainer = LightSecondaryContainer,
+    onSecondaryContainer = LightOnSecondaryContainer,
+    tertiary = LightTertiary,
+    onTertiary = LightOnTertiary,
+    tertiaryContainer = LightTertiaryContainer,
+    onTertiaryContainer = LightOnTertiaryContainer,
     background = LightBackground,
     onBackground = LightOnBackground,
     surface = LightSurface,
     onSurface = LightOnSurface,
+    surfaceVariant = LightSurfaceVariant,
+    onSurfaceVariant = LightOnSurfaceVariant,
     error = LightError,
-    onError = LightOnError
-    // You can also define primaryContainer, secondaryContainer, tertiary, etc.
-    // if needed, using combinations of your brand colors or neutrals.
-    // For example:
-    // primaryContainer = BrandBlue.copy(alpha = 0.1f),
-    // onPrimaryContainer = BrandBlue,
+    onError = LightOnError,
+    errorContainer = LightErrorContainer,
+    onErrorContainer = LightOnErrorContainer,
+    outline = LightOutline,
+    outlineVariant = LightOutlineVariant,
+    surfaceDim = LightSurfaceDim,
+    surfaceBright = LightSurfaceBright,
+    surfaceContainerLowest = LightSurfaceContainerLowest,
+    surfaceContainerLow = LightSurfaceContainerLow,
+    surfaceContainer = LightSurfaceContainer,
+    surfaceContainerHigh = LightSurfaceContainerHigh,
+    surfaceContainerHighest = LightSurfaceContainerHighest,
+    // inversePrimary, inverseSurface, inverseOnSurface are typically generated
+    // but can be overridden if specific behavior is needed.
+    // scrim is also usually generated.
 )
 
-// Dark Color Scheme using Brand Colors
+// Updated Dark Color Scheme using the expanded Color.kt definitions
 private val AppDarkColorScheme = darkColorScheme(
     primary = DarkPrimary,
     onPrimary = DarkOnPrimary,
+    primaryContainer = DarkPrimaryContainer,
+    onPrimaryContainer = DarkOnPrimaryContainer,
     secondary = DarkSecondary,
     onSecondary = DarkOnSecondary,
+    secondaryContainer = DarkSecondaryContainer,
+    onSecondaryContainer = DarkOnSecondaryContainer,
+    tertiary = DarkTertiary,
+    onTertiary = DarkOnTertiary,
+    tertiaryContainer = DarkTertiaryContainer,
+    onTertiaryContainer = DarkOnTertiaryContainer,
     background = DarkBackground,
     onBackground = DarkOnBackground,
     surface = DarkSurface,
     onSurface = DarkOnSurface,
+    surfaceVariant = DarkSurfaceVariant,
+    onSurfaceVariant = DarkOnSurfaceVariant,
     error = DarkError,
-    onError = DarkOnError
-    // Similarly, define container colors if needed.
-    // For example:
-    // primaryContainer = BrandBlue.copy(alpha = 0.2f), // A slightly more opaque container for dark theme
-    // onPrimaryContainer = BrandWhite, // Or a lighter shade of BrandBlue
+    onError = DarkOnError,
+    errorContainer = DarkErrorContainer,
+    onErrorContainer = DarkOnErrorContainer,
+    outline = DarkOutline,
+    outlineVariant = DarkOutlineVariant,
+    surfaceDim = DarkSurfaceDim,
+    surfaceBright = DarkSurfaceBright,
+    surfaceContainerLowest = DarkSurfaceContainerLowest,
+    surfaceContainerLow = DarkSurfaceContainerLow,
+    surfaceContainer = DarkSurfaceContainer,
+    surfaceContainerHigh = DarkSurfaceContainerHigh,
+    surfaceContainerHighest = DarkSurfaceContainerHighest
+    // inversePrimary, inverseSurface, inverseOnSurface are typically generated
+    // scrim is also usually generated.
 )
 
 @Composable
 fun ScrollTrackTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = true, // Dynamic color is available on Android 12+
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -72,20 +109,18 @@ fun ScrollTrackTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            // Set status bar color
-            window.statusBarColor = colorScheme.background.toArgb()
-            // Set status bar icons (light or dark)
+            window.statusBarColor = colorScheme.background.toArgb() // Use background for status bar
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
-            // Optional: Set navigation bar color and icons (if you're not using edge-to-edge)
-            // window.navigationBarColor = colorScheme.background.toArgb() // Or a specific nav bar color
+            // For edge-to-edge, navigation bar color might be set to transparent or a translucent surface
+            // window.navigationBarColor = Color.Transparent.toArgb() // Example for edge-to-edge
             // WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !darkTheme
         }
     }
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = AppTypography, // Use the AppTypography defined in Type.kt
-        shapes = Shapes, // Assuming Shapes.kt is defined and suitable
+        typography = AppTypography, // From Type.kt
+        shapes = Shapes,      // Assuming Shapes.kt is defined
         content = content
     )
 }
