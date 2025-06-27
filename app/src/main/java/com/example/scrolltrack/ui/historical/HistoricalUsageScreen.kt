@@ -59,6 +59,7 @@ import com.example.scrolltrack.ui.model.AppUsageUiItem // Ensure this is importe
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.util.DateUtil
 import android.text.format.DateUtils as AndroidDateUtils
+import androidx.compose.foundation.background
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

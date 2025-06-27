@@ -603,7 +603,6 @@ fun InfoCard(
             )
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleSmall, // Clear title
                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                 textAlign = TextAlign.Center
             )
