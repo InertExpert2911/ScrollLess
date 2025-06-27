@@ -397,27 +397,38 @@ class ScrollDataRepositoryImpl(
             val endOfDayUTC = DateUtil.getEndOfDayUtcMillis(historicalDateString)
 
             try {
-                // Step 1: Fetch detailed events for the historical day
-                val usageEvents = usageStatsManager.queryEvents(startOfDayUTC, endOfDayUTC)
-                val rawEvents = mutableListOf<RawAppEvent>()
+                // Step 1a: Fetch system events for the historical day
+                val systemUsageEvents = usageStatsManager.queryEvents(startOfDayUTC, endOfDayUTC)
+                val systemRawEvents = mutableListOf<RawAppEvent>()
                 val event = UsageEvents.Event()
-                while (usageEvents.hasNextEvent()) {
-                    usageEvents.getNextEvent(event)
-                    mapUsageEventToRawAppEvent(event)?.let { rawEvents.add(it) }
+                while (systemUsageEvents.hasNextEvent()) {
+                    systemUsageEvents.getNextEvent(event)
+                    mapUsageEventToRawAppEvent(event)?.let { systemRawEvents.add(it) }
                 }
+                Log.d(TAG_REPO, "Fetched ${systemRawEvents.size} system events for $historicalDateString.")
 
-                if (rawEvents.isEmpty()) {
-                    Log.d(TAG_REPO, "No usage events returned from system for $historicalDateString. Skipping.")
+                // Step 1b: Fetch stored accessibility events for the historical day
+                val storedAccessibilityEvents = rawAppEventDao.getEventsForDate(historicalDateString)
+                    .filter { RawAppEvent.isAccessibilityEvent(it.eventType) }
+                Log.d(TAG_REPO, "Fetched ${storedAccessibilityEvents.size} stored accessibility events for $historicalDateString.")
+
+                // Step 1c: Combine and sort all events for the day
+                val allEventsForDay = (systemRawEvents + storedAccessibilityEvents)
+                    .distinctBy { Triple(it.packageName, it.eventType, it.eventTimestamp) } // Ensure uniqueness
+                    .sortedBy { it.eventTimestamp }
+
+                if (allEventsForDay.isEmpty()) {
+                    Log.d(TAG_REPO, "No combined events found for $historicalDateString. Skipping.")
                     continue
                 }
 
-                // Step 2: Clear old raw events for that day and insert the new ones
+                // Step 2: Clear old raw events for that day and insert the new combined list
                 rawAppEventDao.deleteEventsForDateString(historicalDateString)
-                rawAppEventDao.insertEvents(rawEvents)
-                Log.i(TAG_REPO, "Successfully inserted ${rawEvents.size} raw events for $historicalDateString.")
+                rawAppEventDao.insertEvents(allEventsForDay)
+                Log.i(TAG_REPO, "Successfully inserted ${allEventsForDay.size} combined raw events for $historicalDateString.")
 
-                // Step 3: Aggregate usage, active time, and app opens from the raw events
-                val aggregatedData = aggregateUsage(rawEvents, endOfDayUTC)
+                // Step 3: Aggregate usage, active time, and app opens from the combined raw events
+                val aggregatedData = aggregateUsage(allEventsForDay, endOfDayUTC)
 
                 if (aggregatedData.isEmpty()) {
                     Log.d(TAG_REPO, "No relevant app usage found for $historicalDateString after aggregation.")
@@ -428,7 +439,8 @@ class ScrollDataRepositoryImpl(
                 val recordsToInsert = aggregatedData.map { (key, values) ->
                     val (pkg, date) = key
                     val (usage, active) = values
-                    val opens = rawEvents.count { it.packageName == pkg && it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED }
+                    // Count opens from the combined list to be accurate
+                    val opens = allEventsForDay.count { it.packageName == pkg && it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED }
 
                     DailyAppUsageRecord(
                         packageName = pkg,

@@ -1,47 +1,74 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Base Palette -->
-    <color name="brand_black">#18191e</color>
-    <color name="brand_green">#44c98e</color>
-    <color name="brand_orange">#fd8537</color>
-    <color name="brand_blue">#479bba</color>
+    <!-- New Cherry Red Palette Base Colors -->
+    <color name="cherry_beige">#F0E7DA</color>
+    <color name="cherry_olive">#4E6813</color>
+    <color name="cherry_lavender">#B0A6DF</color>
+    <color name="cherry_yellow">#FFEDA8</color>
+    <color name="cherry_maroon">#74070E</color>
+    <color name="brand_black">#000000</color> <!-- True Black for OLED -->
     <color name="brand_white">#FFFFFF</color>
 
-    <!-- Light Theme -->
-    <color name="colorPrimaryLight">@color/brand_blue</color>
-    <color name="colorOnPrimaryLight">@color/brand_white</color>
-    <color name="colorSecondaryLight">@color/brand_green</color>
-    <color name="colorOnSecondaryLight">@color/brand_black</color>
-    <color name="colorSurfaceLight">@color/brand_white</color>
-    <color name="colorOnSurfaceLight">@color/brand_black</color>
-    <color name="colorBackgroundLight">#F7F7F7</color>
-    <color name="colorOnBackgroundLight">@color/brand_black</color>
-    <color name="colorErrorLight">#B00020</color>
-    <color name="colorOnErrorLight">@color/brand_white</color>
+    <!-- Light Theme Semantic XML Colors (for Activity theme, system UI) -->
+    <color name="xml_colorPrimaryLight">@color/cherry_maroon</color>
+    <color name="xml_colorOnPrimaryLight">@color/brand_white</color>
+    <color name="xml_colorPrimaryContainerLight">#FADADD</color>
+    <color name="xml_colorOnPrimaryContainerLight">#5D000F</color> <!-- Darker Maroon -->
 
-    <color name="chartColor1Light">@color/brand_blue</color>
-    <color name="chartColor2Light">@color/brand_green</color>
-    <color name="chartColor3Light">@color/brand_orange</color>
-    <color name="chartColor4Light">#EF5350</color>
-    <color name="chartColor5Light">#AB47BC</color>
+    <color name="xml_colorSecondaryLight">@color/cherry_olive</color>
+    <color name="xml_colorOnSecondaryLight">@color/brand_white</color>
+    <color name="xml_colorSecondaryContainerLight">#DCE8BB</color>
+    <color name="xml_colorOnSecondaryContainerLight">#3A5200</color> <!-- Darker Olive -->
 
+    <color name="xml_colorTertiaryLight">@color/cherry_lavender</color>
+    <color name="xml_colorOnTertiaryLight">@color/brand_black</color>
+    <color name="xml_colorTertiaryContainerLight">#E8E0FF</color>
+    <color name="xml_colorOnTertiaryContainerLight">#251957</color> <!-- Darker Lavender -->
 
-    <!-- Dark Theme -->
-    <color name="colorPrimaryDark">@color/brand_blue</color>
-    <color name="colorOnPrimaryDark">@color/brand_white</color>
-    <color name="colorSecondaryDark">@color/brand_green</color>
-    <color name="colorOnSecondaryDark">@color/brand_black</color>
-    <color name="colorSurfaceDark">@color/brand_black</color>
-    <color name="colorOnSurfaceDark">@color/brand_white</color>
-    <color name="colorBackgroundDark">#121212</color>
-    <color name="colorOnBackgroundDark">@color/brand_white</color>
-    <color name="colorErrorDark">#CF6679</color>
-    <color name="colorOnErrorDark">@color/brand_black</color>
+    <color name="xml_colorBackgroundLight">@color/cherry_beige</color>
+    <color name="xml_colorOnBackgroundLight">@color/brand_black</color>
+    <color name="xml_colorSurfaceLight">@color/brand_white</color>
+    <color name="xml_colorOnSurfaceLight">@color/brand_black</color>
+    <color name="xml_colorSurfaceVariantLight">#E0DACC</color> <!-- Beige variant -->
+    <color name="xml_colorOnSurfaceVariantLight">#403C36</color> <!-- Dark Gray for onSurfaceVariant -->
 
-    <color name="chartColor1Dark">@color/brand_blue</color>
-    <color name="chartColor2Dark">@color/brand_green</color>
-    <color name="chartColor3Dark">@color/brand_orange</color>
-    <color name="chartColor4Dark">#EF5350</color>
-    <color name="chartColor5Dark">#AB47BC</color>
+    <color name="xml_colorErrorLight">#B00020</color>
+    <color name="xml_colorOnErrorLight">@color/brand_white</color>
+    <color name="xml_colorErrorContainerLight">#FCDDE0</color>
+    <color name="xml_colorOnErrorContainerLight">#410E0B</color>
 
+    <!-- Dark Theme (OLED) Semantic XML Colors -->
+    <color name="xml_colorPrimaryDark">@color/cherry_yellow</color>
+    <color name="xml_colorOnPrimaryDark">@color/brand_black</color>
+    <color name="xml_colorPrimaryContainerDark">#4D4321</color> <!-- Dark Yellow -->
+    <color name="xml_colorOnPrimaryContainerDark">@color/cherry_yellow</color>
+
+    <color name="xml_colorSecondaryDark">@color/cherry_lavender</color>
+    <color name="xml_colorOnSecondaryDark">@color/brand_black</color>
+    <color name="xml_colorSecondaryContainerDark">#3A2E70</color> <!-- Dark Lavender -->
+    <color name="xml_colorOnSecondaryContainerDark">@color/cherry_lavender</color>
+
+    <color name="xml_colorTertiaryDark">#A2C47C</color> <!-- Lighter/adjusted Olive for Dark -->
+    <color name="xml_colorOnTertiaryDark">@color/brand_black</color>
+    <color name="xml_colorTertiaryContainerDark">#38501E</color> <!-- Dark Olive -->
+    <color name="xml_colorOnTertiaryContainerDark">#D3F0A6</color> <!-- Light Olive Green -->
+
+    <color name="xml_colorBackgroundDark">@color/brand_black</color> <!-- True Black -->
+    <color name="xml_colorOnBackgroundDark">@color/brand_white</color>
+    <color name="xml_colorSurfaceDark">#1C1B1F</color> <!-- Standard Dark Surface, slightly off black -->
+    <color name="xml_colorOnSurfaceDark">@color/brand_white</color>
+    <color name="xml_colorSurfaceVariantDark">#49454F</color> <!-- Standard Dark Surface Variant -->
+    <color name="xml_colorOnSurfaceVariantDark">#CAC4D0</color> <!-- Standard On Dark Surface Variant -->
+
+    <color name="xml_colorErrorDark">#CF6679</color>
+    <color name="xml_colorOnErrorDark">@color/brand_black</color>
+    <color name="xml_colorErrorContainerDark">#93000A</color> <!-- Darker Error Container -->
+    <color name="xml_colorOnErrorContainerDark">#FFDAD6</color> <!-- Light Red for On Error Container -->
+
+    <!-- Chart Colors for XML (if ever needed, though Compose is primary for charts) -->
+    <color name="xml_chartColor1">@color/cherry_maroon</color>
+    <color name="xml_chartColor2">@color/cherry_olive</color>
+    <color name="xml_chartColor3">@color/cherry_lavender</color>
+    <color name="xml_chartColor4">@color/cherry_yellow</color>
+    <color name="xml_chartColor5">#479bba</color> <!-- Previous blue -->
 </resources>

@@ -1,23 +1,35 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.ScrollTrack" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Dark Theme specific attributes -->
-        <item name="colorPrimary">@color/colorPrimaryDark</item>
-        <item name="colorOnPrimary">@color/colorOnPrimaryDark</item>
-        <item name="colorSecondary">@color/colorSecondaryDark</item>
-        <item name="colorOnSecondary">@color/colorOnSecondaryDark</item>
-        <item name="android:colorBackground">@color/colorBackgroundDark</item> <!-- M3 uses android:colorBackground -->
-        <item name="colorOnBackground">@color/colorOnBackgroundDark</item>
-        <item name="colorSurface">@color/colorSurfaceDark</item>
-        <item name="colorOnSurface">@color/colorOnSurfaceDark</item>
-        <item name="colorError">@color/colorErrorDark</item>
-        <item name="colorOnError">@color/colorOnErrorDark</item>
+        <!-- Dark Theme specific attributes referencing new XML colors -->
+        <item name="colorPrimary">@color/xml_colorPrimaryDark</item>
+        <item name="colorOnPrimary">@color/xml_colorOnPrimaryDark</item>
+        <item name="colorPrimaryContainer">@color/xml_colorPrimaryContainerDark</item>
+        <item name="colorOnPrimaryContainer">@color/xml_colorOnPrimaryContainerDark</item>
+        <item name="colorSecondary">@color/xml_colorSecondaryDark</item>
+        <item name="colorOnSecondary">@color/xml_colorOnSecondaryDark</item>
+        <item name="colorSecondaryContainer">@color/xml_colorSecondaryContainerDark</item>
+        <item name="colorOnSecondaryContainer">@color/xml_colorOnSecondaryContainerDark</item>
+        <item name="colorTertiary">@color/xml_colorTertiaryDark</item>
+        <item name="colorOnTertiary">@color/xml_colorOnTertiaryDark</item>
+        <item name="colorTertiaryContainer">@color/xml_colorTertiaryContainerDark</item>
+        <item name="colorOnTertiaryContainer">@color/xml_colorOnTertiaryContainerDark</item>
+        <item name="android:colorBackground">@color/xml_colorBackgroundDark</item>
+        <item name="colorOnBackground">@color/xml_colorOnBackgroundDark</item>
+        <item name="colorSurface">@color/xml_colorSurfaceDark</item>
+        <item name="colorOnSurface">@color/xml_colorOnSurfaceDark</item>
+        <item name="colorSurfaceVariant">@color/xml_colorSurfaceVariantDark</item>
+        <item name="colorOnSurfaceVariant">@color/xml_colorOnSurfaceVariantDark</item>
+        <item name="colorError">@color/xml_colorErrorDark</item>
+        <item name="colorOnError">@color/xml_colorOnErrorDark</item>
+        <item name="colorErrorContainer">@color/xml_colorErrorContainerDark</item>
+        <item name="colorOnErrorContainer">@color/xml_colorOnErrorContainerDark</item>
 
         <!-- Custom chart colors -->
-        <item name="chartColor1">@color/chartColor1Dark</item>
-        <item name="chartColor2">@color/chartColor2Dark</item>
-        <item name="chartColor3">@color/chartColor3Dark</item>
-        <item name="chartColor4">@color/chartColor4Dark</item>
-        <item name="chartColor5">@color/chartColor5Dark</item>
+        <item name="chartColor1">@color/xml_chartColor1</item> <!-- Assuming chart colors might be same or adapted for dark -->
+        <item name="chartColor2">@color/xml_chartColor2</item>
+        <item name="chartColor3">@color/xml_chartColor3</item>
+        <item name="chartColor4">@color/xml_chartColor4</item>
+        <item name="chartColor5">@color/xml_chartColor5</item>
     </style>
 </resources>

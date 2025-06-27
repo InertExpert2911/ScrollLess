@@ -71,7 +71,6 @@ import java.util.Calendar
 import java.util.Date
 import androidx.compose.ui.tooling.preview.Preview
 import android.text.format.DateUtils as AndroidDateUtils
-import androidx.compose.foundation.background
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
