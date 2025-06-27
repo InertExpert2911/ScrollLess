@@ -22,13 +22,10 @@ class NotificationListener : NotificationListenerService() {
     private val serviceScope = CoroutineScope(Dispatchers.IO + job)
 
     private lateinit var notificationDao: NotificationDao
-    private lateinit var repository: ScrollDataRepository
 
     override fun onCreate() {
         super.onCreate()
         try {
-            // Use the application-level repository instance
-            repository = (application as ScrollTrackApplication).repository
             notificationDao = AppDatabase.getDatabase(applicationContext).notificationDao()
             Log.i(TAG, "NotificationListenerService created and components initialized.")
         } catch (e: Exception) {
@@ -42,7 +39,7 @@ class NotificationListener : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
-        if (sbn == null || !::notificationDao.isInitialized || !::repository.isInitialized) return
+        if (sbn == null || !::notificationDao.isInitialized) return
 
         val packageName = sbn.packageName
         if (packageName == applicationContext.packageName) {
@@ -68,10 +65,6 @@ class NotificationListener : NotificationListenerService() {
                 notificationDao.insertNotification(record)
                 Log.d(TAG, "Notification from $packageName saved to database.")
 
-                // Increment the daily counter
-                repository.incrementNotificationCount(packageName)
-                Log.i(TAG, "Incremented notification count for $packageName.")
-
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing notification for $packageName", e)
             }
@@ -79,7 +72,6 @@ class NotificationListener : NotificationListenerService() {
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?) {
-        // We can add logic here later if we want to track dismissals
         super.onNotificationRemoved(sbn)
     }
 

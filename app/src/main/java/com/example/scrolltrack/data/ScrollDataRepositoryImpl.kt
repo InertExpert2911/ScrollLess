@@ -28,12 +28,17 @@ import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.ui.model.AppDailyDetailData
 import com.example.scrolltrack.db.NotificationDao
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import com.example.scrolltrack.db.DailyDeviceSummaryDao
+import com.example.scrolltrack.db.DailyDeviceSummary
 
 class ScrollDataRepositoryImpl(
     private val scrollSessionDao: ScrollSessionDao,
     private val dailyAppUsageDao: DailyAppUsageDao, // Make sure this is passed in constructor
     private val rawAppEventDao: RawAppEventDao, // Added RawAppEventDao
     private val notificationDao: NotificationDao,
+    private val dailyDeviceSummaryDao: DailyDeviceSummaryDao,
     private val application: Application
 ) : ScrollDataRepository {
 
@@ -92,6 +97,8 @@ class ScrollDataRepositoryImpl(
         private const val QUICK_SWITCH_THRESHOLD_MS = 2000L // Minimum duration for a session to be considered significant
         private const val EVENT_FETCH_OVERLAP_MS = 10000L // 10 seconds overlap for iterative fetching
         private const val ACTIVE_TIME_INTERACTION_WINDOW_MS = 2000L // Define the active time interaction window
+        private const val NOTIFICATION_DEBOUNCE_WINDOW_MS = 30000L // 30 seconds
+        private const val UNLOCK_EVENT_FOLLOW_WINDOW_MS = 2000L // 2 seconds
     }
 
     override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> {
@@ -118,25 +125,48 @@ class ScrollDataRepositoryImpl(
         scrollSessionDao.insertSession(session)
     }
 
-    override suspend fun incrementNotificationCount(packageName: String) = withContext(Dispatchers.IO) {
-        val todayDateString = DateUtil.getCurrentLocalDateString()
-        val existingRecord = dailyAppUsageDao.getSpecificAppUsageForDate(packageName, todayDateString)
+    private fun calculateAppOpens(events: List<RawAppEvent>): Map<String, Int> {
+        val appOpens = mutableMapOf<String, Int>()
+        var lastResumedPackage: String? = null
 
-        if (existingRecord != null) {
-            val updatedRecord = existingRecord.copy(notificationCount = existingRecord.notificationCount + 1)
-            dailyAppUsageDao.insertOrUpdateUsage(updatedRecord)
-        } else {
-            val newRecord = DailyAppUsageRecord(
-                packageName = packageName,
-                dateString = todayDateString,
-                usageTimeMillis = 0,
-                activeTimeMillis = 0,
-                appOpenCount = 0,
-                notificationCount = 1,
-                lastUpdatedTimestamp = System.currentTimeMillis()
-            )
-            dailyAppUsageDao.insertOrUpdateUsage(newRecord)
+        val resumeEvents = events
+            .filter { it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED }
+            .sortedBy { it.eventTimestamp }
+
+        resumeEvents.forEach { event ->
+            if (event.packageName != lastResumedPackage) {
+                if (!isFilteredPackage(event.packageName)) {
+                    appOpens[event.packageName] = appOpens.getOrDefault(event.packageName, 0) + 1
+                }
+            }
+            lastResumedPackage = event.packageName
         }
+        return appOpens
+    }
+
+    private suspend fun calculateDebouncedNotificationCounts(dateString: String): Map<String, Int> {
+        val notifications = notificationDao.getNotificationsForDate(dateString).first()
+        if (notifications.isEmpty()) return emptyMap()
+
+        val debouncedCounts = mutableMapOf<String, Int>()
+        notifications
+            .groupBy { it.packageName }
+            .forEach { (pkg, records) ->
+                if (records.isEmpty()) return@forEach
+
+                val sortedRecords = records.sortedBy { it.postTimeUTC }
+                var count = 0
+                var lastCountedNotificationTime = 0L
+
+                sortedRecords.forEach { record ->
+                    if (count == 0 || record.postTimeUTC - lastCountedNotificationTime > NOTIFICATION_DEBOUNCE_WINDOW_MS) {
+                        count++
+                        lastCountedNotificationTime = record.postTimeUTC
+                    }
+                }
+                debouncedCounts[pkg] = count
+            }
+        return debouncedCounts
     }
 
     @Suppress("DEPRECATION")
@@ -222,18 +252,30 @@ class ScrollDataRepositoryImpl(
             Log.i(TAG_REPO, "Updated raw events for today. System: ${systemEvents.size}, Accessibility: ${accessibilityEvents.size}")
 
             val aggregatedData = aggregateUsage(allEventsForToday, endOfTodayUTC)
+            val appOpenCounts = calculateAppOpens(allEventsForToday)
+            val notificationCounts = calculateDebouncedNotificationCounts(todayDateString)
+            val unlockCount = calculateUnlocks(allEventsForToday)
+            val totalNotificationCount = notificationCounts.values.sum()
+
+            // Save the device-level summary
+            val summary = DailyDeviceSummary(
+                dateString = todayDateString,
+                totalUnlockCount = unlockCount,
+                totalNotificationCount = totalNotificationCount
+            )
+            dailyDeviceSummaryDao.insertOrUpdateSummary(summary)
+            Log.i(TAG_REPO, "Saved today's device summary: Unlocks=$unlockCount, Notifications=$totalNotificationCount")
 
             val packagesWithUsage = aggregatedData.keys.map { it.first }
-            val packagesWithNotifications = notificationDao.getPackagesWithNotificationsForDate(todayDateString)
+            val packagesWithNotifications = notificationCounts.keys
             val allRelevantPackages = (packagesWithUsage + packagesWithNotifications).toSet()
 
             for (pkg in allRelevantPackages) {
                 val usageValues = aggregatedData[Pair(pkg, todayDateString)]
                 val usageTime = usageValues?.first ?: 0L
                 val activeTime = usageValues?.second ?: 0L
-                val openCount = systemEvents.count { it.packageName == pkg && it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED }
-
-                val notificationCount = notificationDao.getNotificationCountForAppOnDate(pkg, todayDateString)
+                val openCount = appOpenCounts[pkg] ?: 0
+                val notificationCount = notificationCounts[pkg] ?: 0
 
                 val record = DailyAppUsageRecord(
                     packageName = pkg,
@@ -418,6 +460,17 @@ class ScrollDataRepositoryImpl(
 
                 // Step 3: Aggregate usage, active time, and app opens from the raw events
                 val aggregatedData = aggregateUsage(rawEvents, endOfDayUTC)
+                val appOpenCounts = calculateAppOpens(rawEvents)
+                val unlockCount = calculateUnlocks(rawEvents)
+
+                // Save historical daily summary
+                val summary = DailyDeviceSummary(
+                    dateString = historicalDateString,
+                    totalUnlockCount = unlockCount,
+                    totalNotificationCount = 0 // Cannot be backfilled
+                )
+                dailyDeviceSummaryDao.insertOrUpdateSummary(summary)
+                Log.i(TAG_REPO, "Saved historical device summary for $historicalDateString: Unlocks=$unlockCount")
 
                 if (aggregatedData.isEmpty()) {
                     Log.d(TAG_REPO, "No relevant app usage found for $historicalDateString after aggregation.")
@@ -428,7 +481,7 @@ class ScrollDataRepositoryImpl(
                 val recordsToInsert = aggregatedData.map { (key, values) ->
                     val (pkg, date) = key
                     val (usage, active) = values
-                    val opens = rawEvents.count { it.packageName == pkg && it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED }
+                    val opens = appOpenCounts[pkg] ?: 0
 
                     DailyAppUsageRecord(
                         packageName = pkg,
@@ -495,11 +548,37 @@ class ScrollDataRepositoryImpl(
         return scrollSessionDao.getAllDistinctScrollDateStrings()
     }
 
+    private fun calculateUnlocks(events: List<RawAppEvent>): Int {
+        val keyguardHiddenTimestamps = events
+            .filter { it.eventType == RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN }
+            .map { it.eventTimestamp }
+            .sorted()
+
+        if (keyguardHiddenTimestamps.isEmpty()) {
+            return 0
+        }
+
+        // A 5-second window to prevent double-counting from system glitches
+        // but still capture distinct user-initiated unlocks.
+        val DEBOUNCE_WINDOW_MS = 5000L
+        var unlockCount = 0
+        // Initialize to a value that guarantees the first event is always counted.
+        var lastUnlockTimestamp = -DEBOUNCE_WINDOW_MS
+
+        for (timestamp in keyguardHiddenTimestamps) {
+            if (timestamp - lastUnlockTimestamp > DEBOUNCE_WINDOW_MS) {
+                unlockCount++
+                lastUnlockTimestamp = timestamp
+            }
+        }
+        return unlockCount
+    }
+
     override fun getTotalUnlockCountForDate(dateString: String): Flow<Int> {
-        return rawAppEventDao.getEventCountForDate(dateString, RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN)
+        return dailyDeviceSummaryDao.getUnlockCountForDate(dateString).map { it ?: 0 }
     }
 
     override fun getTotalNotificationCountForDate(dateString: String): Flow<Int> {
-        return notificationDao.getTotalNotificationCountForDate(dateString)
+        return dailyDeviceSummaryDao.getNotificationCountForDate(dateString).map { it ?: 0 }
     }
 } 
