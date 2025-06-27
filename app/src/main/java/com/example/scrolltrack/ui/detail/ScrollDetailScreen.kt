@@ -280,7 +280,7 @@ fun AppScrollDetailItemEntry(
 fun ScrollDetailScreenPreview() {
     val context = LocalContext.current
     val fakeViewModel = MainViewModel(FakeScrollDataRepository(), FakeSettingsRepository(), context.applicationContext as android.app.Application)
-    ScrollTrackTheme(themeVariant = "oled_dark") {
+    ScrollTrackTheme(darkTheme = true) { // Updated call
         ScrollDetailScreen(
             navController = rememberNavController(),
             viewModel = fakeViewModel,
