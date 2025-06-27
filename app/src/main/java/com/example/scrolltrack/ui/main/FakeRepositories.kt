@@ -60,6 +60,12 @@ class FakeScrollDataRepository : ScrollDataRepository {
 
     override suspend fun insertScrollSession(session: ScrollSessionRecord) {}
 
+    override suspend fun incrementNotificationCount(packageName: String) {}
+
+    override fun getTotalUnlockCountForDate(dateString: String): Flow<Int> = flowOf(0)
+
+    override fun getTotalNotificationCountForDate(dateString: String): Flow<Int> = flowOf(0)
+
     override fun getAllDistinctUsageDateStrings(): Flow<List<String>> = flowOf(emptyList())
 
     override fun getAllDistinctScrollDateStrings(): Flow<List<String>> = flowOf(emptyList())

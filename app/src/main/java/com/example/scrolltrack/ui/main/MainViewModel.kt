@@ -65,6 +65,9 @@ class MainViewModel(
     private val _isUsagePermissionGranted = MutableStateFlow(false)
     val isUsagePermissionGranted: StateFlow<Boolean> = _isUsagePermissionGranted.asStateFlow()
 
+    private val _isNotificationListenerEnabled = MutableStateFlow(false)
+    val isNotificationListenerEnabled: StateFlow<Boolean> = _isNotificationListenerEnabled.asStateFlow()
+
     // --- Theme Management ---
     private val _selectedThemeVariant = MutableStateFlow(settingsRepository.getSelectedTheme())
     val selectedThemeVariant: StateFlow<String> = _selectedThemeVariant.asStateFlow()
@@ -101,6 +104,7 @@ class MainViewModel(
     fun checkAllPermissions() {
         val accessibilityStatus = PermissionUtils.isAccessibilityServiceEnabled(application, ScrollTrackService::class.java)
         val usageStatus = isUsageStatsPermissionGrantedByAppOps()
+        val notificationListenerStatus = PermissionUtils.isNotificationListenerEnabled(application, com.example.scrolltrack.services.NotificationListener::class.java)
 
         if (_isAccessibilityServiceEnabled.value != accessibilityStatus) {
             _isAccessibilityServiceEnabled.value = accessibilityStatus
@@ -110,6 +114,11 @@ class MainViewModel(
         if (_isUsagePermissionGranted.value != usageStatus) {
             _isUsagePermissionGranted.value = usageStatus
             Log.i("MainViewModel", "Usage Stats permission status updated: $usageStatus")
+        }
+
+        if (_isNotificationListenerEnabled.value != notificationListenerStatus) {
+            _isNotificationListenerEnabled.value = notificationListenerStatus
+            Log.i("MainViewModel", "Notification Listener status updated: $notificationListenerStatus")
         }
     }
 
@@ -262,6 +271,14 @@ class MainViewModel(
         totalScrollToday.map {
             ConversionUtil.formatScrollDistance(it, application.applicationContext)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0 m" to "0.00 miles")
+
+    val totalUnlocksToday: StateFlow<Int> =
+        repository.getTotalUnlockCountForDate(_todayDateString)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
+
+    val totalNotificationsToday: StateFlow<Int> =
+        repository.getTotalNotificationCountForDate(_todayDateString)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
 
     private val _totalScrollTodayFormatted = MutableStateFlow("0m")
     val totalScrollTodayFormatted: StateFlow<String> = _totalScrollTodayFormatted

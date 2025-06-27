@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface RawAppEventDao {
@@ -28,7 +29,10 @@ interface RawAppEventDao {
 
     @Query("SELECT MAX(event_timestamp) FROM raw_app_events WHERE event_date_string = :dateString")
     suspend fun getLatestEventTimestampForDate(dateString: String): Long?
-    
+
+    @Query("SELECT COUNT(*) FROM raw_app_events WHERE event_date_string = :dateString AND event_type = :eventType")
+    fun getEventCountForDate(dateString: String, eventType: Int): Flow<Int>
+
     @Query("DELETE FROM raw_app_events WHERE event_timestamp < :cutoffTimestamp")
     suspend fun deleteOldEvents(cutoffTimestamp: Long)
 

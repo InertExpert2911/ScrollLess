@@ -31,6 +31,7 @@ class ScrollTrackApplication : Application() {
             database.scrollSessionDao(),
             database.dailyAppUsageDao(),
             database.rawAppEventDao(),
+            database.notificationDao(),
             this
         )
     }

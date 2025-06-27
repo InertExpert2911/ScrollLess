@@ -4,16 +4,18 @@
 
     <!-- Today Summary Screen -->
     <string name="greeting_manage_habits">Let\'s manage your digital habits.</string>
-    <string name="permission_accessibility_title">Enable Accessibility Service</string>
-    <string name="permission_accessibility_description">This service is required to track scroll distance in other apps. It does not collect any personal data.</string>
+    <string name="permission_accessibility_title">Enable Tracking Service</string>
+    <string name="permission_accessibility_description">To track scroll distance and interaction events, the Accessibility Service must be enabled.</string>
     <string name="permission_button_open_settings">Open Settings</string>
-    <string name="permission_usage_stats_title">Grant Usage Stats Access</string>
-    <string name="permission_usage_stats_description">This permission is needed to show how much time you spend in each app.</string>
+    <string name="permission_usage_stats_title">Enable Usage Access</string>
+    <string name="permission_usage_stats_description">To measure phone usage time, this app requires access to your usage data.</string>
     <string name="permission_button_grant_access">Grant Access</string>
+    <string name="permission_notification_listener_title">Enable Notification Access</string>
+    <string name="permission_notification_listener_description">To count notifications and provide content insights, this app needs access to read your notifications.</string>
     <string name="card_title_phone_usage_today">Phone Usage Today</string>
     <string name="card_button_view_details">View Details</string>
-    <string name="suffix_last_7_days">in last 7 days</string>
-    <string name="card_title_top_weekly_app">Top Weekly App</string>
+    <string name="suffix_last_7_days">(last 7 days)</string>
+    <string name="card_title_top_weekly_app">Top App</string>
     <string name="text_no_data_yet">No data yet</string>
     <string name="card_title_scroll_stats_today">Scroll Stats Today</string>
 </resources>

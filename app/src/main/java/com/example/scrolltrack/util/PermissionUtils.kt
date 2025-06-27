@@ -13,6 +13,14 @@ import android.util.Log
 
 object PermissionUtils {
 
+    fun isNotificationListenerEnabled(context: Context, serviceClass: Class<*>): Boolean {
+        val componentName = ComponentName(context, serviceClass)
+        val enabledListeners = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
+        return enabledListeners?.split(":")?.mapNotNull {
+            ComponentName.unflattenFromString(it)
+        }?.any { it == componentName } ?: false
+    }
+
     fun isAccessibilityServiceEnabled(context: Context, serviceClass: Class<*>): Boolean {
         val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
         val runningServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)

@@ -83,9 +83,10 @@ class ScrollTrackService : AccessibilityService() {
             rawAppEventDao = db.rawAppEventDao()
             val scrollSessionDao = db.scrollSessionDao() // Pass this to SessionManager
             val dailyAppUsageDao = db.dailyAppUsageDao() // For DataRepository
+            val notificationDao = db.notificationDao()
 
             // Initialize repositories
-            dataRepository = ScrollDataRepositoryImpl(scrollSessionDao, dailyAppUsageDao, rawAppEventDao, application)
+            dataRepository = ScrollDataRepositoryImpl(scrollSessionDao, dailyAppUsageDao, rawAppEventDao, notificationDao, application)
             draftRepository = com.example.scrolltrack.data.DraftRepositoryImpl(applicationContext) // Initialize DraftRepository
 
             // Initialize SessionManager

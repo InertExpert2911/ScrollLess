@@ -28,6 +28,12 @@ data class DailyAppUsageRecord(
     @ColumnInfo(name = "active_time_millis", defaultValue = "0")
     val activeTimeMillis: Long = 0L, // Time user was actively interacting (clicking, typing, focusing)
 
+    @ColumnInfo(name = "app_open_count", defaultValue = "0")
+    val appOpenCount: Int = 0,
+
+    @ColumnInfo(name = "notification_count", defaultValue = "0")
+    val notificationCount: Int = 0,
+
     @ColumnInfo(name = "last_updated_timestamp") // When this record was last calculated/updated
     val lastUpdatedTimestamp: Long = System.currentTimeMillis()
 )

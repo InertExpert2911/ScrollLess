@@ -80,6 +80,7 @@ class MainActivity : ComponentActivity() {
             val selectedTheme by viewModel.selectedThemeVariant.collectAsStateWithLifecycle()
             val isAccessibilityEnabled by viewModel.isAccessibilityServiceEnabled.collectAsStateWithLifecycle()
             val isUsageStatsGranted by viewModel.isUsagePermissionGranted.collectAsStateWithLifecycle()
+            val isNotificationListenerEnabled by viewModel.isNotificationListenerEnabled.collectAsStateWithLifecycle()
 
             ScrollTrackTheme(themeVariant = selectedTheme, dynamicColor = false) {
                 val navController = rememberNavController()
@@ -88,12 +89,21 @@ class MainActivity : ComponentActivity() {
                     viewModel = viewModel,
                     isAccessibilityEnabledState = isAccessibilityEnabled,
                     isUsageStatsGrantedState = isUsageStatsGranted,
+                    isNotificationListenerEnabledState = isNotificationListenerEnabled,
                     onEnableAccessibilityClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
                     onEnableUsageStatsClick = {
                         try {
                             startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
                         } catch (e: Exception) {
                             Log.e(TAG, "Error opening usage access settings", e)
+                            startActivity(Intent(Settings.ACTION_SETTINGS))
+                        }
+                    },
+                    onEnableNotificationListenerClick = {
+                        try {
+                            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error opening notification listener settings", e)
                             startActivity(Intent(Settings.ACTION_SETTINGS))
                         }
                     }

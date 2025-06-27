@@ -44,13 +44,17 @@ fun TodaySummaryScreen(
     greeting: String,
     isAccessibilityServiceEnabled: Boolean,
     isUsageStatsPermissionGranted: Boolean,
+    isNotificationListenerEnabled: Boolean,
     onEnableAccessibilityClick: () -> Unit,
     onEnableUsageStatsClick: () -> Unit,
+    onEnableNotificationListenerClick: () -> Unit,
     totalUsageTime: String,
     totalUsageTimeMillis: Long,
     topWeeklyApp: AppUsageUiItem?,
     totalScrollUnits: Long,
     scrollDistanceMeters: String,
+    totalUnlocks: Int,
+    totalNotifications: Int,
     onNavigateToHistoricalUsage: () -> Unit,
     onNavigateToAppDetail: (String) -> Unit,
     onThemeChange: (String) -> Unit,
@@ -126,7 +130,22 @@ fun TodaySummaryScreen(
             )
         }
 
-        if (!isAccessibilityServiceEnabled || !isUsageStatsPermissionGranted) {
+        AnimatedVisibility(
+            visible = !isNotificationListenerEnabled,
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            PermissionRequestCard(
+                leadingIcon = { Icon(Icons.Filled.NotificationsActive, contentDescription = "Notification Access Icon", modifier = Modifier.size(28.dp)) },
+                title = stringResource(id = R.string.permission_notification_listener_title),
+                description = stringResource(id = R.string.permission_notification_listener_description),
+                buttonText = stringResource(id = R.string.permission_button_grant_access),
+                onButtonClick = onEnableNotificationListenerClick,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+            )
+        }
+
+        if (!isAccessibilityServiceEnabled || !isUsageStatsPermissionGranted || !isNotificationListenerEnabled) {
             Spacer(modifier = Modifier.height(8.dp))
         }
 
@@ -149,6 +168,29 @@ fun TodaySummaryScreen(
                 onClick = { packageName ->
                     onNavigateToAppDetail(packageName)
                 }
+            )
+        }
+
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min)
+                .padding(horizontal = 4.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            InfoCard(
+                modifier = Modifier.weight(1f),
+                title = "Screen Unlocks",
+                value = totalUnlocks.toString(),
+                icon = Icons.Filled.LockOpen,
+                iconTint = MaterialTheme.colorScheme.tertiary
+            )
+            InfoCard(
+                modifier = Modifier.weight(1f),
+                title = "Notifications",
+                value = totalNotifications.toString(),
+                icon = Icons.Filled.Notifications,
+                iconTint = MaterialTheme.colorScheme.secondary
             )
         }
 
@@ -490,4 +532,50 @@ fun ThemeModeSwitch(
             )
         }
     )
+}
+
+@Composable
+fun InfoCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconTint: Color
+) {
+    Card(
+        modifier = modifier.fillMaxHeight(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = iconTint,
+                modifier = Modifier.size(32.dp).padding(bottom = 8.dp)
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.headlineMedium.copy(
+                    fontWeight = FontWeight.Bold
+                ),
+                textAlign = TextAlign.Center
+            )
+        }
+    }
 }

@@ -24,8 +24,10 @@ fun AppNavigationHost(
     viewModel: MainViewModel,
     isAccessibilityEnabledState: Boolean,
     isUsageStatsGrantedState: Boolean,
+    isNotificationListenerEnabledState: Boolean,
     onEnableAccessibilityClick: () -> Unit,
-    onEnableUsageStatsClick: () -> Unit
+    onEnableUsageStatsClick: () -> Unit,
+    onEnableNotificationListenerClick: () -> Unit
 ) {
     NavHost(navController = navController, startDestination = ScreenRoutes.TodaySummary.route) {
         composable(ScreenRoutes.TodaySummary.route) {
@@ -37,6 +39,8 @@ fun AppNavigationHost(
             val scrollDistance by viewModel.scrollDistanceTodayFormatted.collectAsStateWithLifecycle()
             val topWeeklyApp by viewModel.topUsedAppLast7Days.collectAsStateWithLifecycle()
             val selectedTheme by viewModel.selectedThemeVariant.collectAsStateWithLifecycle()
+            val totalUnlocks by viewModel.totalUnlocksToday.collectAsStateWithLifecycle()
+            val totalNotifications by viewModel.totalNotificationsToday.collectAsStateWithLifecycle()
 
             TodaySummaryScreen(
                 navController = navController,
@@ -45,11 +49,15 @@ fun AppNavigationHost(
                 onEnableAccessibilityClick = onEnableAccessibilityClick,
                 isUsageStatsPermissionGranted = isUsageStatsGrantedState,
                 onEnableUsageStatsClick = onEnableUsageStatsClick,
+                isNotificationListenerEnabled = isNotificationListenerEnabledState,
+                onEnableNotificationListenerClick = onEnableNotificationListenerClick,
                 totalUsageTime = totalUsageTimeFormatted,
                 totalUsageTimeMillis = totalUsageTimeMillis,
                 topWeeklyApp = topWeeklyApp,
                 totalScrollUnits = totalScrollUnits,
                 scrollDistanceMeters = scrollDistance.first,
+                totalUnlocks = totalUnlocks,
+                totalNotifications = totalNotifications,
                 // appScrollData = appScrollItems, // Removed: Not directly displayed on TodaySummaryScreen
                 onNavigateToHistoricalUsage = {
                     viewModel.resetSelectedDateToToday()
