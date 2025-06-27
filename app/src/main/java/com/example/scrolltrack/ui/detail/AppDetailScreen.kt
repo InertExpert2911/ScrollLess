@@ -176,14 +176,14 @@ fun AppDetailScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant, // Reverted to default
-                    titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant, // Reverted to default
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant, // Reverted to default
-                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant // Reverted to default
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
-        modifier = modifier.background(MaterialTheme.colorScheme.background) // Reverted to default
+        modifier = modifier.background(MaterialTheme.colorScheme.background)
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -261,7 +261,7 @@ fun AppDetailScreen(
                             text = "Scroll: $focusedScrollDisplay",
                             style = MaterialTheme.typography.titleMedium,
                             textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.secondary
+                            color = MaterialTheme.colorScheme.tertiary
                         )
                     }
                     Spacer(modifier = Modifier.height(4.dp))
@@ -283,9 +283,9 @@ fun AppDetailScreen(
                     }
                     comparisonText?.let {
                         val (cardContainerColor, cardContentColor) = when (comparisonColorType) {
-                            ComparisonColorType.GREEN -> Color(0xFFC8E6C9) to Color(0xFF388E3C)
+                            ComparisonColorType.GREEN -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
                             ComparisonColorType.RED -> MaterialTheme.colorScheme.errorContainer to MaterialTheme.colorScheme.onErrorContainer
-                            ComparisonColorType.GREY -> MaterialTheme.colorScheme.surfaceVariant to MaterialTheme.colorScheme.onSurfaceVariant
+                            ComparisonColorType.GREY -> MaterialTheme.colorScheme.surfaceContainerHigh to MaterialTheme.colorScheme.onSurfaceVariant
                         }
                         val iconVector = when (comparisonIconType) {
                             ComparisonIconType.UP -> Icons.Filled.ArrowUpward
@@ -296,7 +296,7 @@ fun AppDetailScreen(
 
                         Card(
                             modifier = Modifier.padding(top = 8.dp),
-                            shape = MaterialTheme.shapes.medium,
+                            shape = MaterialTheme.shapes.large,
                             colors = CardDefaults.cardColors(
                                 containerColor = cardContainerColor,
                                 contentColor = cardContentColor
@@ -409,24 +409,37 @@ fun UsageBarScrollLineChart(
 
     if (data.isEmpty()) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No data to display.")
+            Text("No data to display.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         return
     }
 
+    // --- Hoist all calculations and theme-dependent variables out of the Canvas ---
+    val usageTimes = data.map { it.usageTimeMillis }
+    val actualMaxUsageTime = usageTimes.maxOrNull() ?: 1L
+    val minUsageTime = 0L
+
+    val scrollUnitsList = data.map { it.scrollUnits }
+    val actualMaxScrollUnits = scrollUnitsList.maxOrNull() ?: 1L
+    val minScrollUnits = 0L
+
+    val Y_AXIS_PADDING_FACTOR = 1.15f
+    val maxUsageTimeForAxis = (actualMaxUsageTime * Y_AXIS_PADDING_FACTOR).toLong().coerceAtLeast(1L)
+    val maxScrollUnitsForAxis = (actualMaxScrollUnits * Y_AXIS_PADDING_FACTOR).toLong().coerceAtLeast(1L)
+
     val barColor = MaterialTheme.colorScheme.primary
     val scrollDistanceColor = MaterialTheme.colorScheme.tertiary
-    val faintAxisColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
-    val labelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-    val axisLabelTextStyle = TextStyle(color = labelColor, fontSize = 11.sp)
+    val faintAxisColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f)
+    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val axisLabelTextStyle = MaterialTheme.typography.labelSmall.copy(color = labelColor)
     val selectedBarColor = MaterialTheme.colorScheme.secondary
 
     // Resolve tooltip colors and style here, in @Composable scope
     val tooltipBackgroundColor = MaterialTheme.colorScheme.inverseSurface
-    // Using MaterialTheme.colorScheme.surface as a fallback for onInverseSurface due to resolution issues.
-    // This should provide a contrasting color for text on inverseSurface.
-    val tooltipActualTextColor = MaterialTheme.colorScheme.surface
-    val tooltipTextStyle = MaterialTheme.typography.bodySmall.copy(color = tooltipActualTextColor)
+    val tooltipTextColor = MaterialTheme.colorScheme.inverseOnSurface
+    val tooltipTextStyle = MaterialTheme.typography.bodySmall.copy(color = tooltipTextColor)
+    val legendTextStyle = MaterialTheme.typography.labelMedium.copy(color = MaterialTheme.colorScheme.onSurface)
+    val activeBarColor = MaterialTheme.colorScheme.primaryContainer
 
     // Calculate tooltip scroll text within composable scope
     val tooltipScrollText by remember(selectedBarIndex, data, periodType, context) {
@@ -526,7 +539,7 @@ fun UsageBarScrollLineChart(
 
         val legendItemHeight = textMeasurer.measure(text = buildAnnotatedString { append("Legend") }, style = axisLabelTextStyle).size.height.toFloat() + 10f
         val legendTotalHeight = legendItemHeight * 2
-        
+
         val tickMarkAndLabelPadding = 20f // Combined padding for tick marks and labels from chart edge
         val leftMargin = yAxisLabelUsageTimeWidth + tickMarkAndLabelPadding
         val bottomMargin = xAxisLabelHeight + tickMarkAndLabelPadding + legendTotalHeight
@@ -547,21 +560,54 @@ fun UsageBarScrollLineChart(
             return@Canvas
         }
 
-        // Vertical Y-Axis lines are NOT drawn. Only X-axis base line.
-        drawLine(color = faintAxisColor, start = Offset(leftMargin, topMargin + chartHeight), end = Offset(leftMargin + chartWidth, topMargin + chartHeight), strokeWidth = 1f) // Keep X-Axis Base Line
+        // --- AXIS & GRID LINES ---
+        val yLabelCount = 4
+        // Draw horizontal grid lines and Y-axis labels (for both axes)
+        for (i in 0..yLabelCount) {
+            val ratio = i.toFloat() / yLabelCount
+            val yPos = topMargin + chartHeight - (ratio * chartHeight)
 
-        val usageTimes = data.map { it.usageTimeMillis }
-        val actualMaxUsageTime = usageTimes.maxOrNull() ?: 1L // Actual max for data scaling
-        val minUsageTime = 0L
+            if (yPos >= topMargin && yPos <= topMargin + chartHeight) {
+                // Grid line
+                drawLine(
+                    color = faintAxisColor,
+                    start = Offset(leftMargin, yPos),
+                    end = Offset(leftMargin + chartWidth, yPos),
+                    strokeWidth = 1f
+                )
 
-        val scrollUnitsList = data.map { it.scrollUnits }
-        val actualMaxScrollUnits = scrollUnitsList.maxOrNull() ?: 1L // Actual max for data scaling
-        val minScrollUnits = 0L
+                // Left Y-axis (Usage Time)
+                val usageValue = minUsageTime + ratio * (maxUsageTimeForAxis - minUsageTime)
+                val usageLabelText = formatMillisToHoursOrMinutes(usageValue.toLong())
+                val usageTextLayout = textMeasurer.measure(buildAnnotatedString { append(usageLabelText) }, style = axisLabelTextStyle)
+                axisLabelPaint.color = labelColor.toArgb()
+                axisLabelPaint.textSize = axisLabelTextStyle.fontSize.toPx()
+                drawContext.canvas.nativeCanvas.drawText(
+                    usageLabelText,
+                    leftMargin - usageTextLayout.size.width - 10f,
+                    yPos + usageTextLayout.size.height / 2f,
+                    axisLabelPaint
+                )
 
-        // Add padding to the max values for Y-axis scale to prevent labels/ticks hitting the top
-        val Y_AXIS_PADDING_FACTOR = 1.15f // Use 15% padding, adjust as needed (e.g., 1.20f for 20%)
-        val maxUsageTimeForAxis = (actualMaxUsageTime * Y_AXIS_PADDING_FACTOR).toLong().coerceAtLeast(1L) 
-        val maxScrollUnitsForAxis = (actualMaxScrollUnits * Y_AXIS_PADDING_FACTOR).toLong().coerceAtLeast(1L)
+                // Right Y-axis (Scroll Distance)
+                val scrollValue = minScrollUnits + ratio * (maxScrollUnitsForAxis - minScrollUnits)
+                val scrollLabelText = formatScrollForAxis(scrollValue.toFloat(), actualMaxScrollUnits, context)
+                val scrollTextLayout = textMeasurer.measure(buildAnnotatedString { append(scrollLabelText) }, style = axisLabelTextStyle)
+                drawContext.canvas.nativeCanvas.drawText(
+                    scrollLabelText,
+                    leftMargin + chartWidth + 10f,
+                    yPos + scrollTextLayout.size.height / 2,
+                    axisLabelPaint
+                )
+            }
+        }
+        // Base X-Axis Line
+        drawLine(
+            color = faintAxisColor,
+            start = Offset(leftMargin, topMargin + chartHeight),
+            end = Offset(leftMargin + chartWidth, topMargin + chartHeight),
+            strokeWidth = 1f
+        )
 
         val barCount = data.size
         // Calculate barWidth and barSpacing here, before they are used for dots
@@ -638,11 +684,7 @@ fun UsageBarScrollLineChart(
                         val activeBarLeft = barLeft + (barWidth - activeBarWidth) / 2
 
                         drawRect(
-                            color = currentBarColor.copy(
-                                red = currentBarColor.red * 0.75f,
-                                green = currentBarColor.green * 0.75f,
-                                blue = currentBarColor.blue * 0.75f
-                            ), // A darker version of the main bar color
+                            color = activeBarColor, // Use a distinct but related color
                             topLeft = Offset(activeBarLeft, activeBarTop),
                             size = androidx.compose.ui.geometry.Size(activeBarWidth, activeBarActualHeight)
                         )
@@ -747,43 +789,13 @@ fun UsageBarScrollLineChart(
                 if (formattedDate.isNotEmpty()){
                     val textLayoutResult = textMeasurer.measure(buildAnnotatedString { append(formattedDate) }, style = axisLabelTextStyle)
                     val labelX = leftMargin + barSpacingForXLabels + index * (barWidthForXLabels + barSpacingForXLabels) + barWidthForXLabels / 2 - textLayoutResult.size.width / 2
-                    axisLabelPaint.apply {
-                        color = labelColor.toArgb()
-                        textSize = 10.sp.toPx()
-                    }
+                    axisLabelPaint.color = labelColor.toArgb()
+                    axisLabelPaint.textSize = axisLabelTextStyle.fontSize.toPx()
                     drawContext.canvas.nativeCanvas.drawText(formattedDate, labelX, topMargin + chartHeight + 5f + textLayoutResult.size.height, axisLabelPaint)
                 }
             }
         }
         // END OF X-AXIS LABEL LOGIC
-
-        val yLabelCount = 4 // Restore yLabelCount for usage time ticks
-
-        // Revert to linear interpolation for Y-axis labels and grid lines for usage time (left side)
-        for (i in 0..yLabelCount) {
-            // Use maxUsageTimeForAxis for creating the Y-axis scale labels
-            val value = minUsageTime + (i.toFloat() / yLabelCount) * (maxUsageTimeForAxis - minUsageTime)
-            val labelText = formatMillisToHoursOrMinutes(value.toLong())
-            val textLayoutResult = textMeasurer.measure(buildAnnotatedString { append(labelText) }, style = axisLabelTextStyle)
-            val labelY = topMargin + chartHeight - (i.toFloat() / yLabelCount) * chartHeight
-            
-            if (labelY >= topMargin && labelY <= topMargin + chartHeight) {
-                // Draw grid line
-                drawLine(color = faintAxisColor.copy(alpha = 0.5f), start = Offset(leftMargin, labelY), end = Offset(leftMargin + chartWidth, labelY), strokeWidth = 0.5f)
-                // Draw tick mark
-                drawLine(color = faintAxisColor, start = Offset(leftMargin - 5f, labelY), end = Offset(leftMargin, labelY), strokeWidth = 1f)
-                axisLabelPaint.apply {
-                    color = labelColor.toArgb()
-                    textSize = 10.sp.toPx()
-                }
-                drawContext.canvas.nativeCanvas.drawText(
-                    labelText,
-                    leftMargin - textLayoutResult.size.width - 10f, 
-                    labelY + textLayoutResult.size.height / 2f - 5f, 
-                    axisLabelPaint
-                )
-            }
-        }
 
         // Scroll distance Y-axis ticks remain as they were (linear interpolation)
         val yScrollLabelCount = 4 // Use a distinct count for scroll if needed, or keep it 4
@@ -798,31 +810,27 @@ fun UsageBarScrollLineChart(
             // drawLine(color = faintAxisColor.copy(alpha = 0.5f), start = Offset(leftMargin, labelY), end = Offset(leftMargin + chartWidth, labelY), strokeWidth = 0.5f)
             // Draw tick mark (short line extending from where axis *would* be)
             drawLine(color = faintAxisColor, start = Offset(leftMargin + chartWidth, labelY), end = Offset(leftMargin + chartWidth + 5f, labelY), strokeWidth = 1f)
-            axisLabelPaint.apply {
-                color = labelColor.toArgb()
-                textSize = 10.sp.toPx()
-            }
+            axisLabelPaint.color = labelColor.toArgb()
+            axisLabelPaint.textSize = axisLabelTextStyle.fontSize.toPx()
             drawContext.canvas.nativeCanvas.drawText(labelText, leftMargin + chartWidth + 10f, labelY + textLayoutResult.size.height / 2 - 5f, axisLabelPaint)
         }
 
         val legendStartY = topMargin + chartHeight + xAxisLabelHeight + 20f
-        val legendItemSize = 12.sp.toPx()
+        val legendItemSize = 10.dp.toPx()
         val legendTextPadding = 8.dp.toPx()
 
+        // Draw 'Usage' legend item
         drawRect(color = barColor, topLeft = Offset(leftMargin, legendStartY), size = androidx.compose.ui.geometry.Size(legendItemSize, legendItemSize))
-        legendPaint.apply {
-            color = labelColor.toArgb()
-            textSize = 11.sp.toPx()
-        }
-        drawContext.canvas.nativeCanvas.drawText("Usage", leftMargin + legendItemSize + legendTextPadding, legendStartY + legendItemHeight / 2 + textMeasurer.measure(buildAnnotatedString { append("Usage") }, style = axisLabelTextStyle).size.height / 4, legendPaint)
+        legendPaint.color = legendTextStyle.color.toArgb()
+        legendPaint.textSize = legendTextStyle.fontSize.toPx()
+        val usageLegendLayout = textMeasurer.measure(buildAnnotatedString { append("Usage") }, style = legendTextStyle)
+        drawContext.canvas.nativeCanvas.drawText("Usage", leftMargin + legendItemSize + legendTextPadding, legendStartY + usageLegendLayout.size.height / 2f, legendPaint)
 
+        // Draw 'Scroll' legend item
         val secondLegendItemY = legendStartY + legendItemHeight
         drawRect(color = scrollDistanceColor, topLeft = Offset(leftMargin, secondLegendItemY), size = androidx.compose.ui.geometry.Size(legendItemSize, legendItemSize))
-        legendPaint.apply {
-            color = labelColor.toArgb()
-            textSize = 11.sp.toPx()
-        }
-        drawContext.canvas.nativeCanvas.drawText("Scroll", leftMargin + legendItemSize + legendTextPadding, secondLegendItemY + legendItemHeight / 2 + textMeasurer.measure(buildAnnotatedString { append("Scroll") }, style = axisLabelTextStyle).size.height / 4, legendPaint)
+        val scrollLegendLayout = textMeasurer.measure(buildAnnotatedString { append("Scroll") }, style = legendTextStyle)
+        drawContext.canvas.nativeCanvas.drawText("Scroll", leftMargin + legendItemSize + legendTextPadding, secondLegendItemY + scrollLegendLayout.size.height / 2f, legendPaint)
 
         // --- Draw Tooltip if a bar is selected (Only for WEEKLY/MONTHLY) ---
         if ((periodType == ChartPeriodType.WEEKLY || periodType == ChartPeriodType.MONTHLY) && selectedBarIndex != null && selectedBarIndex!! < data.size) {
@@ -885,7 +893,7 @@ fun UsageBarScrollLineChart(
                 tooltipX + tooltipPaddingHorizontal,
                 tooltipY + tooltipPaddingVertical + usageTextLayout.size.height, // Y is baseline for text
                 tooltipTextPaint.apply {
-                    color = tooltipActualTextColor.toArgb()
+                    color = tooltipTextColor.toArgb()
                     textSize = tooltipTextStyle.fontSize.toPx()
                 }
             )
@@ -895,7 +903,7 @@ fun UsageBarScrollLineChart(
                 tooltipX + tooltipPaddingHorizontal,
                 tooltipY + tooltipPaddingVertical + usageTextLayout.size.height + tooltipTextSpacing + scrollTextLayout.size.height, // Y is baseline
                 tooltipTextPaint.apply {
-                    color = tooltipActualTextColor.toArgb()
+                    color = tooltipTextColor.toArgb()
                     textSize = tooltipTextStyle.fontSize.toPx()
                 }
             )

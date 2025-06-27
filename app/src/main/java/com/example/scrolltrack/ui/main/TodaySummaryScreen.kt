@@ -13,7 +13,30 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.AccessibilityNew
+import androidx.compose.material.icons.filled.Brightness2
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.QueryStats
+import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.outlined.PhoneAndroid
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,12 +53,15 @@ import com.example.scrolltrack.R
 import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.ui.model.AppUsageUiItem
-import com.example.scrolltrack.ui.theme.CaveatFontFamily
-import com.example.scrolltrack.ui.theme.UsageStatusGreen
-import com.example.scrolltrack.ui.theme.UsageStatusOrange
-import com.example.scrolltrack.ui.theme.UsageStatusRed
+import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
+import com.example.scrolltrack.util.GreetingUtil
 import androidx.compose.ui.res.stringResource
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.Dp
+import java.util.concurrent.TimeUnit
+import androidx.compose.ui.graphics.vector.ImageVector
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,143 +87,121 @@ fun TodaySummaryScreen(
     currentThemeVariant: String,
     modifier: Modifier = Modifier
 ) {
-    val phoneUsageColor = when {
-        totalUsageTimeMillis <= 2.5 * 60 * 60 * 1000 -> UsageStatusGreen
-        totalUsageTimeMillis <= 5 * 60 * 60 * 1000 -> UsageStatusOrange
-        else -> UsageStatusRed
-    }
-
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(MaterialTheme.colorScheme.surface)
             .verticalScroll(rememberScrollState())
-            .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 16.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
+        Spacer(modifier = Modifier.height(32.dp))
+        // Header Section
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp)
-                .padding(top = 24.dp),
+                .padding(bottom = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
                 text = greeting,
-                style = MaterialTheme.typography.headlineMedium.copy(fontFamily = CaveatFontFamily),
-                color = MaterialTheme.colorScheme.onBackground,
+                style = MaterialTheme.typography.displaySmall,
+                color = MaterialTheme.colorScheme.onSurface
             )
-            ThemeModeSwitch(
-                currentThemeVariant = currentThemeVariant,
+            ThemeSwitch(
+                currentTheme = currentThemeVariant,
                 onThemeChange = onThemeChange
             )
         }
 
         Text(
-            text = stringResource(id = R.string.greeting_manage_habits), // Replaced
-            style = MaterialTheme.typography.titleSmall,
+            text = stringResource(id = R.string.greeting_manage_habits),
+            style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 8.dp, bottom = 12.dp)
+            modifier = Modifier.padding(bottom = 24.dp)
         )
 
-        AnimatedVisibility(
-            visible = !isAccessibilityServiceEnabled,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            PermissionRequestCard(
-                leadingIcon = { Icon(Icons.Filled.AccessibilityNew, contentDescription = "Accessibility Service Icon", modifier = Modifier.size(28.dp)) },
-                title = stringResource(id = R.string.permission_accessibility_title), // Replaced
-                description = stringResource(id = R.string.permission_accessibility_description), // Replaced
-                buttonText = stringResource(id = R.string.permission_button_open_settings), // Replaced
-                onButtonClick = onEnableAccessibilityClick,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
-            )
+        // Permissions Section
+        val permissionsNeeded = !isAccessibilityServiceEnabled || !isUsageStatsPermissionGranted || !isNotificationListenerEnabled
+        AnimatedVisibility(visible = permissionsNeeded) {
+            Column {
+                if (!isAccessibilityServiceEnabled) {
+                    PermissionRequestCard(
+                        leadingIcon = { Icon(Icons.Filled.AccessibilityNew, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer) },
+                        title = stringResource(id = R.string.permission_accessibility_title),
+                        description = stringResource(id = R.string.permission_accessibility_description),
+                        buttonText = stringResource(id = R.string.permission_button_open_settings),
+                        onButtonClick = onEnableAccessibilityClick
+                    )
+                }
+                if (!isUsageStatsPermissionGranted) {
+                    PermissionRequestCard(
+                        leadingIcon = { Icon(Icons.Filled.QueryStats, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer) },
+                        title = stringResource(id = R.string.permission_usage_stats_title),
+                        description = stringResource(id = R.string.permission_usage_stats_description),
+                        buttonText = stringResource(id = R.string.permission_button_grant_access),
+                        onButtonClick = onEnableUsageStatsClick
+                    )
+                }
+                if (!isNotificationListenerEnabled) {
+                    PermissionRequestCard(
+                        leadingIcon = { Icon(Icons.Filled.NotificationsActive, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer) },
+                        title = stringResource(id = R.string.permission_notification_listener_title),
+                        description = stringResource(id = R.string.permission_notification_listener_description),
+                        buttonText = stringResource(id = R.string.permission_button_grant_access),
+                        onButtonClick = onEnableNotificationListenerClick
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
         }
 
-        AnimatedVisibility(
-            visible = !isUsageStatsPermissionGranted,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            PermissionRequestCard(
-                leadingIcon = { Icon(Icons.Filled.QueryStats, contentDescription = "Usage Access Icon", modifier = Modifier.size(28.dp)) },
-                title = stringResource(id = R.string.permission_usage_stats_title), // Replaced
-                description = stringResource(id = R.string.permission_usage_stats_description), // Replaced
-                buttonText = stringResource(id = R.string.permission_button_grant_access), // Replaced
-                onButtonClick = onEnableUsageStatsClick,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
-            )
-        }
-
-        AnimatedVisibility(
-            visible = !isNotificationListenerEnabled,
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            PermissionRequestCard(
-                leadingIcon = { Icon(Icons.Filled.NotificationsActive, contentDescription = "Notification Access Icon", modifier = Modifier.size(28.dp)) },
-                title = stringResource(id = R.string.permission_notification_listener_title),
-                description = stringResource(id = R.string.permission_notification_listener_description),
-                buttonText = stringResource(id = R.string.permission_button_grant_access),
-                onButtonClick = onEnableNotificationListenerClick,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
-            )
-        }
-
-        if (!isAccessibilityServiceEnabled || !isUsageStatsPermissionGranted || !isNotificationListenerEnabled) {
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
+        // Stats Grid
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(IntrinsicSize.Min)
-                .padding(horizontal = 4.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            PhoneUsageCard(
+            StatCard(
                 modifier = Modifier.weight(1f),
-                totalUsageTime = totalUsageTime,
-                usageTimeColor = phoneUsageColor,
-                onNavigateToHistoricalUsage = onNavigateToHistoricalUsage
+                label = "Phone Usage Today",
+                value = totalUsageTime,
+                icon = Icons.Outlined.PhoneAndroid,
+                subValue = "View Details",
+                onCardClick = onNavigateToHistoricalUsage
             )
-            TopWeeklyAppCard(
+            TopAppCard(
                 modifier = Modifier.weight(1f),
                 topApp = topWeeklyApp,
-                onClick = { packageName ->
-                    onNavigateToAppDetail(packageName)
-                }
+                onClick = onNavigateToAppDetail
             )
         }
 
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(IntrinsicSize.Min)
-                .padding(horizontal = 4.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            InfoCard(
+            StatCard(
                 modifier = Modifier.weight(1f),
-                title = "Screen Unlocks",
+                label = "Screen Unlocks",
                 value = totalUnlocks.toString(),
-                icon = Icons.Filled.LockOpen,
-                iconTint = MaterialTheme.colorScheme.tertiary
+                icon = Icons.Filled.LockOpen
             )
-            InfoCard(
+            StatCard(
                 modifier = Modifier.weight(1f),
-                title = "Notifications",
+                label = "Notifications",
                 value = totalNotifications.toString(),
-                icon = Icons.Filled.Notifications,
-                iconTint = MaterialTheme.colorScheme.secondary
+                icon = Icons.Filled.Notifications
             )
         }
 
         ScrollStatsCard(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 4.dp),
+                .padding(bottom = 16.dp),
             scrollDistanceMeters = scrollDistanceMeters,
             totalScrollUnits = totalScrollUnits,
             onClick = {
@@ -211,62 +215,56 @@ fun TodaySummaryScreen(
 }
 
 @Composable
-fun PermissionRequestCard(
-    leadingIcon: (@Composable () -> Unit)?,
+private fun PermissionRequestCard(
+    leadingIcon: @Composable () -> Unit,
     title: String,
     description: String,
     buttonText: String,
     onButtonClick: () -> Unit,
-    modifier: Modifier = Modifier
 ) {
-    ElevatedCard(
-        modifier = modifier.fillMaxWidth(),
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.elevatedCardColors(
+        colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.tertiaryContainer,
             contentColor = MaterialTheme.colorScheme.onTertiaryContainer
         ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+                .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (leadingIcon != null) {
-                Box(modifier = Modifier.padding(end = 16.dp)) {
-                    leadingIcon()
-                }
-            }
+            Box(modifier = Modifier.padding(end = 16.dp)) { leadingIcon() }
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                )
+                Text(text = title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
                 Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.Top) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Filled.Info,
-                        contentDescription = "Information",
-                        modifier = Modifier.padding(end = 8.dp, top = 2.dp).size(16.dp),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .padding(end = 8.dp),
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer
                     )
-                    Text(
-                        text = description,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                    Text(text = description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                FilledTonalButton(
+                Button(
                     onClick = onButtonClick,
                     modifier = Modifier.align(Alignment.End),
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
                     ),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp)
                 ) {
-                    Text(buttonText, style = MaterialTheme.typography.labelMedium)
+                    Text(buttonText, style = MaterialTheme.typography.labelLarge)
                 }
             }
         }
@@ -274,74 +272,82 @@ fun PermissionRequestCard(
 }
 
 @Composable
-fun PhoneUsageCard(
+private fun StatCard(
     modifier: Modifier = Modifier,
-    totalUsageTime: String,
-    usageTimeColor: Color,
-    onNavigateToHistoricalUsage: () -> Unit
+    label: String,
+    value: String,
+    icon: ImageVector,
+    subValue: String? = null,
+    onCardClick: (() -> Unit)? = null
 ) {
-    Card(
+    ElevatedCard(
         modifier = modifier
-            .fillMaxHeight()
-            .clickable { onNavigateToHistoricalUsage() },
+            .height(160.dp)
+            .clickable(enabled = onCardClick != null) { onCardClick?.invoke() },
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            contentColor = MaterialTheme.colorScheme.onSurface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier
                 .padding(16.dp)
-                .fillMaxWidth(),
+                .fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(Icons.Filled.PhoneAndroid, contentDescription = "Phone Usage", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp).padding(bottom = 8.dp))
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier
+                    .size(32.dp)
+                    .padding(bottom = 8.dp)
+            )
             Text(
-                text = stringResource(id = R.string.card_title_phone_usage_today), // Replaced
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                textAlign = TextAlign.Center
+                text = label,
+                style = MaterialTheme.typography.titleSmall,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = totalUsageTime,
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = usageTimeColor
-                ),
+                modifier = Modifier.padding(bottom = 4.dp),
+                text = value,
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.primary,
                 textAlign = TextAlign.Center
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = stringResource(id = R.string.card_button_view_details), // Replaced
-                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
+            if (subValue != null) {
+                Text(
+                    text = subValue,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }
 
 @Composable
-fun TopWeeklyAppCard(
+fun TopAppCard(
     modifier: Modifier = Modifier,
     topApp: AppUsageUiItem?,
     onClick: (String) -> Unit
 ) {
-    Card(
+    ElevatedCard(
         modifier = modifier
-            .fillMaxHeight()
-            .clickable(enabled = topApp != null) {
-                topApp?.packageName?.let { onClick(it) }
-            },
+            .height(160.dp)
+            .clickable(enabled = topApp != null) { topApp?.packageName?.let(onClick) },
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            contentColor = MaterialTheme.colorScheme.onSurface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier
@@ -352,9 +358,7 @@ fun TopWeeklyAppCard(
         ) {
             if (topApp != null) {
                 Image(
-                    painter = rememberAsyncImagePainter(
-                        model = topApp.icon ?: R.mipmap.ic_launcher_round
-                    ),
+                    painter = rememberAsyncImagePainter(model = topApp.icon ?: R.mipmap.ic_launcher_round),
                     contentDescription = "${topApp.appName} icon",
                     modifier = Modifier
                         .size(40.dp)
@@ -367,35 +371,37 @@ fun TopWeeklyAppCard(
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(bottom = 2.dp),
+                    color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "${DateUtil.formatDuration(topApp.usageTimeMillis)} ${stringResource(id = R.string.suffix_last_7_days)}", // Replaced
+                    text = "${DateUtil.formatDuration(topApp.usageTimeMillis)} ${stringResource(id = R.string.suffix_last_7_days)}",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
                 Icon(
                     Icons.Filled.HourglassEmpty,
                     contentDescription = "No top app data",
-                    modifier = Modifier.size(36.dp).padding(bottom = 8.dp),
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                    modifier = Modifier
+                        .size(32.dp)
+                        .padding(bottom = 8.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = stringResource(id = R.string.card_title_top_weekly_app), // Replaced
+                    text = stringResource(id = R.string.card_title_top_weekly_app),
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(bottom = 2.dp),
+                    color = MaterialTheme.colorScheme.onSurface
                 )
-                Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = stringResource(id = R.string.text_no_data_yet), // Replaced
+                    text = stringResource(id = R.string.text_no_data_yet),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
@@ -415,166 +421,47 @@ fun ScrollStatsCard(
             .clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            contentColor = MaterialTheme.colorScheme.onSurface
         ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = "Scroll Stats", tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(32.dp).padding(bottom = 8.dp))
-            Text(
-                text = stringResource(id = R.string.card_title_scroll_stats_today), // Replaced
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = scrollDistanceMeters,
-                style = MaterialTheme.typography.titleLarge.copy(color = MaterialTheme.colorScheme.onPrimaryContainer),
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = "$totalScrollUnits units",
-                style = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onPrimaryContainer, fontWeight = FontWeight.SemiBold),
-                textAlign = TextAlign.Center
-            )
-        }
-    }
-}
-
-@Composable
-fun AppScrollItemEntry(
-    appData: AppScrollUiItem,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
     ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Image(
-                painter = rememberAsyncImagePainter(
-                    model = appData.icon ?: R.mipmap.ic_launcher_round
-                ),
-                contentDescription = "${appData.appName} icon",
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape),
-                contentScale = ContentScale.Fit
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = appData.appName,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = appData.packageName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "${appData.totalScroll} units",
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                textAlign = TextAlign.End,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-    }
-}
-
-@Composable
-fun ThemeModeSwitch(
-    currentThemeVariant: String,
-    onThemeChange: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val isDarkMode = currentThemeVariant != "light"
-
-    Switch(
-        modifier = modifier,
-        checked = isDarkMode,
-        onCheckedChange = {
-            val newTheme = if (it) "oled_dark" else "light"
-            onThemeChange(newTheme)
-        },
-        thumbContent = {
-            Icon(
-                imageVector = if (isDarkMode) Icons.Filled.Brightness2 else Icons.Filled.WbSunny,
-                contentDescription = if (isDarkMode) "Dark Mode" else "Light Mode",
-                modifier = Modifier.size(SwitchDefaults.IconSize)
-            )
-        }
-    )
-}
-
-@Composable
-fun InfoCard(
-    modifier: Modifier = Modifier,
-    title: String,
-    value: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    iconTint: Color
-) {
-    Card(
-        modifier = modifier.fillMaxHeight(),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    ) {
-        Column(
-            modifier = Modifier
                 .padding(16.dp)
                 .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = iconTint,
-                modifier = Modifier.size(32.dp).padding(bottom = 8.dp)
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.AutoMirrored.Filled.TrendingUp,
+                    contentDescription = "Scroll Stats",
+                    tint = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .padding(end = 16.dp)
+                )
+                Column {
+                    Text(
+                        text = stringResource(id = R.string.card_title_scroll_stats_today),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "$totalScrollUnits units",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = value,
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.Bold
-                ),
-                textAlign = TextAlign.Center
+                text = scrollDistanceMeters,
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.End,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }

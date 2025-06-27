@@ -2,6 +2,7 @@ package com.example.scrolltrack.ui.detail
 
 import android.graphics.drawable.Drawable
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,15 +29,12 @@ import androidx.navigation.compose.rememberNavController
 import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.R // For fallback icon
 import com.example.scrolltrack.navigation.ScreenRoutes // For potential navigation from item
-import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.ui.main.MainViewModelFactory
-import com.example.scrolltrack.ui.main.FakeScrollDataRepository
-import com.example.scrolltrack.ui.main.FakeSettingsRepository
+import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.ui.theme.ScrollTrackTheme
 import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
-import java.util.Calendar
 import java.util.Date
 import androidx.compose.ui.tooling.preview.Preview
 import android.text.format.DateUtils as AndroidDateUtils
@@ -51,7 +49,6 @@ fun ScrollDetailScreen(
     onDateSelected: (Long) -> Unit
 ) {
     val context = LocalContext.current
-
     var showDatePickerDialog by remember { mutableStateOf(false) }
     val selectableDatesMillis by viewModel.selectableDatesForScrollDetail.collectAsStateWithLifecycle()
 
@@ -65,16 +62,14 @@ fun ScrollDetailScreen(
                 return utcTimeMillis <= System.currentTimeMillis() &&
                         (selectableDatesMillis.contains(dateToCompare) || AndroidDateUtils.isToday(utcTimeMillis))
             }
-            override fun isSelectableYear(year: Int): Boolean {
-                return true // Allow all years for now
-            }
+            override fun isSelectableYear(year: Int): Boolean = true
         }
     )
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Scroll Breakdown") }, // Simplified title
+                title = { Text("Scroll Breakdown") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
@@ -82,42 +77,51 @@ fun ScrollDetailScreen(
                 },
                 actions = {
                     TextButton(onClick = { showDatePickerDialog = true }) {
-                        Text(selectedDateString) 
+                        Text(selectedDateString)
                         Spacer(Modifier.width(4.dp))
                         Icon(Icons.Filled.CalendarToday, "Select Date")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant, // Match HistoricalUsageScreen
-                    titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.primary
+                ),
+                modifier = Modifier.statusBarsPadding()
             )
-        }
+        },
+        modifier = Modifier.navigationBarsPadding().background(MaterialTheme.colorScheme.background)
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp, vertical = 8.dp) // Adjusted padding
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             if (scrollData.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("No scroll data recorded for $selectedDateString.")
+                    Text(
+                        text = "No scroll data recorded for $selectedDateString.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     items(items = scrollData, key = { it.id }) { appItem ->
                         AppScrollDetailItemEntry(
                             appItem = appItem,
-                            // Pass context for ConversionUtil
                             formattedDistance = ConversionUtil.formatScrollDistance(appItem.totalScroll, context).first,
                             onClick = { navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(appItem.packageName)) }
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     }
                 }
             }
@@ -127,10 +131,8 @@ fun ScrollDetailScreen(
             DatePickerDialog(
                 onDismissRequest = { showDatePickerDialog = false },
                 confirmButton = {
-                    TextButton(onClick = {
-                        datePickerState.selectedDateMillis?.let {
-                            onDateSelected(it)
-                        }
+                    Button(onClick = {
+                        datePickerState.selectedDateMillis?.let(onDateSelected)
                         showDatePickerDialog = false
                     }) { Text("OK") }
                 },
@@ -147,50 +149,61 @@ fun ScrollDetailScreen(
 @Composable
 fun AppScrollDetailItemEntry(
     appItem: AppScrollUiItem,
-    formattedDistance: String, // Now passed in
+    formattedDistance: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Row(
+    Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .clickable(onClick = onClick),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Image(
-            painter = rememberAsyncImagePainter(
-                model = appItem.icon ?: R.mipmap.ic_launcher_round // Fallback icon
-            ),
-            contentDescription = "${appItem.appName} icon",
+        Row(
             modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape),
-            contentScale = ContentScale.Fit
-        )
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = appItem.appName,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = rememberAsyncImagePainter(model = appItem.icon ?: R.mipmap.ic_launcher_round),
+                contentDescription = "${appItem.appName} icon",
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape),
+                contentScale = ContentScale.Fit
             )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = appItem.appName,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "${appItem.totalScroll} units",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
             Text(
-                text = "${appItem.totalScroll} units", // Display raw units
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                text = formattedDistance,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.End
             )
         }
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = formattedDistance, // Display formatted distance (e.g., "123 m")
-            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-            color = MaterialTheme.colorScheme.primary,
-            textAlign = TextAlign.End
-        )
     }
 }
 
@@ -198,8 +211,10 @@ fun AppScrollDetailItemEntry(
 @Composable
 fun ScrollDetailScreenPreview() {
     val context = LocalContext.current
-    val fakeViewModel = MainViewModel(FakeScrollDataRepository(), FakeSettingsRepository(), context.applicationContext as android.app.Application)
-    ScrollTrackTheme(themeVariant = "oled_dark") {
+    val fakeViewModel: MainViewModel = viewModel(
+        factory = MainViewModelFactory(context.applicationContext as android.app.Application, useFakeRepos = true)
+    )
+    ScrollTrackTheme(darkTheme = true) {
         ScrollDetailScreen(
             navController = rememberNavController(),
             viewModel = fakeViewModel,

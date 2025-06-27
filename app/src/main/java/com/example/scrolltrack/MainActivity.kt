@@ -82,7 +82,10 @@ class MainActivity : ComponentActivity() {
             val isUsageStatsGranted by viewModel.isUsagePermissionGranted.collectAsStateWithLifecycle()
             val isNotificationListenerEnabled by viewModel.isNotificationListenerEnabled.collectAsStateWithLifecycle()
 
-            ScrollTrackTheme(themeVariant = selectedTheme, dynamicColor = false) {
+            // Determine darkTheme based on selectedTheme. "light" is light, others are dark.
+            val useDarkTheme = selectedTheme != THEME_LIGHT
+
+            ScrollTrackTheme(darkTheme = useDarkTheme, dynamicColor = false) { // Updated call
                 val navController = rememberNavController()
                 AppNavigationHost(
                     navController = navController,

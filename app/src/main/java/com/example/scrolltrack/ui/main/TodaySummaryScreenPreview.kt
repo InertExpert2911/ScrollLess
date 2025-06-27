@@ -17,7 +17,7 @@ import com.example.scrolltrack.ui.theme.ScrollTrackTheme
 @Preview(showBackground = true, name = "Today Summary - Permissions Needed")
 @Composable
 fun TodaySummaryScreenPermissionsNeededPreview() {
-    ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) {
+    ScrollTrackTheme(darkTheme = true, dynamicColor = false) { // Updated call
         TodaySummaryScreen(
             navController = rememberNavController(),
             greeting = "Good Morning! ☀️",
@@ -53,7 +53,7 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
         packageName = "com.example.topapp"
     )
 
-    ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) {
+    ScrollTrackTheme(darkTheme = true, dynamicColor = false) { // Updated call
         val exampleTimeMillis = (2.75 * 60 * 60 * 1000).toLong()
         TodaySummaryScreen(
             navController = rememberNavController(),
@@ -82,7 +82,7 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
 @Preview(showBackground = true, name = "Top Weekly App Card - With Data")
 @Composable
 fun TopWeeklyAppCardPreview() {
-    ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) {
+    ScrollTrackTheme(darkTheme = true, dynamicColor = false) { // Updated call
         val topAppExample = AppUsageUiItem(
             id = "com.example.topapp",
             appName = "Social Media Pro",
@@ -91,7 +91,7 @@ fun TopWeeklyAppCardPreview() {
             packageName = "com.example.topapp"
         )
         Box(modifier = Modifier.padding(16.dp).width(200.dp).height(180.dp)) {
-            TopWeeklyAppCard(topApp = topAppExample, modifier = Modifier.fillMaxSize(), onClick = {})
+            TopAppCard(topApp = topAppExample, modifier = Modifier.fillMaxSize(), onClick = {})
         }
     }
 }
@@ -99,9 +99,9 @@ fun TopWeeklyAppCardPreview() {
 @Preview(showBackground = true, name = "Top Weekly App Card - No Data")
 @Composable
 fun TopWeeklyAppCardNoDataPreview() {
-    ScrollTrackTheme(themeVariant = "oled_dark", dynamicColor = false) {
+    ScrollTrackTheme(darkTheme = true, dynamicColor = false) { // Updated call
         Box(modifier = Modifier.padding(16.dp).width(200.dp).height(180.dp)) {
-            TopWeeklyAppCard(topApp = null, modifier = Modifier.fillMaxSize(), onClick = {})
+            TopAppCard(topApp = null, modifier = Modifier.fillMaxSize(), onClick = {})
         }
     }
 }
