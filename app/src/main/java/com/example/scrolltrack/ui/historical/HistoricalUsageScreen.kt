@@ -2,47 +2,17 @@ package com.example.scrolltrack.ui.historical
 
 import android.graphics.drawable.Drawable
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDefaults
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.SelectableDates
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,11 +26,10 @@ import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.R
 import com.example.scrolltrack.navigation.ScreenRoutes
-import com.example.scrolltrack.ui.model.AppUsageUiItem // Ensure this is imported
 import com.example.scrolltrack.ui.main.MainViewModel
+import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.util.DateUtil
 import android.text.format.DateUtils as AndroidDateUtils
-import androidx.compose.foundation.background
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -93,21 +62,22 @@ fun HistoricalUsageScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Historical Usage", style = MaterialTheme.typography.titleLarge) }, // Use Pixelify Sans
+                title = { Text("Historical Usage") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = MaterialTheme.colorScheme.onSurface)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
                 actions = {
                     TextButton(onClick = { showDatePickerDialog = true }) {
-                        Text(selectedDateString, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+                        Text(selectedDateString)
                         Spacer(Modifier.width(4.dp))
-                        Icon(Icons.Filled.CalendarToday, "Select Date", tint = MaterialTheme.colorScheme.primary)
+                        Icon(Icons.Filled.CalendarToday, "Select Date")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface, // Use primary surface
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer, // M3 behavior
                     titleContentColor = MaterialTheme.colorScheme.onSurface,
                     navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
                     actionIconContentColor = MaterialTheme.colorScheme.primary
@@ -120,14 +90,15 @@ fun HistoricalUsageScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding) // Apply scaffold padding
-                .padding(horizontal = 16.dp, vertical = 12.dp), // Consistent screen padding
+                .padding(innerPadding)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text( // More prominent display for total usage
+            Text(
                 text = "Total Usage: $totalUsageTimeForSelectedDate",
-                style = MaterialTheme.typography.headlineSmall.copy(color = MaterialTheme.colorScheme.primary), // Pixelify Sans, primary color
-                modifier = Modifier.padding(bottom = 20.dp) // Increased spacing
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.primary, // Use primary color for key metric
+                modifier = Modifier.padding(bottom = 20.dp)
             )
 
             if (appUsageListForSelectedDate.isEmpty()) {
@@ -141,10 +112,10 @@ fun HistoricalUsageScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp) // Spacing between items
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(items = appUsageListForSelectedDate, key = { it.id }) { usageItem ->
-                        AppUsageRowItem( // AppUsageRowItem will be styled with Card
+                        AppUsageRowItem(
                             usageItem = usageItem,
                             onClick = { navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(usageItem.packageName)) }
                         )
@@ -157,79 +128,43 @@ fun HistoricalUsageScreen(
             DatePickerDialog(
                 onDismissRequest = { showDatePickerDialog = false },
                 confirmButton = {
-                    Button(onClick = { // Standard Button
+                    Button(onClick = {
                         datePickerState.selectedDateMillis?.let(viewModel::updateSelectedDateForHistory)
                         showDatePickerDialog = false
                     }) { Text("OK") }
                 },
                 dismissButton = {
                     TextButton(onClick = { showDatePickerDialog = false }) { Text("Cancel") }
-                },
-                colors = DatePickerDefaults.colors( // Apply theme colors
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    headlineContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    weekdayContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    dayContentColor = MaterialTheme.colorScheme.onSurface,
-                    disabledDayContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                    selectedDayContentColor = MaterialTheme.colorScheme.onPrimary,
-                    disabledSelectedDayContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.38f),
-                    selectedDayContainerColor = MaterialTheme.colorScheme.primary,
-                    todayContentColor = MaterialTheme.colorScheme.primary,
-                    todayDateBorderColor = MaterialTheme.colorScheme.primary,
-                    yearContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    selectedYearContentColor = MaterialTheme.colorScheme.onPrimary,
-                    selectedYearContainerColor = MaterialTheme.colorScheme.primary,
-                    currentYearContentColor = MaterialTheme.colorScheme.primary,
-                )
+                }
+                // DatePickerDialog will automatically use colors from the MaterialTheme
             ) {
-                DatePicker(
-                    state = datePickerState,
-                    colors = DatePickerDefaults.colors( // Apply same colors to DatePicker itself
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        headlineContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        weekdayContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        dayContentColor = MaterialTheme.colorScheme.onSurface,
-                        disabledDayContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                        selectedDayContentColor = MaterialTheme.colorScheme.onPrimary,
-                        disabledSelectedDayContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.38f),
-                        selectedDayContainerColor = MaterialTheme.colorScheme.primary,
-                        todayContentColor = MaterialTheme.colorScheme.primary,
-                        todayDateBorderColor = MaterialTheme.colorScheme.primary,
-                        yearContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        selectedYearContentColor = MaterialTheme.colorScheme.onPrimary,
-                        selectedYearContainerColor = MaterialTheme.colorScheme.primary,
-                        currentYearContentColor = MaterialTheme.colorScheme.primary,
-                    )
-                )
+                DatePicker(state = datePickerState)
             }
         }
     }
 }
 
-// Updated AppUsageRowItem with Card styling
 @Composable
 fun AppUsageRowItem(
     usageItem: AppUsageUiItem,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    Card( // Wrap item in a Card
+    Card(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface, // Use main surface
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
             contentColor = MaterialTheme.colorScheme.onSurface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp) // Subtle elevation
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp), // Standard padding
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Image(
@@ -244,26 +179,25 @@ fun AppUsageRowItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = usageItem.appName,
-                    style = MaterialTheme.typography.titleSmall, // Consistent typography
+                    style = MaterialTheme.typography.titleMedium, // Adjusted for hierarchy
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant // Ensure text color
+                    color = MaterialTheme.colorScheme.onSurface // Main text color
                 )
                 Text(
                     text = usageItem.packageName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), // Subtler text
+                    style = MaterialTheme.typography.bodyMedium, // Adjusted for hierarchy
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, // Secondary text color
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp)) // Increased spacing
+            Spacer(modifier = Modifier.width(12.dp))
             Text(
                 text = DateUtil.formatDuration(usageItem.usageTimeMillis),
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary // Highlight with primary color
-                ),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface, // Main text color for value
                 textAlign = TextAlign.End
             )
         }

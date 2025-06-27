@@ -91,7 +91,7 @@ fun TopWeeklyAppCardPreview() {
             packageName = "com.example.topapp"
         )
         Box(modifier = Modifier.padding(16.dp).width(200.dp).height(180.dp)) {
-            TopWeeklyAppCard(topApp = topAppExample, modifier = Modifier.fillMaxSize(), onClick = {})
+            TopAppCard(topApp = topAppExample, modifier = Modifier.fillMaxSize(), onClick = {})
         }
     }
 }
@@ -101,7 +101,7 @@ fun TopWeeklyAppCardPreview() {
 fun TopWeeklyAppCardNoDataPreview() {
     ScrollTrackTheme(darkTheme = true, dynamicColor = false) { // Updated call
         Box(modifier = Modifier.padding(16.dp).width(200.dp).height(180.dp)) {
-            TopWeeklyAppCard(topApp = null, modifier = Modifier.fillMaxSize(), onClick = {})
+            TopAppCard(topApp = null, modifier = Modifier.fillMaxSize(), onClick = {})
         }
     }
 }

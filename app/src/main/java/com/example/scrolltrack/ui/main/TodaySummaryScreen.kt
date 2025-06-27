@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.filled.AccessibilityNew
 import androidx.compose.material.icons.filled.Brightness2
 import androidx.compose.material.icons.filled.Info
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.HourglassEmpty
+import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -51,21 +53,15 @@ import com.example.scrolltrack.R
 import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.ui.model.AppUsageUiItem
-import com.example.scrolltrack.ui.theme.BrandWhite
-import com.example.scrolltrack.ui.theme.ButterYellow
-import com.example.scrolltrack.ui.theme.DillGreen
-import com.example.scrolltrack.ui.theme.OledBlack
-// Removed CaveatFontFamily import as PixelifySans and Inter are now primary fonts
-// import com.example.scrolltrack.ui.theme.CaveatFontFamily
-// UsageStatus colors will now be derived from the theme or defined more semantically
-// import com.example.scrolltrack.ui.theme.UsageStatusGreen
-// import com.example.scrolltrack.ui.theme.UsageStatusOrange
-// import com.example.scrolltrack.ui.theme.UsageStatusRed
+import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
+import com.example.scrolltrack.util.GreetingUtil
 import androidx.compose.ui.res.stringResource
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.Dp
+import java.util.concurrent.TimeUnit
+import androidx.compose.ui.graphics.vector.ImageVector
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,134 +87,121 @@ fun TodaySummaryScreen(
     currentThemeVariant: String,
     modifier: Modifier = Modifier
 ) {
-    // Determine phone usage color based on theme attributes or semantic colors
-    val phoneUsageColor = when {
-        totalUsageTimeMillis <= 2.5 * 60 * 60 * 1000 -> MaterialTheme.colorScheme.tertiary // Example: Use tertiary for "good"
-        totalUsageTimeMillis <= 5 * 60 * 60 * 1000 -> MaterialTheme.colorScheme.secondary // Example: Use secondary for "warning"
-        else -> MaterialTheme.colorScheme.error // Use error color for "high usage"
-    }
-
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(MaterialTheme.colorScheme.surface)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 8.dp) // Adjust padding
+            .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        Spacer(modifier = Modifier.height(32.dp)) // Increased spacer to push content down
+        Spacer(modifier = Modifier.height(32.dp))
         // Header Section
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp), // Spacing after header
+                .padding(bottom = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
                 text = greeting,
-                style = MaterialTheme.typography.headlineLarge, // Using Pixelify Sans
-                color = MaterialTheme.colorScheme.onBackground,
+                style = MaterialTheme.typography.displaySmall,
+                color = MaterialTheme.colorScheme.onSurface
             )
-            ThemeModeSwitch( // Assuming ThemeModeSwitch is updated or uses appropriate tints
-                currentThemeVariant = currentThemeVariant,
+            ThemeSwitch(
+                currentTheme = currentThemeVariant,
                 onThemeChange = onThemeChange
             )
         }
 
-        // Sub-greeting or motivational text
         Text(
             text = stringResource(id = R.string.greeting_manage_habits),
-            style = MaterialTheme.typography.titleMedium, // Using Inter
+            style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 24.dp) // More spacing
+            modifier = Modifier.padding(bottom = 24.dp)
         )
 
-        // Permissions Section - Using a consistent Card style
+        // Permissions Section
         val permissionsNeeded = !isAccessibilityServiceEnabled || !isUsageStatsPermissionGranted || !isNotificationListenerEnabled
         AnimatedVisibility(visible = permissionsNeeded) {
             Column {
                 if (!isAccessibilityServiceEnabled) {
                     PermissionRequestCard(
-                        leadingIcon = { Icon(Icons.Filled.AccessibilityNew, contentDescription = "Accessibility Service Icon", tint = MaterialTheme.colorScheme.onSecondaryContainer) },
+                        leadingIcon = { Icon(Icons.Filled.AccessibilityNew, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer) },
                         title = stringResource(id = R.string.permission_accessibility_title),
                         description = stringResource(id = R.string.permission_accessibility_description),
                         buttonText = stringResource(id = R.string.permission_button_open_settings),
-                        onButtonClick = onEnableAccessibilityClick,
-                        modifier = Modifier.padding(bottom = 12.dp) // Spacing between permission cards
+                        onButtonClick = onEnableAccessibilityClick
                     )
                 }
                 if (!isUsageStatsPermissionGranted) {
                     PermissionRequestCard(
-                        leadingIcon = { Icon(Icons.Filled.QueryStats, contentDescription = "Usage Access Icon", tint = MaterialTheme.colorScheme.onSecondaryContainer) },
+                        leadingIcon = { Icon(Icons.Filled.QueryStats, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer) },
                         title = stringResource(id = R.string.permission_usage_stats_title),
                         description = stringResource(id = R.string.permission_usage_stats_description),
                         buttonText = stringResource(id = R.string.permission_button_grant_access),
-                        onButtonClick = onEnableUsageStatsClick,
-                        modifier = Modifier.padding(bottom = 12.dp)
+                        onButtonClick = onEnableUsageStatsClick
                     )
                 }
                 if (!isNotificationListenerEnabled) {
                     PermissionRequestCard(
-                        leadingIcon = { Icon(Icons.Filled.NotificationsActive, contentDescription = "Notification Access Icon", tint = MaterialTheme.colorScheme.onSecondaryContainer) },
+                        leadingIcon = { Icon(Icons.Filled.NotificationsActive, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer) },
                         title = stringResource(id = R.string.permission_notification_listener_title),
                         description = stringResource(id = R.string.permission_notification_listener_description),
                         buttonText = stringResource(id = R.string.permission_button_grant_access),
-                        onButtonClick = onEnableNotificationListenerClick,
-                        modifier = Modifier.padding(bottom = 12.dp)
+                        onButtonClick = onEnableNotificationListenerClick
                     )
                 }
-                Spacer(modifier = Modifier.height(16.dp)) // Space after permissions block
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
 
-        // Main Stats Grid - Using a 2x2 or similar layout for key metrics
-        // Row 1 of Stats
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(bottom = 12.dp), // Spacing between stat rows
-            horizontalArrangement = Arrangement.spacedBy(12.dp) // Spacing between cards in a row
-        ) {
-            PhoneUsageCard(
-                modifier = Modifier.weight(1f),
-                totalUsageTime = totalUsageTime,
-                usageTimeColor = phoneUsageColor, // Already determined based on theme/logic
-                onNavigateToHistoricalUsage = onNavigateToHistoricalUsage
-            )
-            TopWeeklyAppCard(
-                modifier = Modifier.weight(1f),
-                topApp = topWeeklyApp,
-                onClick = onNavigateToAppDetail // Simplified lambda
-            )
-        }
-
-        // Row 2 of Stats (Unlocks & Notifications)
+        // Stats Grid
         Row(
             Modifier
                 .fillMaxWidth()
                 .padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            InfoCard(
+            StatCard(
                 modifier = Modifier.weight(1f),
-                title = "Screen Unlocks",
-                value = totalUnlocks.toString(),
-                icon = Icons.Filled.LockOpen,
-                // iconTint is now handled by InfoCard's contentColor or can be explicitly set to a theme color
+                label = "Phone Usage Today",
+                value = totalUsageTime,
+                icon = Icons.Outlined.PhoneAndroid,
+                subValue = "View Details",
+                onCardClick = onNavigateToHistoricalUsage
             )
-            InfoCard(
+            TopAppCard(
                 modifier = Modifier.weight(1f),
-                title = "Notifications",
-                value = totalNotifications.toString(),
-                icon = Icons.Filled.Notifications,
+                topApp = topWeeklyApp,
+                onClick = onNavigateToAppDetail
             )
         }
 
-        // Scroll Stats Card - Prominent and clear
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            StatCard(
+                modifier = Modifier.weight(1f),
+                label = "Screen Unlocks",
+                value = totalUnlocks.toString(),
+                icon = Icons.Filled.LockOpen
+            )
+            StatCard(
+                modifier = Modifier.weight(1f),
+                label = "Notifications",
+                value = totalNotifications.toString(),
+                icon = Icons.Filled.Notifications
+            )
+        }
+
         ScrollStatsCard(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp), // Space before next section or end
+                .padding(bottom = 16.dp),
             scrollDistanceMeters = scrollDistanceMeters,
             totalScrollUnits = totalScrollUnits,
             onClick = {
@@ -227,30 +210,28 @@ fun TodaySummaryScreen(
             }
         )
 
-        // Optional: Add a section for "Quick Actions" or "Tips" if desired later
-
-        Spacer(modifier = Modifier.height(16.dp)) // Final spacing at the bottom
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
-// Updated PermissionRequestCard for new styling
 @Composable
-fun PermissionRequestCard(
-    leadingIcon: (@Composable () -> Unit)?,
+private fun PermissionRequestCard(
+    leadingIcon: @Composable () -> Unit,
     title: String,
     description: String,
     buttonText: String,
     onButtonClick: () -> Unit,
-    modifier: Modifier = Modifier
 ) {
-    Card( // Using standard Card for a flatter, more integrated look
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large, // More rounded corners
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh, // Use a theme-consistent container
-            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp) // Subtle elevation
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier
@@ -258,29 +239,23 @@ fun PermissionRequestCard(
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            leadingIcon?.let {
-                Box(modifier = Modifier.padding(end = 16.dp)) { it() }
-            }
+            Box(modifier = Modifier.padding(end = 16.dp)) { leadingIcon() }
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall, // Adjusted style
-                )
+                Text(text = title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
                 Spacer(modifier = Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) { // Aligned icon with text
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Filled.Info,
-                        contentDescription = "Information",
-                        modifier = Modifier.size(16.dp).padding(end = 8.dp),
-                        tint = MaterialTheme.colorScheme.onSecondaryContainer // Themed tint
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .padding(end = 8.dp),
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer
                     )
-                    Text(
-                        text = description,
-                        style = MaterialTheme.typography.bodySmall,
-                    )
+                    Text(text = description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                Button( // Using standard Button for primary action emphasis
+                Button(
                     onClick = onButtonClick,
                     modifier = Modifier.align(Alignment.End),
                     colors = ButtonDefaults.buttonColors(
@@ -296,139 +271,143 @@ fun PermissionRequestCard(
     }
 }
 
-
-// Updated PhoneUsageCard with new styling
 @Composable
-fun PhoneUsageCard(
+private fun StatCard(
     modifier: Modifier = Modifier,
-    totalUsageTime: String,
-    usageTimeColor: Color, // This color is passed based on logic (good, warning, error)
-    onNavigateToHistoricalUsage: () -> Unit
+    label: String,
+    value: String,
+    icon: ImageVector,
+    subValue: String? = null,
+    onCardClick: (() -> Unit)? = null
 ) {
-    Card(
+    ElevatedCard(
         modifier = modifier
-            .fillMaxHeight() // Ensure it fills height in a row
-            .clickable { onNavigateToHistoricalUsage() },
+            .height(160.dp)
+            .clickable(enabled = onCardClick != null) { onCardClick?.invoke() },
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface, // Use main surface color
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
             contentColor = MaterialTheme.colorScheme.onSurface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp) // Increased elevation
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier
                 .padding(16.dp)
-                .fillMaxWidth(),
+                .fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center // Center content
+            verticalArrangement = Arrangement.Center
         ) {
             Icon(
-                Icons.Filled.PhoneAndroid,
-                contentDescription = "Phone Usage",
-                tint = MaterialTheme.colorScheme.primary, // Use primary color for icon
-                modifier = Modifier.size(36.dp).padding(bottom = 8.dp)
+                imageVector = icon,
+                contentDescription = label,
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier
+                    .size(32.dp)
+                    .padding(bottom = 8.dp)
             )
             Text(
-                text = stringResource(id = R.string.card_title_phone_usage_today),
-                style = MaterialTheme.typography.titleMedium, // Clearer title
+                text = label,
+                style = MaterialTheme.typography.titleSmall,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(bottom = 4.dp)
+                color = MaterialTheme.colorScheme.onSurface
             )
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = totalUsageTime,
-                style = MaterialTheme.typography.headlineSmall.copy( // Slightly smaller headline
-                    fontWeight = FontWeight.Bold,
-                    color = usageTimeColor // Dynamic color based on usage
-                ),
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(bottom = 8.dp)
+                modifier = Modifier.padding(bottom = 4.dp),
+                text = value,
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center
             )
-            Text(
-                text = stringResource(id = R.string.card_button_view_details),
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), // Bolder label
-                color = MaterialTheme.colorScheme.primary // Action text in primary color
-            )
-        }
-    }
-}
-
-// Updated TopWeeklyAppCard with new styling
-@Composable
-fun TopWeeklyAppCard(
-    modifier: Modifier = Modifier,
-    topApp: AppUsageUiItem?,
-    onClick: (String) -> Unit
-) {
-    Card(
-        modifier = modifier
-            .fillMaxHeight()
-            .clickable(enabled = topApp != null) {
-                topApp?.packageName?.let(onClick)
-            },
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp) // Increased elevation
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxSize(), // Fill available space
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center // Center content
-        ) {
-            if (topApp != null) {
-                Image(
-                    painter = rememberAsyncImagePainter(model = topApp.icon ?: R.mipmap.ic_launcher_round),
-                    contentDescription = "${topApp.appName} icon",
-                    modifier = Modifier
-                        .size(48.dp) // Larger icon
-                        .clip(CircleShape)
-                        .padding(bottom = 12.dp), // More space below icon
-                    contentScale = ContentScale.Fit
-                )
+            if (subValue != null) {
                 Text(
-                    text = topApp.appName,
-                    style = MaterialTheme.typography.titleSmall, // Adjusted style
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(bottom = 2.dp)
-                )
-                Text(
-                    text = "${DateUtil.formatDuration(topApp.usageTimeMillis)} ${stringResource(id = R.string.suffix_last_7_days)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center
-                )
-            } else {
-                Icon(
-                    Icons.Filled.HourglassEmpty,
-                    contentDescription = "No top app data",
-                    modifier = Modifier.size(40.dp).padding(bottom = 12.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f) // Slightly faded
-                )
-                Text(
-                    text = stringResource(id = R.string.card_title_top_weekly_app),
-                    style = MaterialTheme.typography.titleSmall,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(bottom = 2.dp)
-                )
-                Text(
-                    text = stringResource(id = R.string.text_no_data_yet),
-                    style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    text = subValue,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
     }
 }
 
+@Composable
+fun TopAppCard(
+    modifier: Modifier = Modifier,
+    topApp: AppUsageUiItem?,
+    onClick: (String) -> Unit
+) {
+    ElevatedCard(
+        modifier = modifier
+            .height(160.dp)
+            .clickable(enabled = topApp != null) { topApp?.packageName?.let(onClick) },
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ),
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            if (topApp != null) {
+                Image(
+                    painter = rememberAsyncImagePainter(model = topApp.icon ?: R.mipmap.ic_launcher_round),
+                    contentDescription = "${topApp.appName} icon",
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .padding(bottom = 8.dp),
+                    contentScale = ContentScale.Fit
+                )
+                Text(
+                    text = topApp.appName,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(bottom = 2.dp),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "${DateUtil.formatDuration(topApp.usageTimeMillis)} ${stringResource(id = R.string.suffix_last_7_days)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Icon(
+                    Icons.Filled.HourglassEmpty,
+                    contentDescription = "No top app data",
+                    modifier = Modifier
+                        .size(32.dp)
+                        .padding(bottom = 8.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = stringResource(id = R.string.card_title_top_weekly_app),
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(bottom = 2.dp),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = stringResource(id = R.string.text_no_data_yet),
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
 
-// Updated ScrollStatsCard with new styling
 @Composable
 fun ScrollStatsCard(
     modifier: Modifier = Modifier,
@@ -436,201 +415,53 @@ fun ScrollStatsCard(
     totalScrollUnits: Long,
     onClick: () -> Unit
 ) {
-    Card( // Changed from ElevatedCard for consistency
+    ElevatedCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface, // Use main surface color
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
             contentColor = MaterialTheme.colorScheme.onSurface
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp) // Increased elevation
+        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
     ) {
-        Row( // Using Row for better horizontal layout of icon and text
+        Row(
             modifier = Modifier
                 .padding(16.dp)
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween // Space out elements
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     Icons.AutoMirrored.Filled.TrendingUp,
                     contentDescription = "Scroll Stats",
-                    tint = MaterialTheme.colorScheme.primary, // Primary color for icon
-                    modifier = Modifier.size(40.dp).padding(end = 12.dp) // Larger icon, padding
+                    tint = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .padding(end = 16.dp)
                 )
                 Column {
                     Text(
                         text = stringResource(id = R.string.card_title_scroll_stats_today),
-                        style = MaterialTheme.typography.titleMedium, // Clear title
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                    Text( // Sub-text for units if desired
+                    Text(
                         text = "$totalScrollUnits units",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-            Text( // Distance on the right, more prominent
+            Text(
                 text = scrollDistanceMeters,
-                style = MaterialTheme.typography.headlineSmall.copy( // Prominent display
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary // Primary color for value
-                ),
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.primary,
                 textAlign = TextAlign.End,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-
-// AppScrollItemEntry - Assuming this is for a list elsewhere, keeping its style for now
-// If it appears on the dashboard, it would need similar styling updates.
-@Composable
-fun AppScrollItemEntry(
-    appData: AppScrollUiItem,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 4.dp), // Add some vertical padding if it's in a list
-        shape = MaterialTheme.shapes.medium,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface, // Standard surface for list items
-            contentColor = MaterialTheme.colorScheme.onSurface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp) // Subtle elevation for list items
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp), // Standard padding
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Image(
-                painter = rememberAsyncImagePainter(model = appData.icon ?: R.mipmap.ic_launcher_round),
-                contentDescription = "${appData.appName} icon",
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape),
-                contentScale = ContentScale.Fit
-            )
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = appData.appName,
-                    style = MaterialTheme.typography.titleSmall, // Consistent typography
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = appData.packageName, // If useful, otherwise can be removed for cleaner UI
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "${appData.totalScroll} units",
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                textAlign = TextAlign.End,
-                color = MaterialTheme.colorScheme.primary // Highlight primary stat
-            )
-        }
-    }
-}
-
-
-// Updated ThemeModeSwitch
-@Composable
-fun ThemeModeSwitch(
-    currentThemeVariant: String,
-    onThemeChange: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val isDarkMode = currentThemeVariant != "light"
-
-    val thumbIcon: @Composable () -> Unit = {
-        if (isDarkMode) {
-            Icon(Icons.Filled.Brightness2, "Dark Mode", tint = OledBlack)
-        } else {
-            Icon(Icons.Filled.WbSunny, "Light Mode", tint = BrandWhite)
-        }
-    }
-
-    Switch(
-        modifier = modifier,
-        checked = isDarkMode,
-        onCheckedChange = { isChecked ->
-            onThemeChange(if (isChecked) "oled_dark" else "light")
-        },
-        thumbContent = thumbIcon,
-        colors = SwitchDefaults.colors(
-            checkedThumbColor = ButterYellow,
-            checkedTrackColor = ButterYellow.copy(alpha = 0.5f),
-            checkedBorderColor = Color.Transparent,
-            checkedIconColor = OledBlack, // Should be same as thumb icon tint
-            uncheckedThumbColor = DillGreen,
-            uncheckedTrackColor = DillGreen.copy(alpha = 0.5f),
-            uncheckedBorderColor = Color.Transparent,
-            uncheckedIconColor = BrandWhite // Should be same as thumb icon tint
-        )
-    )
-}
-
-
-// Updated InfoCard
-@Composable
-fun InfoCard(
-    modifier: Modifier = Modifier,
-    title: String,
-    value: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    // iconTint is removed, tint will be MaterialTheme.colorScheme.primary by default for the icon
-) {
-    Card(
-        modifier = modifier.fillMaxHeight(), // Ensure it fills height in a row
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp) // Increased elevation
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center // Center content
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = MaterialTheme.colorScheme.primary, // Icon tinted with primary color
-                modifier = Modifier.size(36.dp).padding(bottom = 8.dp) // Larger icon
-            )
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = value,
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.Bold
-                ),
-                textAlign = TextAlign.Center
             )
         }
     }
