@@ -51,7 +51,8 @@ class ScrollDataRepositoryImpl(
         "com.example.scrolltrack", // Exclude the app itself
         "com.android.systemui",
         "com.google.android.apps.nexuslauncher", // Example: exclude a launcher
-        "com.nothing.launcher"
+        "com.nothing.launcher",
+        "com.android.permissioncontroller"
         // Add other system/launcher packages as needed
     )
 
@@ -487,6 +488,7 @@ class ScrollDataRepositoryImpl(
 
                 // Step 3: Aggregate usage, active time, and app opens from the combined raw events
                 val aggregatedData = aggregateUsage(allEventsForDay, endOfDayUTC)
+                val appOpenCounts = calculateAppOpens(allEventsForDay)
 
                 if (aggregatedData.isEmpty()) {
                     Log.d(TAG_REPO, "No relevant app usage found for $historicalDateString after aggregation.")
@@ -497,8 +499,7 @@ class ScrollDataRepositoryImpl(
                 val recordsToInsert = aggregatedData.map { (key, values) ->
                     val (pkg, date) = key
                     val (usage, active) = values
-                    // Count opens from the combined list to be accurate
-                    val opens = allEventsForDay.count { it.packageName == pkg && it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED }
+                    val opens = appOpenCounts[pkg] ?: 0
 
                     DailyAppUsageRecord(
                         packageName = pkg,

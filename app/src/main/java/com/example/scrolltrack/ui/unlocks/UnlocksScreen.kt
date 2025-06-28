@@ -105,6 +105,8 @@ fun UnlocksScreen(
                                 onPeriodSelected = viewModel::selectPeriod
                             )
                             Spacer(modifier = Modifier.height(12.dp))
+                            HeatmapLegend()
+                            Spacer(modifier = Modifier.height(12.dp))
                             Text(
                                 text = state.periodTitle,
                                 style = MaterialTheme.typography.titleMedium,
@@ -165,23 +167,35 @@ fun MonthView(
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.padding(bottom = 8.dp)
         )
-        (0..5).forEach { week ->
+        
+        // Day of week labels
+        Row {
+            val weekdays = listOf("S", "M", "T", "W", "T", "F", "S")
+            weekdays.forEach { day ->
+                Box(
+                    modifier = Modifier.size(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = day, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+
+        val allCellsInGrid = List(firstDayOfWeek) { null } + (1..daysInMonth).toList()
+        val weeks = allCellsInGrid.chunked(7)
+
+        weeks.forEach { weekDays ->
             Row {
-                (0..6).forEach { dayOfWeek ->
-                    val dayOfMonth = (week * 7) + dayOfWeek - firstDayOfWeek + 1
-                    
-                    val date: LocalDate?
-                    val dateString: String?
-                    if (dayOfMonth > 0 && dayOfMonth <= daysInMonth) {
-                        date = yearMonth.atDay(dayOfMonth)
-                        dateString = date.format(dateFormatter)
-                    } else {
-                        date = null
-                        dateString = null
+                weekDays.forEach { dayOfMonth ->
+                    if (dayOfMonth == null) {
+                        Spacer(modifier = Modifier.size(32.dp))
+                        return@forEach
                     }
 
-                    val isFutureDate = date != null && date.isAfter(today)
-                    val count = if (dateString != null && !isFutureDate) data[dateString] ?: 0 else 0
+                    val date = yearMonth.atDay(dayOfMonth)
+                    val dateString = date.format(dateFormatter)
+                    val isFutureDate = date.isAfter(today)
+                    val count = if (!isFutureDate) data[dateString] ?: 0 else 0
                     val ratio = if(maxCount > 0) (count / maxCount).coerceIn(0f, 1f) else 0f
 
                     val cellColor = when {
@@ -195,18 +209,61 @@ fun MonthView(
                             .size(32.dp)
                             .padding(2.dp),
                         shape = RoundedCornerShape(6.dp),
-                        color = if (dateString != null && !isFutureDate) cellColor else Color.Transparent,
-                        tonalElevation = if (dateString != null && !isFutureDate) 1.dp else 0.dp
+                        color = if (!isFutureDate) cellColor else Color.Transparent,
+                        tonalElevation = if (!isFutureDate) 1.dp else 0.dp
                     ) {
-                        if (dateString != null && !isFutureDate) {
+                        if (!isFutureDate) {
                             Box(modifier = Modifier
                                 .fillMaxSize()
                                 .clickable { onDateSelected(dateString) })
                         }
                     }
                 }
+                // Add spacers to fill out the last row if it's not a full week
+                if (weekDays.size < 7) {
+                    repeat(7 - weekDays.size) {
+                        Spacer(modifier = Modifier.size(32.dp))
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+fun HeatmapLegend() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Text("Less", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(8.dp))
+        (0..4).forEach { i ->
+            val ratio = i / 4f
+            val colorStops = listOf(
+                MaterialTheme.colorScheme.surfaceContainer,
+                MaterialTheme.colorScheme.tertiaryContainer,
+                MaterialTheme.colorScheme.tertiary
+            )
+            val cellColor = when {
+                ratio < 0.5f -> lerp(colorStops[0], colorStops[1], ratio * 2)
+                else -> lerp(colorStops[1], colorStops[2], (ratio - 0.5f) * 2)
+            }
+            Box(
+                modifier = Modifier
+                    .size(16.dp)
+                    .background(cellColor, RoundedCornerShape(3.dp))
+                    .border(
+                        width = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(3.dp)
+                    )
+            )
+            Spacer(Modifier.width(2.dp))
+        }
+        Spacer(Modifier.width(8.dp))
+        Text("More", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
