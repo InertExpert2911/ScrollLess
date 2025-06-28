@@ -41,10 +41,10 @@ import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.R
 import com.example.scrolltrack.ui.model.AppDailyDetailData
-import com.example.scrolltrack.ui.main.ChartPeriodType
+import com.example.scrolltrack.ui.detail.ChartPeriodType
 import com.example.scrolltrack.ui.main.ComparisonColorType
 import com.example.scrolltrack.ui.main.ComparisonIconType
-import com.example.scrolltrack.ui.main.MainViewModel
+import com.example.scrolltrack.ui.detail.AppDetailViewModel
 import com.example.scrolltrack.util.DateUtil
 import java.text.SimpleDateFormat
 import java.util.*
@@ -87,12 +87,12 @@ private const val SWIPE_THRESHOLD_DP = 50 // Adjust as needed
 @Composable
 fun AppDetailScreen(
     navController: NavController,
-    viewModel: MainViewModel,
+    viewModel: AppDetailViewModel,
     packageName: String,
     modifier: Modifier = Modifier
 ) {
     LaunchedEffect(packageName) {
-        viewModel.loadAppDetailsInfo(packageName)
+        // viewModel.loadAppDetailsInfo(packageName) // This is now handled in the ViewModel's init block
     }
 
     val appName by viewModel.appDetailAppName.collectAsStateWithLifecycle()
@@ -204,7 +204,7 @@ fun AppDetailScreen(
                 ChartPeriodType.entries.forEach { period -> // Iterate through all enum entries
                     val isSelected = currentPeriodType == period
                     FilledTonalButton(
-                        onClick = { viewModel.changeChartPeriod(packageName, period) },
+                        onClick = { viewModel.changeChartPeriod(period) },
                         modifier = buttonModifier,
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
@@ -224,7 +224,7 @@ fun AppDetailScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                IconButton(onClick = { viewModel.navigateChartDate(packageName, -1) }) {
+                IconButton(onClick = { viewModel.navigateChartDate(-1) }) {
                     Icon(Icons.Filled.ChevronLeft, contentDescription = "Previous Period")
                 }
 
@@ -326,7 +326,7 @@ fun AppDetailScreen(
                 // --- End of Relocated Summary ---
 
                 IconButton(
-                    onClick = { viewModel.navigateChartDate(packageName, 1) },
+                    onClick = { viewModel.navigateChartDate(1) },
                     enabled = canNavigateForward
                 ) {
                     Icon(
@@ -353,11 +353,11 @@ fun AppDetailScreen(
                                 val swipeThresholdPx = SWIPE_THRESHOLD_DP.dp.toPx()
                                 if (swipeOffsetX > swipeThresholdPx) {
                                     // Swiped Right (older data)
-                                    viewModel.navigateChartDate(packageName, -1)
+                                    viewModel.navigateChartDate(-1)
                                 } else if (swipeOffsetX < -swipeThresholdPx) {
                                     // Swiped Left (newer data)
                                     if (canNavigateForward) {
-                                        viewModel.navigateChartDate(packageName, 1)
+                                        viewModel.navigateChartDate(1)
                                     }
                                 }
                                 swipeOffsetX = 0f // Reset for next gesture
@@ -411,7 +411,7 @@ fun UsageBarScrollLineChart(
     modifier: Modifier = Modifier,
     data: List<AppDailyDetailData>,
     periodType: ChartPeriodType,
-    viewModel: MainViewModel,
+    viewModel: AppDetailViewModel,
     packageName: String
 ) {
     val textMeasurer = rememberTextMeasurer()

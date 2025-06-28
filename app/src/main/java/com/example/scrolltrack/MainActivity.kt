@@ -19,7 +19,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
 import com.example.scrolltrack.navigation.AppNavigationHost
-import com.example.scrolltrack.ui.main.MainViewModel
+import com.example.scrolltrack.ui.main.TodaySummaryViewModel
 import com.example.scrolltrack.ui.theme.*
 import com.example.scrolltrack.util.PermissionUtils
 import dagger.hilt.android.AndroidEntryPoint
@@ -36,7 +36,7 @@ private const val KEY_BACKFILL_DONE = "historical_backfill_done"
 class MainActivity : ComponentActivity() {
 
     private val TAG = "MainActivity"
-    private val viewModel: MainViewModel by viewModels()
+    private val viewModel: TodaySummaryViewModel by viewModels()
     private lateinit var globalPrefs: SharedPreferences
 
     private companion object {

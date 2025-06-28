@@ -26,7 +26,7 @@ import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.R
 import com.example.scrolltrack.navigation.ScreenRoutes
-import com.example.scrolltrack.ui.main.MainViewModel
+import com.example.scrolltrack.ui.historical.HistoricalViewModel
 import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.util.DateUtil
 import android.text.format.DateUtils as AndroidDateUtils
@@ -35,7 +35,7 @@ import android.text.format.DateUtils as AndroidDateUtils
 @Composable
 fun HistoricalUsageScreen(
     navController: NavController,
-    viewModel: MainViewModel,
+    viewModel: HistoricalViewModel,
     modifier: Modifier = Modifier
 ) {
     val selectedDateString by viewModel.selectedDateForHistory.collectAsStateWithLifecycle()

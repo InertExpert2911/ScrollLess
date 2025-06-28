@@ -13,10 +13,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.example.scrolltrack.ui.detail.AppDetailScreen
+import com.example.scrolltrack.ui.detail.AppDetailViewModel
 import com.example.scrolltrack.ui.detail.ScrollDetailScreen
+import com.example.scrolltrack.ui.detail.ScrollDetailViewModel
 import com.example.scrolltrack.ui.historical.HistoricalUsageScreen
-import com.example.scrolltrack.ui.main.MainViewModel
+import com.example.scrolltrack.ui.historical.HistoricalViewModel
 import com.example.scrolltrack.ui.main.TodaySummaryScreen
+import com.example.scrolltrack.ui.main.TodaySummaryViewModel
 import com.example.scrolltrack.ui.unlocks.UnlocksScreen
 import com.example.scrolltrack.ui.unlocks.UnlocksViewModel
 import com.example.scrolltrack.util.DateUtil
@@ -24,7 +27,7 @@ import com.example.scrolltrack.util.DateUtil
 @Composable
 fun AppNavigationHost(
     navController: NavHostController,
-    viewModel: MainViewModel,
+    viewModel: TodaySummaryViewModel,
     isAccessibilityEnabledState: Boolean,
     isUsageStatsGrantedState: Boolean,
     isNotificationListenerEnabledState: Boolean,
@@ -62,7 +65,6 @@ fun AppNavigationHost(
                 totalUnlocks = totalUnlocks,
                 totalNotifications = totalNotifications,
                 onNavigateToHistoricalUsage = {
-                    viewModel.resetSelectedDateToToday()
                     navController.navigate(ScreenRoutes.HistoricalUsageRoute.route)
                 },
                 onNavigateToUnlocks = {
@@ -82,9 +84,10 @@ fun AppNavigationHost(
         }
 
         composable(ScreenRoutes.HistoricalUsageRoute.route) {
+            val historicalViewModel: HistoricalViewModel = hiltViewModel()
             HistoricalUsageScreen(
                 navController = navController,
-                viewModel = viewModel
+                viewModel = historicalViewModel
             )
         }
         composable(
@@ -93,9 +96,10 @@ fun AppNavigationHost(
         ) { backStackEntry ->
             val packageName = backStackEntry.arguments?.getString("packageName")
             if (packageName != null) {
+                val appDetailViewModel: AppDetailViewModel = hiltViewModel()
                 AppDetailScreen(
                     navController = navController,
-                    viewModel = viewModel,
+                    viewModel = appDetailViewModel,
                     packageName = packageName
                 )
             } else {
@@ -109,22 +113,20 @@ fun AppNavigationHost(
                 backStackEntry ->
             val date = backStackEntry.arguments?.getString("date")
             if (date != null) {
-                val selectedDateString by viewModel.selectedDateForScrollDetail.collectAsState()
-                val scrollData by viewModel.aggregatedScrollDataForSelectedDate.collectAsState()
-                val selectableDates by viewModel.selectableDatesForScrollDetail.collectAsStateWithLifecycle()
+                val scrollDetailViewModel: ScrollDetailViewModel = hiltViewModel()
+                val selectedDateString by scrollDetailViewModel.selectedDateForScrollDetail.collectAsStateWithLifecycle()
+                val scrollData by scrollDetailViewModel.aggregatedScrollDataForSelectedDate.collectAsStateWithLifecycle()
+                val selectableDates by scrollDetailViewModel.selectableDatesForScrollDetail.collectAsStateWithLifecycle()
 
                 LaunchedEffect(date) {
                     DateUtil.parseLocalDateString(date)?.time?.let {
-                        viewModel.updateSelectedDateForScrollDetail(it)
+                        scrollDetailViewModel.updateSelectedDateForScrollDetail(it)
                     }
                 }
 
                 ScrollDetailScreen(
                     navController = navController,
-                    selectedDateString = selectedDateString,
-                    scrollData = scrollData,
-                    onDateSelected = { viewModel.updateSelectedDateForScrollDetail(it) },
-                    selectableDatesMillis = selectableDates
+                    viewModel = scrollDetailViewModel
                 )
             } else {
                 Text("Error: Date not found for Scroll Detail.")

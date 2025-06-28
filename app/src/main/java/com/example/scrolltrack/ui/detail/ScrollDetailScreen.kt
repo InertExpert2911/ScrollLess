@@ -33,15 +33,36 @@ import com.example.scrolltrack.ui.theme.ScrollTrackTheme
 import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
 import android.text.format.DateUtils as AndroidDateUtils
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScrollDetailScreen(
     navController: NavController,
+    viewModel: ScrollDetailViewModel
+) {
+    val selectedDateString by viewModel.selectedDateForScrollDetail.collectAsStateWithLifecycle()
+    val scrollData by viewModel.aggregatedScrollDataForSelectedDate.collectAsStateWithLifecycle()
+    val selectableDatesMillis by viewModel.selectableDatesForScrollDetail.collectAsStateWithLifecycle()
+
+    ScrollDetailScreenContent(
+        navController = navController,
+        selectedDateString = selectedDateString,
+        scrollData = scrollData,
+        selectableDatesMillis = selectableDatesMillis,
+        onDateSelected = { dateMillis ->
+            viewModel.updateSelectedDateForScrollDetail(dateMillis)
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ScrollDetailScreenContent(
+    navController: NavController,
     selectedDateString: String,
     scrollData: List<AppScrollUiItem>,
-    onDateSelected: (Long) -> Unit,
-    selectableDatesMillis: Set<Long>
+    selectableDatesMillis: Set<Long>,
+    onDateSelected: (Long) -> Unit
 ) {
     val context = LocalContext.current
     var showDatePickerDialog by remember { mutableStateOf(false) }
@@ -128,7 +149,9 @@ fun ScrollDetailScreen(
                 onDismissRequest = { showDatePickerDialog = false },
                 confirmButton = {
                     Button(onClick = {
-                        datePickerState.selectedDateMillis?.let(onDateSelected)
+                        datePickerState.selectedDateMillis?.let {
+                            onDateSelected(it)
+                        }
                         showDatePickerDialog = false
                     }) { Text("OK") }
                 },
@@ -212,12 +235,12 @@ fun ScrollDetailScreenPreview() {
         AppScrollUiItem("3", "Another Very Long App Name That Will Surely Overflow", null, 400, "com.app3")
     )
     ScrollTrackTheme {
-        ScrollDetailScreen(
+        ScrollDetailScreenContent(
             navController = rememberNavController(),
             selectedDateString = "2023-10-27",
             scrollData = dummyData,
-            onDateSelected = {},
-            selectableDatesMillis = emptySet()
+            selectableDatesMillis = emptySet(),
+            onDateSelected = {}
         )
     }
 } 
