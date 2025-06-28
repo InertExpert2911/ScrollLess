@@ -93,6 +93,11 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
 
+    // WorkManager for background tasks
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.hilt.work.compiler)
+
     // Coil for image loading
     implementation(libs.coil.compose)
     // Extended Material Icons

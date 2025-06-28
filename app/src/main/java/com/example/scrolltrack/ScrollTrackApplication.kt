@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import android.util.Log
+import androidx.hilt.work.HiltWorkerFactory
+import androidx.work.Configuration
 import com.example.scrolltrack.data.AppMetadataRepository
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -15,7 +17,10 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltAndroidApp
-class ScrollTrackApplication : Application() {
+class ScrollTrackApplication : Application(), Configuration.Provider {
+
+    @Inject
+    lateinit var workerFactory: HiltWorkerFactory
 
     @Inject
     lateinit var appMetadataRepository: AppMetadataRepository
@@ -27,6 +32,12 @@ class ScrollTrackApplication : Application() {
         private const val PREFS_GLOBAL = "ScrollTrackGlobalPrefs"
         private const val KEY_METADATA_SYNC_DONE = "app_metadata_initial_sync_done"
     }
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setWorkerFactory(workerFactory)
+            .setMinimumLoggingLevel(Log.DEBUG)
+            .build()
 
     override fun onCreate() {
         super.onCreate()

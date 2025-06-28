@@ -4,54 +4,42 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import com.example.scrolltrack.data.AppMetadataRepository
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 @AndroidEntryPoint
 class AppInstallReceiver : BroadcastReceiver() {
 
-    @Inject
-    lateinit var appMetadataRepository: AppMetadataRepository
-    private val scope = CoroutineScope(Dispatchers.IO)
-
     private val TAG = "AppInstallReceiver"
 
-    override fun onReceive(context: Context?, intent: Intent?) {
-        if (intent == null || context == null) return
-
-        val packageName = intent.data?.schemeSpecificPart ?: return
-
-        when (intent.action) {
-            Intent.ACTION_PACKAGE_ADDED -> {
-                // This covers both new installs and updates for apps that were fully uninstalled.
-                // The ACTION_PACKAGE_REPLACED is for existing apps being updated.
-                val isReplacing = intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)
-                if (!isReplacing) {
-                    Log.i(TAG, "New package installed: $packageName. Updating metadata.")
-                    scope.launch {
-                        appMetadataRepository.handleAppInstalledOrUpdated(packageName)
-                    }
-                }
-            }
-            Intent.ACTION_PACKAGE_REPLACED -> {
-                Log.i(TAG, "Package updated: $packageName. Updating metadata.")
-                scope.launch {
-                    appMetadataRepository.handleAppInstalledOrUpdated(packageName)
-                }
-            }
-            Intent.ACTION_PACKAGE_REMOVED -> {
-                val isReplacing = intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)
-                if (!isReplacing) {
-                    Log.i(TAG, "Package removed: $packageName. Marking as uninstalled.")
-                    scope.launch {
-                        appMetadataRepository.handleAppUninstalled(packageName)
-                    }
-                }
-            }
+    override fun onReceive(context: Context, intent: Intent) {
+        val pendingResult = goAsync()
+        val packageName = intent.data?.schemeSpecificPart ?: run {
+            pendingResult.finish()
+            return
         }
+
+        val action = when (intent.action) {
+            Intent.ACTION_PACKAGE_REMOVED -> if (!intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) AppMetadataSyncWorker.ACTION_UNINSTALL else null
+            Intent.ACTION_PACKAGE_ADDED -> if (!intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) AppMetadataSyncWorker.ACTION_INSTALL_OR_UPDATE else null
+            Intent.ACTION_PACKAGE_REPLACED -> AppMetadataSyncWorker.ACTION_INSTALL_OR_UPDATE
+            else -> null
+        }
+
+        if (action != null) {
+            Log.d(TAG, "Enqueuing metadata sync work for $packageName, action: $action")
+            val workRequest = OneTimeWorkRequestBuilder<AppMetadataSyncWorker>()
+                .setInputData(workDataOf(
+                    AppMetadataSyncWorker.KEY_PACKAGE_NAME to packageName,
+                    AppMetadataSyncWorker.KEY_ACTION to action
+                ))
+                .build()
+
+            WorkManager.getInstance(context).enqueue(workRequest)
+        }
+        
+        pendingResult.finish()
     }
 } 
