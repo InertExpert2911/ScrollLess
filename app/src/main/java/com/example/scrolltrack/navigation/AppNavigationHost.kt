@@ -1,11 +1,13 @@
 package com.example.scrolltrack.navigation
 
+import android.app.Application
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -16,6 +18,9 @@ import com.example.scrolltrack.ui.detail.ScrollDetailScreen
 import com.example.scrolltrack.ui.historical.HistoricalUsageScreen
 import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.ui.main.TodaySummaryScreen
+import com.example.scrolltrack.ui.unlocks.UnlocksScreen
+import com.example.scrolltrack.ui.unlocks.UnlocksViewModel
+import com.example.scrolltrack.ui.unlocks.UnlocksViewModelFactory
 import com.example.scrolltrack.util.DateUtil
 
 @Composable
@@ -63,12 +68,21 @@ fun AppNavigationHost(
                     viewModel.resetSelectedDateToToday()
                     navController.navigate(ScreenRoutes.HistoricalUsageRoute.route)
                 },
+                onNavigateToUnlocks = {
+                    navController.navigate(ScreenRoutes.UnlocksRoute.route)
+                },
                 onNavigateToAppDetail = { packageName ->
                     navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(packageName))
                 },
                 onThemeChange = viewModel::updateThemeVariant,
                 currentThemeVariant = selectedTheme
             )
+        }
+        composable(ScreenRoutes.UnlocksRoute.route) {
+            val unlocksViewModel: UnlocksViewModel = viewModel(
+                factory = UnlocksViewModelFactory(navController.context.applicationContext as Application)
+            )
+            UnlocksScreen(navController = navController, viewModel = unlocksViewModel)
         }
         composable(ScreenRoutes.HistoricalUsageRoute.route) {
             HistoricalUsageScreen(

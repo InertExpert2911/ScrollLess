@@ -38,6 +38,7 @@ import android.text.format.DateUtils as AndroidDateUtils
 import android.os.Build
 import com.example.scrolltrack.ScrollTrackService
 import com.example.scrolltrack.util.PermissionUtils
+import java.util.TimeZone
 
 // Data class for cached app metadata
 private data class CachedAppMetadata(val appName: String, val icon: Drawable?)
@@ -168,6 +169,9 @@ class MainViewModel(
 
     private val _appDetailFocusedScrollDisplay = MutableStateFlow("0 m")
     val appDetailFocusedScrollDisplay: StateFlow<String> = _appDetailFocusedScrollDisplay.asStateFlow()
+
+    private val _appDetailFocusedOpenCount = MutableStateFlow(0)
+    val appDetailFocusedOpenCount: StateFlow<Int> = _appDetailFocusedOpenCount.asStateFlow()
 
     private val _appDetailFocusedDate = MutableStateFlow(DateUtil.getCurrentLocalDateString())
     val appDetailFocusedDate: StateFlow<String> = _appDetailFocusedDate.asStateFlow()
@@ -340,7 +344,7 @@ class MainViewModel(
 
     // --- Top Used App in Last 7 Days ---
     val topUsedAppLast7Days: StateFlow<AppUsageUiItem?> = flow {
-        val calendar = Calendar.getInstance()
+        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
         val endDateString = DateUtil.formatDateToYyyyMmDdString(calendar.time)
         calendar.add(Calendar.DAY_OF_YEAR, -6)
         val startDateString = DateUtil.formatDateToYyyyMmDdString(calendar.time)
@@ -531,6 +535,7 @@ class MainViewModel(
             _appDetailComparisonText.value = null
             _appDetailWeekNumberDisplay.value = null
             _appDetailPeriodDescriptionText.value = null
+            _appDetailFocusedOpenCount.value = 0
 
             Log.d("MainViewModel", "Loading chart data for $packageName, Period: $period, RefDate: $referenceDate")
 
@@ -550,6 +555,9 @@ class MainViewModel(
 
             val currentPeriodUsageRecords = usageDataDeferred.await()
             val currentPeriodScrollRecords = scrollDataDeferred.await()
+
+            val totalOpens = currentPeriodUsageRecords.sumOf { it.appOpenCount }
+            _appDetailFocusedOpenCount.value = totalOpens
 
             val currentUsageMap = currentPeriodUsageRecords.associateBy { it.dateString }
             val currentScrollMap = currentPeriodScrollRecords.associateBy { it.date }

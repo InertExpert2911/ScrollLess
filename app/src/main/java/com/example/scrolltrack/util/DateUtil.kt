@@ -6,6 +6,10 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.DayOfWeek
+import java.time.temporal.TemporalAdjusters
 
 object DateUtil {
 
@@ -59,8 +63,14 @@ object DateUtil {
      * The date string is interpreted as being in UTC.
      */
     fun getStartOfDayUtcMillis(dateString: String): Long {
-        val date = utcIsoDateFormat.parse(dateString) ?: throw java.text.ParseException("Invalid date format", 0)
-        return date.time
+        val date = parseLocalDateString(dateString) ?: return 0L
+        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+        calendar.time = date
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        return calendar.timeInMillis
     }
 
     /**
@@ -68,15 +78,25 @@ object DateUtil {
      * The date string is interpreted as being in UTC.
      */
     fun getEndOfDayUtcMillis(dateString: String): Long {
-        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
-        calendar.time = utcIsoDateFormat.parse(dateString) ?: throw java.text.ParseException("Invalid date format", 0)
-        calendar.set(Calendar.HOUR_OF_DAY, 23)
-        calendar.set(Calendar.MINUTE, 59)
-        calendar.set(Calendar.SECOND, 59)
-        calendar.set(Calendar.MILLISECOND, 999)
-        return calendar.timeInMillis
+        return getStartOfDayUtcMillis(dateString) + TimeUnit.DAYS.toMillis(1) - 1
     }
-    
+
+    fun getStartOfWeek(date: LocalDate): LocalDate {
+        return date.with(TemporalAdjusters.previousOrSame(DayOfWeek.SUNDAY))
+    }
+
+    fun getEndOfWeek(date: LocalDate): LocalDate {
+        return date.with(TemporalAdjusters.nextOrSame(DayOfWeek.SATURDAY))
+    }
+
+    fun getStartOfMonth(date: LocalDate): LocalDate {
+        return date.withDayOfMonth(1)
+    }
+
+    fun getEndOfMonth(date: LocalDate): LocalDate {
+        return date.with(TemporalAdjusters.lastDayOfMonth())
+    }
+
     /**
      * Formats a duration in milliseconds into a human-readable string (e.g., "2h 30m", "45m", "< 1m").
      */

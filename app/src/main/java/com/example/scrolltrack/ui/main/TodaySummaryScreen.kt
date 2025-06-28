@@ -82,6 +82,7 @@ fun TodaySummaryScreen(
     totalUnlocks: Int,
     totalNotifications: Int,
     onNavigateToHistoricalUsage: () -> Unit,
+    onNavigateToUnlocks: () -> Unit,
     onNavigateToAppDetail: (String) -> Unit,
     onThemeChange: (String) -> Unit,
     currentThemeVariant: String,
@@ -188,7 +189,8 @@ fun TodaySummaryScreen(
                 modifier = Modifier.weight(1f),
                 label = "Screen Unlocks",
                 value = totalUnlocks.toString(),
-                icon = Icons.Filled.LockOpen
+                icon = Icons.Filled.LockOpen,
+                onCardClick = onNavigateToUnlocks
             )
             StatCard(
                 modifier = Modifier.weight(1f),

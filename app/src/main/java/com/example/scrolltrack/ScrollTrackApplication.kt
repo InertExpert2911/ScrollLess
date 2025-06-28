@@ -21,7 +21,7 @@ class ScrollTrackApplication : Application() {
         Room.databaseBuilder(
             applicationContext,
             AppDatabase::class.java, "scroll_track_database"
-        ).fallbackToDestructiveMigration() // Handle schema changes by destroying and recreating the DB
+        ).fallbackToDestructiveMigration(dropAllTables = true) // Handle schema changes by destroying and recreating the DB
          .build()
     }
 

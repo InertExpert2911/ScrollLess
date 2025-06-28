@@ -5,6 +5,7 @@ import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.data.SettingsRepository
 import com.example.scrolltrack.db.AppScrollDataPerDate
 import com.example.scrolltrack.db.DailyAppUsageRecord
+import com.example.scrolltrack.db.DailyDeviceSummary
 import com.example.scrolltrack.db.ScrollSessionRecord
 import com.example.scrolltrack.ui.model.AppScrollUiItem
 import kotlinx.coroutines.flow.Flow
@@ -63,6 +64,8 @@ class FakeScrollDataRepository : ScrollDataRepository {
     override fun getTotalUnlockCountForDate(dateString: String): Flow<Int> = flowOf(24)
 
     override fun getTotalNotificationCountForDate(dateString: String): Flow<Int> = flowOf(128)
+
+    override fun getAllDeviceSummaries(): Flow<List<DailyDeviceSummary>> = flowOf(emptyList())
 
     override fun getAllDistinctUsageDateStrings(): Flow<List<String>> = flowOf(emptyList())
 

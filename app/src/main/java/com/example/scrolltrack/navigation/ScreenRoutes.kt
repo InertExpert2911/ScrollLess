@@ -4,6 +4,7 @@ package com.example.scrolltrack.navigation
 sealed class ScreenRoutes(val route: String) {
     object TodaySummary : ScreenRoutes("today_summary")
     object HistoricalUsageRoute : ScreenRoutes("historical_usage")
+    object UnlocksRoute : ScreenRoutes("unlocks_route")
     object AppDetailRoute : ScreenRoutes("app_detail/{packageName}") {
         fun createRoute(packageName: String) = "app_detail/$packageName"
     }

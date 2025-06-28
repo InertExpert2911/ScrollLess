@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import com.example.scrolltrack.db.DailyDeviceSummaryDao
 import com.example.scrolltrack.db.DailyDeviceSummary
+import java.util.TimeZone
 
 class ScrollDataRepositoryImpl(
     private val scrollSessionDao: ScrollSessionDao,
@@ -425,7 +426,7 @@ class ScrollDataRepositoryImpl(
             application.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
                 ?: return@withContext false
 
-        val today = Calendar.getInstance()
+        val today = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
         var overallSuccess = true
         var anyDataFound = false
 
@@ -468,6 +469,21 @@ class ScrollDataRepositoryImpl(
                 rawAppEventDao.deleteEventsForDateString(historicalDateString)
                 rawAppEventDao.insertEvents(allEventsForDay)
                 Log.i(TAG_REPO, "Successfully inserted ${allEventsForDay.size} combined raw events for $historicalDateString.")
+
+                // START of new code
+                val unlockCount = calculateUnlocks(allEventsForDay)
+                val debouncedNotifications = calculateDebouncedNotificationCounts(historicalDateString)
+                val totalNotifications = debouncedNotifications.values.sum()
+
+                val summary = DailyDeviceSummary(
+                    dateString = historicalDateString,
+                    totalUnlockCount = unlockCount,
+                    totalNotificationCount = totalNotifications,
+                    lastUpdatedTimestamp = System.currentTimeMillis()
+                )
+                dailyDeviceSummaryDao.insertOrUpdateSummary(summary)
+                Log.i(TAG_REPO, "Backfilled device summary for $historicalDateString. Unlocks=$unlockCount, Notifications=$totalNotifications")
+                // END of new code
 
                 // Step 3: Aggregate usage, active time, and app opens from the combined raw events
                 val aggregatedData = aggregateUsage(allEventsForDay, endOfDayUTC)
@@ -581,5 +597,9 @@ class ScrollDataRepositoryImpl(
 
     override fun getTotalNotificationCountForDate(dateString: String): Flow<Int> {
         return dailyDeviceSummaryDao.getNotificationCountForDate(dateString).map { it ?: 0 }
+    }
+
+    override fun getAllDeviceSummaries(): Flow<List<DailyDeviceSummary>> {
+        return dailyDeviceSummaryDao.getAllSummaries()
     }
 } 

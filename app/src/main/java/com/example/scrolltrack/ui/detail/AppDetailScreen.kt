@@ -56,7 +56,6 @@ import android.text.format.DateUtils
 import kotlin.math.abs
 import kotlin.math.round
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.consumeAllChanges
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.StrokeCap
@@ -66,6 +65,7 @@ import java.text.NumberFormat
 import kotlin.math.roundToInt
 import android.content.Context
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.text.font.FontWeight.Companion.Bold
 
 // Helper functions for date formatting specific to this screen
 private fun formatDateToDayOfWeek(dateString: String): String {
@@ -116,6 +116,7 @@ fun AppDetailScreen(
     val periodDescriptionText by viewModel.appDetailPeriodDescriptionText.collectAsStateWithLifecycle()
     val focusedScrollDisplay by viewModel.appDetailFocusedScrollDisplay.collectAsStateWithLifecycle()
     val focusedActiveUsageDisplay by viewModel.appDetailFocusedActiveUsageDisplay.collectAsStateWithLifecycle()
+    val focusedOpenCount by viewModel.appDetailFocusedOpenCount.collectAsStateWithLifecycle()
 
     val canNavigateForward by remember(currentPeriodType, currentReferenceDateStr) {
         derivedStateOf {
@@ -346,7 +347,6 @@ fun AppDetailScreen(
                         var swipeOffsetX = 0f
                         detectHorizontalDragGestures(
                             onHorizontalDrag = { change, dragAmount ->
-                                change.consumeAllChanges() // Consume the drag events
                                 swipeOffsetX += dragAmount
                             },
                             onDragEnd = {
@@ -376,6 +376,30 @@ fun AppDetailScreen(
                         viewModel = viewModel,
                         packageName = packageName
                     )
+                }
+            }
+            if (focusedOpenCount > 0) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Times Opened",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = "$focusedOpenCount",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
         }

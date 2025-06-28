@@ -85,6 +85,9 @@ interface ScrollDataRepository {
 
     fun getTotalNotificationCountForDate(dateString: String): Flow<Int>
 
+    fun getAllDeviceSummaries(): Flow<List<com.example.scrolltrack.db.DailyDeviceSummary>>
+
     fun getAllDistinctUsageDateStrings(): Flow<List<String>>
+
     fun getAllDistinctScrollDateStrings(): Flow<List<String>>
 }

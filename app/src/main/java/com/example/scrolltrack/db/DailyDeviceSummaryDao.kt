@@ -21,4 +21,7 @@ interface DailyDeviceSummaryDao {
     @Query("SELECT total_notification_count FROM daily_device_summary WHERE date_string = :dateString")
     fun getNotificationCountForDate(dateString: String): Flow<Int?>
 
+    @Query("SELECT * FROM daily_device_summary ORDER BY date_string ASC")
+    fun getAllSummaries(): Flow<List<DailyDeviceSummary>>
+
 } 
