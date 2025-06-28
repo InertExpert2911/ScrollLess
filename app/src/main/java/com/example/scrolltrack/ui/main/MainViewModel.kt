@@ -39,6 +39,9 @@ import android.os.Build
 import com.example.scrolltrack.ScrollTrackService
 import com.example.scrolltrack.util.PermissionUtils
 import java.util.TimeZone
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
 
 // Data class for cached app metadata
 private data class CachedAppMetadata(val appName: String, val icon: Drawable?)
@@ -50,10 +53,11 @@ enum class ChartPeriodType {
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class MainViewModel(
+@HiltViewModel
+class MainViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
     private val settingsRepository: SettingsRepository,
-    private val application: Application
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     // --- App Metadata Cache ---
@@ -103,9 +107,9 @@ class MainViewModel(
      * This should be called from the Activity's onResume.
      */
     fun checkAllPermissions() {
-        val accessibilityStatus = PermissionUtils.isAccessibilityServiceEnabled(application, ScrollTrackService::class.java)
+        val accessibilityStatus = PermissionUtils.isAccessibilityServiceEnabled(context, ScrollTrackService::class.java)
         val usageStatus = isUsageStatsPermissionGrantedByAppOps()
-        val notificationListenerStatus = PermissionUtils.isNotificationListenerEnabled(application, com.example.scrolltrack.services.NotificationListener::class.java)
+        val notificationListenerStatus = PermissionUtils.isNotificationListenerEnabled(context, com.example.scrolltrack.services.NotificationListener::class.java)
 
         if (_isAccessibilityServiceEnabled.value != accessibilityStatus) {
             _isAccessibilityServiceEnabled.value = accessibilityStatus
@@ -177,8 +181,8 @@ class MainViewModel(
     val appDetailFocusedDate: StateFlow<String> = _appDetailFocusedDate.asStateFlow()
 
     val canNavigateChartForward: StateFlow<Boolean> = _currentChartReferenceDate.map { refDateStr ->
-        val today = Calendar.getInstance()
-        val refDateCal = Calendar.getInstance().apply {
+        val today = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+        val refDateCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
             time = DateUtil.parseLocalDateString(refDateStr) ?: Date()
         }
         !AndroidDateUtils.isToday(refDateCal.timeInMillis) && refDateCal.before(today)
@@ -202,7 +206,7 @@ class MainViewModel(
                 )
             } else {
                 try {
-                    val pm = application.packageManager
+                    val pm = context.packageManager
                     val appInfo = pm.getApplicationInfo(record.packageName, 0)
                     val appName = pm.getApplicationLabel(appInfo).toString()
                     val icon = pm.getApplicationIcon(record.packageName)
@@ -273,7 +277,7 @@ class MainViewModel(
 
     val scrollDistanceTodayFormatted: StateFlow<Pair<String, String>> =
         totalScrollToday.map {
-            ConversionUtil.formatScrollDistance(it, application.applicationContext)
+            ConversionUtil.formatScrollDistance(it, context)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0 m" to "0.00 miles")
 
     val totalUnlocksToday: StateFlow<Int> =
@@ -394,7 +398,7 @@ class MainViewModel(
                     )
                 } else {
                     try {
-                        val pm = application.packageManager
+                        val pm = context.packageManager
                         val appInfo = pm.getApplicationInfo(appData.packageName, 0)
                         val appName = pm.getApplicationLabel(appInfo).toString()
                         val icon = pm.getApplicationIcon(appData.packageName)
@@ -423,12 +427,12 @@ class MainViewModel(
     // Corrected helper to check permission
     @Suppress("DEPRECATION")
     private fun isUsageStatsPermissionGrantedByAppOps(): Boolean {
-        val appOpsManager = application.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
+        val appOpsManager = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
         return if (appOpsManager != null) {
             val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                appOpsManager.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), application.packageName)
+                appOpsManager.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName)
             } else {
-                appOpsManager.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), application.packageName)
+                appOpsManager.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName)
             }
             mode == AppOpsManager.MODE_ALLOWED
         } else {
@@ -501,7 +505,7 @@ class MainViewModel(
                     _appDetailAppIcon.value = appIconDrawable
                 } else {
                     try {
-                        val pm = application.packageManager
+                        val pm = context.packageManager
                         val appInfo = pm.getApplicationInfo(packageName, 0)
                         val appNameString = pm.getApplicationLabel(appInfo).toString()
                         _appDetailAppName.value = appNameString
@@ -546,7 +550,7 @@ class MainViewModel(
                 _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(0L)
                 _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(0L)
                 _appDetailFocusedPeriodDisplay.value = ""
-                _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(0L, application.applicationContext).first
+                _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(0L, context).first
                 return@launch
             }
 
@@ -573,7 +577,7 @@ class MainViewModel(
             _appDetailChartData.value = currentCombinedData
             Log.d("MainViewModel", "Chart data loaded: ${currentCombinedData.size} points for current period.")
 
-            val calendar = Calendar.getInstance()
+            val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
             DateUtil.parseLocalDateString(referenceDate)?.let { calendar.time = it }
             val sdfDisplay = SimpleDateFormat("EEE, MMM d", Locale.getDefault())
             val sdfMonth = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
@@ -584,7 +588,7 @@ class MainViewModel(
                     val focusedDayData = currentCombinedData.firstOrNull { it.date == referenceDate }
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(focusedDayData?.usageTimeMillis ?: 0L)
                     _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(focusedDayData?.activeTimeMillis ?: 0L)
-                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(focusedDayData?.scrollUnits ?: 0L, application.applicationContext).first
+                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(focusedDayData?.scrollUnits ?: 0L, context).first
                     _appDetailPeriodDescriptionText.value = "Daily Summary"
                     _appDetailFocusedPeriodDisplay.value = sdfDisplay.format(calendar.time)
                     _appDetailWeekNumberDisplay.value = null
@@ -596,7 +600,7 @@ class MainViewModel(
                     val currentPeriodAverageActiveUsage = calculateAverageActiveUsage(currentCombinedData)
                     _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageActiveUsage)
                     val currentPeriodAverageScroll = calculateAverageScroll(currentCombinedData)
-                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(currentPeriodAverageScroll, application.applicationContext).first
+                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(currentPeriodAverageScroll, context).first
                     _appDetailPeriodDescriptionText.value = "Weekly Average"
                     val (startOfWeekStr, endOfWeekStr) = getPeriodDisplayStrings(period, referenceDate)
                     _appDetailFocusedPeriodDisplay.value = "$startOfWeekStr - $endOfWeekStr"
@@ -617,7 +621,7 @@ class MainViewModel(
                     val currentPeriodAverageActiveUsage = calculateAverageActiveUsage(currentCombinedData)
                     _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageActiveUsage)
                     val currentPeriodAverageScroll = calculateAverageScroll(currentCombinedData)
-                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(currentPeriodAverageScroll, application.applicationContext).first
+                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(currentPeriodAverageScroll, context).first
 
                     _appDetailPeriodDescriptionText.value = "Monthly Average"
                     _appDetailFocusedPeriodDisplay.value = sdfMonth.format(calendar.time)
@@ -699,7 +703,7 @@ class MainViewModel(
     }
 
     private fun calculatePreviousPeriodDateStrings(period: ChartPeriodType, currentReferenceDateStr: String): Pair<List<String>, String> {
-        val calendar = Calendar.getInstance()
+        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
         DateUtil.parseLocalDateString(currentReferenceDateStr)?.let { calendar.time = it }
         lateinit var newReferenceDateStr: String
 
@@ -724,7 +728,7 @@ class MainViewModel(
     }
 
     private fun getPeriodDisplayStrings(period: ChartPeriodType, referenceDateStr: String, includeYear: Boolean = true): Pair<String, String> {
-        val calendar = Calendar.getInstance()
+        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
         DateUtil.parseLocalDateString(referenceDateStr)?.let { calendar.time = it }
 
         val monthDayFormat = SimpleDateFormat("MMM d", Locale.getDefault())
@@ -745,8 +749,8 @@ class MainViewModel(
                 calendar.add(Calendar.DAY_OF_YEAR, 6)
                 val endOfWeek = calendar.time
 
-                val startCal = Calendar.getInstance().apply { time = startOfWeek }
-                val endCal = Calendar.getInstance().apply { time = endOfWeek }
+                val startCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { time = startOfWeek }
+                val endCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { time = endOfWeek }
 
                 val startFormat = monthDayFormat
                 val endFormat = if (startCal.get(Calendar.YEAR) != endCal.get(Calendar.YEAR) || !includeYear) {
@@ -773,7 +777,7 @@ class MainViewModel(
 
 
     private fun calculateDateStringsForPeriod(period: ChartPeriodType, referenceDateStr: String): List<String> {
-        val calendar = Calendar.getInstance()
+        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
         DateUtil.parseLocalDateString(referenceDateStr)?.let { calendar.time = it }
 
         return when (period) {
@@ -812,7 +816,7 @@ class MainViewModel(
     }
 
     fun navigateChartDate(packageName: String, direction: Int) {
-        val cal = Calendar.getInstance().apply {
+        val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
             time = DateUtil.parseLocalDateString(_currentChartReferenceDate.value) ?: Date()
         }
         when (_currentChartPeriodType.value) {

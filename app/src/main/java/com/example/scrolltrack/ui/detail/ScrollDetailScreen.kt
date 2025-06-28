@@ -21,36 +21,30 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import coil.compose.rememberAsyncImagePainter
-import com.example.scrolltrack.R // For fallback icon
-import com.example.scrolltrack.navigation.ScreenRoutes // For potential navigation from item
-import com.example.scrolltrack.ui.main.MainViewModel
-import com.example.scrolltrack.ui.main.MainViewModelFactory
+import com.example.scrolltrack.R
+import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.ui.theme.ScrollTrackTheme
 import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
-import java.util.Date
-import androidx.compose.ui.tooling.preview.Preview
 import android.text.format.DateUtils as AndroidDateUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScrollDetailScreen(
     navController: NavController,
-    viewModel: MainViewModel,
     selectedDateString: String,
     scrollData: List<AppScrollUiItem>,
-    onDateSelected: (Long) -> Unit
+    onDateSelected: (Long) -> Unit,
+    selectableDatesMillis: Set<Long>
 ) {
     val context = LocalContext.current
     var showDatePickerDialog by remember { mutableStateOf(false) }
-    val selectableDatesMillis by viewModel.selectableDatesForScrollDetail.collectAsStateWithLifecycle()
 
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = remember(selectedDateString) {
@@ -92,7 +86,9 @@ fun ScrollDetailScreen(
                 modifier = Modifier.statusBarsPadding()
             )
         },
-        modifier = Modifier.navigationBarsPadding().background(MaterialTheme.colorScheme.background)
+        modifier = Modifier
+            .navigationBarsPadding()
+            .background(MaterialTheme.colorScheme.background)
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -207,23 +203,21 @@ fun AppScrollDetailItemEntry(
     }
 }
 
-@Preview(showBackground = true)
+@Preview(showBackground = true, name = "Scroll Detail Screen")
 @Composable
 fun ScrollDetailScreenPreview() {
-    val context = LocalContext.current
-    val fakeViewModel: MainViewModel = viewModel(
-        factory = MainViewModelFactory(context.applicationContext as android.app.Application, useFakeRepos = true)
+    val dummyData = listOf(
+        AppScrollUiItem("1", "App One", null, 12000, "com.app1"),
+        AppScrollUiItem("2", "App Two", null, 8500, "com.app2"),
+        AppScrollUiItem("3", "Another Very Long App Name That Will Surely Overflow", null, 400, "com.app3")
     )
-    ScrollTrackTheme(darkTheme = true) {
+    ScrollTrackTheme {
         ScrollDetailScreen(
             navController = rememberNavController(),
-            viewModel = fakeViewModel,
             selectedDateString = "2023-10-27",
-            scrollData = listOf(
-                AppScrollUiItem("app1", "App One", null, 1234, "com.example.app1"),
-                AppScrollUiItem("app2", "App Two", null, 5678, "com.example.app2")
-            ),
-            onDateSelected = {}
+            scrollData = dummyData,
+            onDateSelected = {},
+            selectableDatesMillis = emptySet()
         )
     }
 } 

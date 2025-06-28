@@ -33,18 +33,22 @@ import kotlinx.coroutines.flow.map
 import com.example.scrolltrack.db.DailyDeviceSummaryDao
 import com.example.scrolltrack.db.DailyDeviceSummary
 import java.util.TimeZone
+import javax.inject.Inject
+import javax.inject.Singleton
+import dagger.hilt.android.qualifiers.ApplicationContext
 
-class ScrollDataRepositoryImpl(
+@Singleton
+class ScrollDataRepositoryImpl @Inject constructor(
     private val scrollSessionDao: ScrollSessionDao,
     private val dailyAppUsageDao: DailyAppUsageDao, // Make sure this is passed in constructor
     private val rawAppEventDao: RawAppEventDao, // Added RawAppEventDao
     private val notificationDao: NotificationDao,
     private val dailyDeviceSummaryDao: DailyDeviceSummaryDao,
-    private val application: Application
+    @ApplicationContext private val context: Context
 ) : ScrollDataRepository {
 
     private val TAG_REPO = "ScrollDataRepoImpl"
-    private val packageManager: PackageManager = application.packageManager
+    private val packageManager: PackageManager = context.packageManager
 
     // Filter list - add package names of apps to exclude from tracking
     private val filteredPackages = setOf(
@@ -222,7 +226,7 @@ class ScrollDataRepositoryImpl(
 
     override suspend fun updateTodayAppUsageStats(): Boolean = withContext(Dispatchers.IO) {
         val usageStatsManager =
-            application.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+            context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
                 ?: run {
                     Log.e(TAG_REPO, "UsageStatsManager not available.")
                     return@withContext false
@@ -424,7 +428,7 @@ class ScrollDataRepositoryImpl(
 
     override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean = withContext(Dispatchers.IO) {
         val usageStatsManager =
-            application.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+            context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
                 ?: return@withContext false
 
         val today = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
@@ -432,7 +436,7 @@ class ScrollDataRepositoryImpl(
         var anyDataFound = false
 
         for (i in 1..numberOfDays) {
-            val calendar = Calendar.getInstance().apply {
+            val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
                 timeInMillis = today.timeInMillis
                 add(Calendar.DAY_OF_YEAR, -i)
             }
@@ -531,7 +535,7 @@ class ScrollDataRepositoryImpl(
     @SuppressLint("PackageManagerGetSignatures")
     private fun getAppName(packageName: String): String {
         return try {
-            val packageManager = application.packageManager
+            val packageManager = context.packageManager
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
             packageInfo.applicationInfo?.loadLabel(packageManager)?.toString() ?: packageName
         } catch (e: PackageManager.NameNotFoundException) {

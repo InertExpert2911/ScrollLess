@@ -5,36 +5,13 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
-import androidx.room.Room
-import com.example.scrolltrack.data.ScrollDataRepository
-import com.example.scrolltrack.data.ScrollDataRepositoryImpl
-import com.example.scrolltrack.db.AppDatabase
+import dagger.hilt.android.HiltAndroidApp
 
+@HiltAndroidApp
 class ScrollTrackApplication : Application() {
 
     companion object {
         const val SERVICE_NOTIFICATION_CHANNEL_ID = "scrolltrack_service_channel"
-    }
-
-    // Database instance
-    private val database: AppDatabase by lazy {
-        Room.databaseBuilder(
-            applicationContext,
-            AppDatabase::class.java, "scroll_track_database"
-        ).fallbackToDestructiveMigration(dropAllTables = true) // Handle schema changes by destroying and recreating the DB
-         .build()
-    }
-
-    // Repository instance
-    val repository: ScrollDataRepository by lazy {
-        ScrollDataRepositoryImpl(
-            database.scrollSessionDao(),
-            database.dailyAppUsageDao(),
-            database.rawAppEventDao(),
-            database.notificationDao(),
-            database.dailyDeviceSummaryDao(),
-            this
-        )
     }
 
     override fun onCreate() {

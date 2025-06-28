@@ -1,12 +1,13 @@
 package com.example.scrolltrack.ui.unlocks
 
-import android.app.Application
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.util.DateUtil
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
@@ -15,6 +16,8 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
+import javax.inject.Inject
+import android.content.Context
 
 enum class UnlockPeriod {
     Daily, Weekly, Monthly
@@ -46,11 +49,12 @@ sealed interface UnlocksUiState {
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class UnlocksViewModel(
+@HiltViewModel
+class UnlocksViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
-    private val application: Application
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
-    private val packageManager: PackageManager = application.packageManager
+    private val packageManager: PackageManager = context.packageManager
 
     private val _selectedDate = MutableStateFlow(DateUtil.getCurrentLocalDateString())
     private val _selectedPeriod = MutableStateFlow(UnlockPeriod.Daily)

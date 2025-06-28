@@ -96,7 +96,7 @@ object DateUtil {
     fun getEndOfMonth(date: LocalDate): LocalDate {
         return date.with(TemporalAdjusters.lastDayOfMonth())
     }
-
+    
     /**
      * Formats a duration in milliseconds into a human-readable string (e.g., "2h 30m", "45m", "< 1m").
      */

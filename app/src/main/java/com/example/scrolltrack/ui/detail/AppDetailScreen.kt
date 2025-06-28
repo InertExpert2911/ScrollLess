@@ -120,15 +120,15 @@ fun AppDetailScreen(
 
     val canNavigateForward by remember(currentPeriodType, currentReferenceDateStr) {
         derivedStateOf {
-            val today = Calendar.getInstance()
-            val refDateCal = Calendar.getInstance().apply {
+            val today = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+            val refDateCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
                 time = DateUtil.parseLocalDateString(currentReferenceDateStr) ?: Date()
             }
 
             when (currentPeriodType) {
                 ChartPeriodType.DAILY -> !DateUtils.isToday(refDateCal.timeInMillis)
                 ChartPeriodType.WEEKLY -> {
-                    val endOfWeekForRef = Calendar.getInstance().apply {
+                    val endOfWeekForRef = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
                         time = refDateCal.time
                         // Assuming week ends on the reference date for simplicity of check
                     }
@@ -139,7 +139,7 @@ fun AppDetailScreen(
 
                 }
                 ChartPeriodType.MONTHLY -> {
-                    val endOfMonthForRef = Calendar.getInstance().apply {
+                    val endOfMonthForRef = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
                         time = refDateCal.time
                         set(Calendar.DAY_OF_MONTH, getActualMaximum(Calendar.DAY_OF_MONTH))
                     }

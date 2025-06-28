@@ -3,8 +3,12 @@ package com.example.scrolltrack.data
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class SettingsRepositoryImpl(context: Context) : SettingsRepository {
+@Singleton
+class SettingsRepositoryImpl @Inject constructor(@ApplicationContext context: Context) : SettingsRepository {
 
     private val appPrefs: SharedPreferences
 

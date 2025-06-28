@@ -3,34 +3,31 @@ package com.example.scrolltrack.services
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
-import com.example.scrolltrack.ScrollTrackApplication
-import com.example.scrolltrack.data.ScrollDataRepository
-import com.example.scrolltrack.db.AppDatabase
 import com.example.scrolltrack.db.NotificationDao
 import com.example.scrolltrack.db.NotificationRecord
 import com.example.scrolltrack.util.DateUtil
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class NotificationListener : NotificationListenerService() {
 
     private val TAG = "NotificationListener"
     private val job = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.IO + job)
 
-    private lateinit var notificationDao: NotificationDao
+    @Inject
+    lateinit var notificationDao: NotificationDao
 
     override fun onCreate() {
         super.onCreate()
-        try {
-            notificationDao = AppDatabase.getDatabase(applicationContext).notificationDao()
-            Log.i(TAG, "NotificationListenerService created and components initialized.")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error initializing components in NotificationListenerService", e)
-        }
+        // Hilt injects notificationDao before onCreate is called.
+        Log.i(TAG, "NotificationListenerService created and dao component initialized by Hilt.")
     }
 
     override fun onListenerConnected() {
@@ -39,7 +36,8 @@ class NotificationListener : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
-        if (sbn == null || !::notificationDao.isInitialized) return
+        // The lateinit var is guaranteed to be initialized here in a Hilt entry point.
+        if (sbn == null) return
 
         val packageName = sbn.packageName
         if (packageName == applicationContext.packageName) {

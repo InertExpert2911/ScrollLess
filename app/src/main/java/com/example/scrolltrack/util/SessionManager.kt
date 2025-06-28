@@ -10,17 +10,22 @@ import com.example.scrolltrack.data.SessionDraft
 import com.example.scrolltrack.db.ScrollSessionDao
 import com.example.scrolltrack.db.ScrollSessionRecord
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlin.math.max
 import kotlin.math.min
 
-class SessionManager(
+@Singleton
+class SessionManager @Inject constructor(
     // private val context: Context, // Not needed if DraftRepository handles its own context
     private val draftRepository: DraftRepository,
-    private val scrollSessionDao: ScrollSessionDao, // For direct DB access
-    private val serviceScope: CoroutineScope
+    private val scrollSessionDao: ScrollSessionDao
 ) {
     private val TAG = "SessionManager"
+    private val sessionManagerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // Session state variables
     private var currentAppPackage: String? = null
@@ -82,7 +87,7 @@ class SessionManager(
         if (startTimeUTC == 0L || accumulatedScroll == 0L) {
             Log.i(TAG, "Skipping save for session ($pkgName) with no start time or zero scroll.")
             if (reason != SessionEndReason.RECOVERED_DRAFT) { // Avoid loop if called from recover
-                 serviceScope.launch { draftRepository.clearDraft() }
+                 sessionManagerScope.launch { draftRepository.clearDraft() }
             }
             resetCurrentSessionState()
             return
@@ -93,7 +98,7 @@ class SessionManager(
         val endLocalDateString = DateUtil.formatUtcTimestampToLocalDateString(effectiveSessionEndTimeUTC)
         val totalSessionDuration = (effectiveSessionEndTimeUTC - startTimeUTC).coerceAtLeast(0L)
 
-        serviceScope.launch {
+        sessionManagerScope.launch {
             try {
                 if (startLocalDateString == endLocalDateString) {
                     val record = ScrollSessionRecord(

@@ -22,21 +22,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun notificationDao(): NotificationDao
     abstract fun dailyDeviceSummaryDao(): DailyDeviceSummaryDao
 
-    companion object {
-        @Volatile
-        private var INSTANCE: AppDatabase? = null
-
-        fun getDatabase(context: Context): AppDatabase {
-            return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "scroll_track_database"
-                ).fallbackToDestructiveMigration(dropAllTables = true)
-                 .build()
-                INSTANCE = instance
-                instance
-            }
-        }
-    }
+    // The companion object getDatabase() is now obsolete as Hilt provides the database.
 }

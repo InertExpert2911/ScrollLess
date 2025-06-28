@@ -9,23 +9,17 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.SharedPreferences
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import androidx.core.app.NotificationCompat
 import com.example.scrolltrack.data.ScrollDataRepository
-import com.example.scrolltrack.data.ScrollDataRepositoryImpl
-import com.example.scrolltrack.db.AppDatabase
-import com.example.scrolltrack.db.DailyAppUsageDao
+import com.example.scrolltrack.db.RawAppEvent
 import com.example.scrolltrack.db.RawAppEventDao
-import com.example.scrolltrack.db.ScrollSessionDao
-import com.example.scrolltrack.db.ScrollSessionRecord
 import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
 import com.example.scrolltrack.util.SessionManager
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,27 +27,27 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import javax.inject.Inject
 import kotlin.math.abs
-import kotlin.math.*
-import com.example.scrolltrack.db.RawAppEvent
 
-// @AndroidEntryPoint // Removed because Hilt is not fully configured for services
+@AndroidEntryPoint
 class ScrollTrackService : AccessibilityService() {
     private val TAG = "ScrollTrackService"
     private val SCROLL_THRESHOLD = 5 // Ignore scrolls smaller than this many combined (X+Y) pixels
     private val SERVICE_NOTIFICATION_ID = 1 // Notification ID for the foreground service
 
-    // CoroutineScope for database operations (can be passed to SessionManager)
+    // CoroutineScope for notification updates. The service manages its own lifecycle for this.
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
 
     // DAOs and Repositories will be initialized in onCreate
-    private lateinit var rawAppEventDao: RawAppEventDao
-    private lateinit var dataRepository: ScrollDataRepository // For notification updates
+    @Inject
+    lateinit var rawAppEventDao: RawAppEventDao
+    @Inject
+    lateinit var dataRepository: ScrollDataRepository // For notification updates
+    @Inject
+    lateinit var sessionManager: SessionManager
     private lateinit var notificationManager: NotificationManager
-
-    private lateinit var sessionManager: SessionManager
-    private lateinit var draftRepository: com.example.scrolltrack.data.DraftRepository // Explicit import
 
     // Screen On/Off Receiver
     private val screenStateReceiver = object : BroadcastReceiver() {
@@ -61,10 +55,8 @@ class ScrollTrackService : AccessibilityService() {
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> {
                     Log.i(TAG, "Screen OFF detected.")
-                    if(::sessionManager.isInitialized) {
-                        sessionManager.finalizeAndSaveCurrentSession(System.currentTimeMillis(), SessionManager.SessionEndReason.SCREEN_OFF)
-                        sessionManager.resetCurrentSessionState() // Ensure service's view of current app is also reset
-                    }
+                    sessionManager.finalizeAndSaveCurrentSession(System.currentTimeMillis(), SessionManager.SessionEndReason.SCREEN_OFF)
+                    sessionManager.resetCurrentSessionState() // Ensure service's view of current app is also reset
                 }
                 Intent.ACTION_SCREEN_ON -> {
                     Log.i(TAG, "Screen ON detected.")
@@ -77,32 +69,8 @@ class ScrollTrackService : AccessibilityService() {
         super.onCreate()
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        try {
-            val db = AppDatabase.getDatabase(applicationContext)
-            // Initialize DAOs needed by the service directly or by SessionManager
-            rawAppEventDao = db.rawAppEventDao()
-            val scrollSessionDao = db.scrollSessionDao() // Pass this to SessionManager
-            val dailyAppUsageDao = db.dailyAppUsageDao() // For DataRepository
-            val notificationDao = db.notificationDao()
-            val dailyDeviceSummaryDao = db.dailyDeviceSummaryDao()
-
-            // Initialize repositories
-            dataRepository = ScrollDataRepositoryImpl(scrollSessionDao, dailyAppUsageDao, rawAppEventDao, notificationDao, dailyDeviceSummaryDao, application)
-            draftRepository = com.example.scrolltrack.data.DraftRepositoryImpl(applicationContext) // Initialize DraftRepository
-
-            // Initialize SessionManager
-            sessionManager = SessionManager(
-                draftRepository = draftRepository,
-                scrollSessionDao = scrollSessionDao, // Pass the DAO
-                serviceScope = serviceScope
-            )
-
-            Log.i(TAG, "ScrollTrackService onCreate: Components initialized.")
-            sessionManager.recoverSession()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error initializing components in onCreate", e)
-            // Consider stopping the service or other error handling
-        }
+        Log.i(TAG, "ScrollTrackService onCreate: Components injected by Hilt.")
+        sessionManager.recoverSession()
 
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON)
@@ -137,12 +105,8 @@ class ScrollTrackService : AccessibilityService() {
             }
 
             try {
-            if(::dataRepository.isInitialized) { // Check if repository is initialized before using
                 val todayUsageMillis = dataRepository.getTotalUsageTimeMillisForDate(todayDateString).firstOrNull() ?: 0L
                 usageText = "Total Usage: ${DateUtil.formatDuration(todayUsageMillis)}"
-            } else {
-                Log.w(TAG, "DataRepository not initialized in updateNotificationTextAndStartForeground.")
-            }
             } catch (e: Exception) {
                 Log.e(TAG, "Error fetching usage data for notification", e)
             }
@@ -192,8 +156,7 @@ class ScrollTrackService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null || !::sessionManager.isInitialized) { // Ensure sessionManager is initialized
-            if (!::sessionManager.isInitialized) Log.w(TAG, "SessionManager not initialized in onAccessibilityEvent")
+        if (event == null) {
             return
         }
 
@@ -212,12 +175,11 @@ class ScrollTrackService : AccessibilityService() {
             serviceScope.launch {
                 try {
                     val rawEvent = RawAppEvent(
-                        packageName = pkgName!!, className = clsName,
+                        packageName = pkgName, className = clsName,
                         eventType = eventTypeConst, eventTimestamp = time,
                         eventDateString = DateUtil.formatUtcTimestampToLocalDateString(time)
                     )
-                    if(::rawAppEventDao.isInitialized) rawAppEventDao.insertEvent(rawEvent) // Check DAO init
-                    else Log.e(TAG, "rawAppEventDao not initialized in logAccessibilityRawEventToDb")
+                    rawAppEventDao.insertEvent(rawEvent)
                     Log.d(TAG, "Logged RawAppEvent to DB: Pkg=$pkgName, Cls=$clsName, Type=$eventTypeConst, Time=$time")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error logging RawAppEvent to DB", e)
@@ -281,33 +243,14 @@ class ScrollTrackService : AccessibilityService() {
         }
     }
 
-    // Removed local session management methods:
-    // - startNewSession
-    // - finalizeAndSaveCurrentSession
-    // - resetCurrentSessionState
-    // - clearDraftSession
-    // - recoverSessionFromPrefs
-    // - scheduleSharedPrefsWrite
-    // - saveDraftToPrefs
-    // - Companion object with PREFS_NAME etc. (belongs to DraftRepository or SessionManager now)
-    // - SessionEndReason object (moved to SessionManager)
-    // - Session tracking variables (currentAppPackage, etc. - moved to SessionManager)
-    // - sharedPreferences field (SessionManager uses DraftRepository which handles its own prefs)
-    // - sharedPrefsHandler and pendingSharedPrefsWrite (SessionManager handles its own draft scheduling)
-
-
     override fun onInterrupt() {
         Log.w(TAG, "Service interrupted.")
-        if(::sessionManager.isInitialized) {
-            sessionManager.handleServiceStop(SessionManager.SessionEndReason.SERVICE_INTERRUPT)
-        }
+        sessionManager.handleServiceStop(SessionManager.SessionEndReason.SERVICE_INTERRUPT)
     }
 
     override fun onDestroy() {
         Log.i(TAG, "Service destroying.")
-        if(::sessionManager.isInitialized) {
-            sessionManager.handleServiceStop(SessionManager.SessionEndReason.SERVICE_DESTROY)
-        }
+        sessionManager.handleServiceStop(SessionManager.SessionEndReason.SERVICE_DESTROY)
 
         try {
             unregisterReceiver(screenStateReceiver)

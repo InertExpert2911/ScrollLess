@@ -1,13 +1,12 @@
 package com.example.scrolltrack.navigation
 
-import android.app.Application
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -20,7 +19,6 @@ import com.example.scrolltrack.ui.main.MainViewModel
 import com.example.scrolltrack.ui.main.TodaySummaryScreen
 import com.example.scrolltrack.ui.unlocks.UnlocksScreen
 import com.example.scrolltrack.ui.unlocks.UnlocksViewModel
-import com.example.scrolltrack.ui.unlocks.UnlocksViewModelFactory
 import com.example.scrolltrack.util.DateUtil
 
 @Composable
@@ -63,7 +61,6 @@ fun AppNavigationHost(
                 scrollDistanceMeters = scrollDistance.first,
                 totalUnlocks = totalUnlocks,
                 totalNotifications = totalNotifications,
-                // appScrollData = appScrollItems, // Removed: Not directly displayed on TodaySummaryScreen
                 onNavigateToHistoricalUsage = {
                     viewModel.resetSelectedDateToToday()
                     navController.navigate(ScreenRoutes.HistoricalUsageRoute.route)
@@ -78,12 +75,12 @@ fun AppNavigationHost(
                 currentThemeVariant = selectedTheme
             )
         }
+
         composable(ScreenRoutes.UnlocksRoute.route) {
-            val unlocksViewModel: UnlocksViewModel = viewModel(
-                factory = UnlocksViewModelFactory(navController.context.applicationContext as Application)
-            )
+            val unlocksViewModel: UnlocksViewModel = hiltViewModel() // This line needs the import
             UnlocksScreen(navController = navController, viewModel = unlocksViewModel)
         }
+
         composable(ScreenRoutes.HistoricalUsageRoute.route) {
             HistoricalUsageScreen(
                 navController = navController,
@@ -102,7 +99,6 @@ fun AppNavigationHost(
                     packageName = packageName
                 )
             } else {
-                // Handle error: navigate back or show an error message
                 navController.popBackStack()
             }
         }
@@ -115,6 +111,7 @@ fun AppNavigationHost(
             if (date != null) {
                 val selectedDateString by viewModel.selectedDateForScrollDetail.collectAsState()
                 val scrollData by viewModel.aggregatedScrollDataForSelectedDate.collectAsState()
+                val selectableDates by viewModel.selectableDatesForScrollDetail.collectAsStateWithLifecycle()
 
                 LaunchedEffect(date) {
                     DateUtil.parseLocalDateString(date)?.time?.let {
@@ -124,14 +121,14 @@ fun AppNavigationHost(
 
                 ScrollDetailScreen(
                     navController = navController,
-                    viewModel = viewModel,
                     selectedDateString = selectedDateString,
                     scrollData = scrollData,
-                    onDateSelected = { viewModel.updateSelectedDateForScrollDetail(it) }
+                    onDateSelected = { viewModel.updateSelectedDateForScrollDetail(it) },
+                    selectableDatesMillis = selectableDates
                 )
             } else {
                 Text("Error: Date not found for Scroll Detail.")
             }
         }
     }
-} 
+}

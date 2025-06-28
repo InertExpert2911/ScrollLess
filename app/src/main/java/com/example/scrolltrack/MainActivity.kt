@@ -11,18 +11,18 @@ import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.runtime.*
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
 import com.example.scrolltrack.navigation.AppNavigationHost
 import com.example.scrolltrack.ui.main.MainViewModel
-import com.example.scrolltrack.ui.main.MainViewModelFactory
 import com.example.scrolltrack.ui.theme.*
 import com.example.scrolltrack.util.PermissionUtils
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -32,10 +32,11 @@ private const val THEME_OLED_DARK = "oled_dark"
 private const val PREFS_GLOBAL = "ScrollTrackGlobalPrefs"
 private const val KEY_BACKFILL_DONE = "historical_backfill_done"
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     private val TAG = "MainActivity"
-    private lateinit var viewModel: MainViewModel
+    private val viewModel: MainViewModel by viewModels()
     private lateinit var globalPrefs: SharedPreferences
 
     private companion object {
@@ -46,8 +47,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         globalPrefs = getSharedPreferences(PREFS_GLOBAL, Context.MODE_PRIVATE)
 
-        val viewModelFactory = MainViewModelFactory(application)
-        viewModel = ViewModelProvider(this, viewModelFactory)[MainViewModel::class.java]
+        // The ViewModelFactory and ViewModelProvider are no longer needed.
+        // Hilt will automatically provide the MainViewModel.
 
         // --- One-Time Historical Backfill (Now permission-aware) ---
         lifecycleScope.launch {
