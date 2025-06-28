@@ -42,9 +42,7 @@ import java.util.TimeZone
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
-
-// Data class for cached app metadata
-private data class CachedAppMetadata(val appName: String, val icon: Drawable?)
+import com.example.scrolltrack.data.AppMetadataRepository
 
 enum class ChartPeriodType {
     DAILY,
@@ -57,11 +55,9 @@ enum class ChartPeriodType {
 class MainViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
     private val settingsRepository: SettingsRepository,
-    @ApplicationContext private val context: Context
+    private val appMetadataRepository: AppMetadataRepository,
+    @param:ApplicationContext private val context: Context
 ) : ViewModel() {
-
-    // --- App Metadata Cache ---
-    private val metadataCache = LruCache<String, CachedAppMetadata>(100) // Cache up to 100 items
 
     // --- Permission States ---
     private val _isAccessibilityServiceEnabled = MutableStateFlow(false)
@@ -195,38 +191,23 @@ class MainViewModel @Inject constructor(
     // --- Helper function to filter and map DailyAppUsageRecords to AppUsageUiItems ---
     private suspend fun processSingleUsageRecordToUiItem(record: DailyAppUsageRecord): AppUsageUiItem? {
         return withContext(Dispatchers.IO) {
-            val cachedData = metadataCache.get(record.packageName)
-            if (cachedData != null) {
+            val metadata = appMetadataRepository.getAppMetadata(record.packageName)
+            // The icon is now fetched separately and is a file-based cache.
+            val icon = appMetadataRepository.getIconDrawable(record.packageName)
+
+            if (metadata != null) {
                 AppUsageUiItem(
                     id = record.packageName,
-                    appName = cachedData.appName,
-                    icon = cachedData.icon,
+                    appName = metadata.appName,
+                    icon = icon,
                     usageTimeMillis = record.usageTimeMillis,
                     packageName = record.packageName
                 )
             } else {
-                try {
-                    val pm = context.packageManager
-                    val appInfo = pm.getApplicationInfo(record.packageName, 0)
-                    val appName = pm.getApplicationLabel(appInfo).toString()
-                    val icon = pm.getApplicationIcon(record.packageName)
-                    metadataCache.put(record.packageName, CachedAppMetadata(appName, icon))
-                    AppUsageUiItem(
-                        id = record.packageName,
-                        appName = appName,
-                        icon = icon,
-                        usageTimeMillis = record.usageTimeMillis,
-                        packageName = record.packageName
-                    )
-                } catch (e: PackageManager.NameNotFoundException) {
-                    Log.w("MainViewModel", "Package info not found for usage item ${record.packageName}, creating fallback UI item.")
-                    val fallbackAppName = record.packageName.substringAfterLast('.', record.packageName)
-                    metadataCache.put(record.packageName, CachedAppMetadata(fallbackAppName, null))
-                    AppUsageUiItem(record.packageName, fallbackAppName, null, record.usageTimeMillis, record.packageName)
-                } catch (e: Exception) {
-                    Log.e("MainViewModel", "Error processing usage app data for ${record.packageName}", e)
-                    null
-                }
+                // This case should be very rare now, but good to have a fallback.
+                Log.w("MainViewModel", "No metadata found for ${record.packageName}, creating fallback UI item.")
+                val fallbackAppName = record.packageName.substringAfterLast('.', record.packageName)
+                AppUsageUiItem(record.packageName, fallbackAppName, null, record.usageTimeMillis, record.packageName)
             }
         }
     }
@@ -387,38 +368,21 @@ class MainViewModel @Inject constructor(
     private suspend fun mapToAppScrollUiItems(appScrollDataList: List<AppScrollData>): List<AppScrollUiItem> {
         return withContext(Dispatchers.IO) {
             appScrollDataList.mapNotNull { appData ->
-                val cachedData = metadataCache.get(appData.packageName)
-                if (cachedData != null) {
+                val metadata = appMetadataRepository.getAppMetadata(appData.packageName)
+                val icon = appMetadataRepository.getIconDrawable(appData.packageName)
+
+                if (metadata != null) {
                     AppScrollUiItem(
                         id = appData.packageName,
-                        appName = cachedData.appName,
-                        icon = cachedData.icon,
+                        appName = metadata.appName,
+                        icon = icon,
                         totalScroll = appData.totalScroll,
                         packageName = appData.packageName
                     )
                 } else {
-                    try {
-                        val pm = context.packageManager
-                        val appInfo = pm.getApplicationInfo(appData.packageName, 0)
-                        val appName = pm.getApplicationLabel(appInfo).toString()
-                        val icon = pm.getApplicationIcon(appData.packageName)
-                        metadataCache.put(appData.packageName, CachedAppMetadata(appName, icon))
-                        AppScrollUiItem(
-                            id = appData.packageName,
-                            appName = appName,
-                            icon = icon,
-                            totalScroll = appData.totalScroll,
-                            packageName = appData.packageName
-                        )
-                    } catch (e: PackageManager.NameNotFoundException) {
-                        Log.w("MainViewModel", "Package info not found for scroll item ${appData.packageName}, creating fallback UI item.")
-                        val fallbackAppName = appData.packageName.substringAfterLast('.', appData.packageName)
-                        metadataCache.put(appData.packageName, CachedAppMetadata(fallbackAppName, null))
-                        AppScrollUiItem(appData.packageName, fallbackAppName, null, appData.totalScroll, appData.packageName)
-                    } catch (e: Exception) {
-                        Log.e("MainViewModel", "Error processing scroll app data for ${appData.packageName}", e)
-                        null
-                    }
+                    Log.w("MainViewModel", "No metadata found for scroll item ${appData.packageName}, creating fallback UI item.")
+                    val fallbackAppName = appData.packageName.substringAfterLast('.', appData.packageName)
+                    AppScrollUiItem(appData.packageName, fallbackAppName, null, appData.totalScroll, appData.packageName)
                 }
             }
         }
@@ -496,33 +460,14 @@ class MainViewModel @Inject constructor(
             _appDetailPackageName.value = packageName
 
             viewModelScope.launch(Dispatchers.IO) {
-                var appIconDrawable: Drawable? = null
-                val cachedAppInfo = metadataCache.get(packageName)
-
-                if (cachedAppInfo != null) {
-                    _appDetailAppName.value = cachedAppInfo.appName
-                    appIconDrawable = cachedAppInfo.icon
-                    _appDetailAppIcon.value = appIconDrawable
+                val metadata = appMetadataRepository.getAppMetadata(packageName)
+                if (metadata != null) {
+                    _appDetailAppName.value = metadata.appName
+                    _appDetailAppIcon.value = appMetadataRepository.getIconDrawable(packageName)
                 } else {
-                    try {
-                        val pm = context.packageManager
-                        val appInfo = pm.getApplicationInfo(packageName, 0)
-                        val appNameString = pm.getApplicationLabel(appInfo).toString()
-                        _appDetailAppName.value = appNameString
-                        appIconDrawable = pm.getApplicationIcon(packageName)
-                        _appDetailAppIcon.value = appIconDrawable
-                        metadataCache.put(packageName, CachedAppMetadata(appNameString, appIconDrawable))
-                    } catch (e: PackageManager.NameNotFoundException) {
-                        Log.w("MainViewModel", "App info not found for $packageName in AppDetailScreen")
-                        val fallbackAppName = packageName.substringAfterLast('.', packageName)
-                        _appDetailAppName.value = fallbackAppName
-                        _appDetailAppIcon.value = null
-                        metadataCache.put(packageName, CachedAppMetadata(fallbackAppName, null))
-                    } catch (e: Exception) {
-                        Log.e("MainViewModel", "Error loading app info for $packageName", e)
-                        _appDetailAppName.value = packageName
-                        _appDetailAppIcon.value = null
-                    }
+                    Log.w("MainViewModel", "App info not found for $packageName in AppDetailScreen")
+                    _appDetailAppName.value = packageName.substringAfterLast('.', packageName)
+                    _appDetailAppIcon.value = null
                 }
             }
             loadAppDetailChartData(packageName, _currentChartPeriodType.value, _currentChartReferenceDate.value)

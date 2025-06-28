@@ -54,12 +54,7 @@ class FakeScrollDataRepository : ScrollDataRepository {
         dateStrings: List<String>
     ): List<AppScrollDataPerDate> = emptyList()
 
-    override suspend fun getAggregatedScrollForDateUi(dateString: String): List<AppScrollUiItem> =
-        listOf(
-            AppScrollUiItem("settings", "Settings", null, 7294, "com.android.settings")
-        )
-
-    override suspend fun insertScrollSession(session: ScrollSessionRecord) {}
+        override suspend fun insertScrollSession(session: ScrollSessionRecord) {}
 
     override fun getTotalUnlockCountForDate(dateString: String): Flow<Int> = flowOf(24)
 

@@ -30,6 +30,10 @@ abstract class AppModule {
     @Singleton
     abstract fun bindDraftRepository(impl: DraftRepositoryImpl): DraftRepository
 
+    @Binds
+    @Singleton
+    abstract fun bindAppMetadataRepository(impl: AppMetadataRepositoryImpl): AppMetadataRepository
+
     companion object {
         @Provides
         @Singleton
@@ -38,7 +42,7 @@ abstract class AppModule {
                 context,
                 AppDatabase::class.java,
                 "scroll_track_database"
-            ).fallbackToDestructiveMigration()
+            ).fallbackToDestructiveMigration(true)
                 .build()
         }
 
@@ -61,6 +65,10 @@ abstract class AppModule {
         @Provides
         @Singleton
         fun provideDailyDeviceSummaryDao(db: AppDatabase): DailyDeviceSummaryDao = db.dailyDeviceSummaryDao()
+
+        @Provides
+        @Singleton
+        fun provideAppMetadataDao(db: AppDatabase): AppMetadataDao = db.appMetadataDao()
 
         @Provides
         @Singleton

@@ -10,8 +10,8 @@ import androidx.room.RoomDatabase
  * Includes tables for ScrollSessionRecord and DailyAppUsageRecord.
  */
 @Database(
-    entities = [ScrollSessionRecord::class, DailyAppUsageRecord::class, RawAppEvent::class, NotificationRecord::class, DailyDeviceSummary::class],
-    version = 6,
+    entities = [ScrollSessionRecord::class, DailyAppUsageRecord::class, RawAppEvent::class, NotificationRecord::class, DailyDeviceSummary::class, AppMetadata::class],
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -21,6 +21,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun rawAppEventDao(): RawAppEventDao
     abstract fun notificationDao(): NotificationDao
     abstract fun dailyDeviceSummaryDao(): DailyDeviceSummaryDao
+    abstract fun appMetadataDao(): AppMetadataDao
 
     // The companion object getDatabase() is now obsolete as Hilt provides the database.
 }

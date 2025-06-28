@@ -44,11 +44,10 @@ class ScrollDataRepositoryImpl @Inject constructor(
     private val rawAppEventDao: RawAppEventDao, // Added RawAppEventDao
     private val notificationDao: NotificationDao,
     private val dailyDeviceSummaryDao: DailyDeviceSummaryDao,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) : ScrollDataRepository {
 
     private val TAG_REPO = "ScrollDataRepoImpl"
-    private val packageManager: PackageManager = context.packageManager
 
     // Filter list - add package names of apps to exclude from tracking
     private val filteredPackages = setOf(
@@ -70,30 +69,6 @@ class ScrollDataRepositoryImpl @Inject constructor(
     internal fun isFilteredPackage(packageName: String): Boolean {
         return packageName == "com.example.scrolltrack" ||
                 packageName.contains("launcher")
-    }
-
-    /**
-     * Private helper to process a single scroll data record into a UI-ready item,
-     * handling package manager lookups.
-     */
-    private suspend fun processScrollDataToUiItem(appScrollData: AppScrollData): AppScrollUiItem? {
-        return withContext(Dispatchers.IO) {
-            try {
-                val appInfo = packageManager.getApplicationInfo(appScrollData.packageName, 0)
-                val appName = packageManager.getApplicationLabel(appInfo).toString()
-                val icon = packageManager.getApplicationIcon(appScrollData.packageName)
-                AppScrollUiItem(
-                    id = appScrollData.packageName,
-                    appName = appName,
-                    icon = icon,
-                    totalScroll = appScrollData.totalScroll,
-                    packageName = appScrollData.packageName
-                )
-            } catch (e: PackageManager.NameNotFoundException) {
-                // Handle cases where the app might have been uninstalled
-                null
-            }
-        }
     }
 
     companion object {
@@ -549,17 +524,6 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
     override suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate> {
         return scrollSessionDao.getAggregatedScrollForPackageAndDates(packageName, dateStrings)
-    }
-
-    override suspend fun getAggregatedScrollForDateUi(dateString: String): List<AppScrollUiItem> {
-        val aggregatedData = scrollSessionDao.getAggregatedScrollDataForDate(dateString).first()
-        val uiItems = mutableListOf<AppScrollUiItem>()
-        for (data in aggregatedData) {
-            processScrollDataToUiItem(data)?.let {
-                uiItems.add(it)
-            }
-        }
-        return uiItems
     }
 
     override fun getAllDistinctUsageDateStrings(): Flow<List<String>> {

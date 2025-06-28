@@ -5,6 +5,7 @@ import android.graphics.drawable.Drawable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.scrolltrack.data.ScrollDataRepository
+import com.example.scrolltrack.data.AppMetadataRepository
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -52,9 +53,9 @@ sealed interface UnlocksUiState {
 @HiltViewModel
 class UnlocksViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
-    @ApplicationContext private val context: Context
+    private val appMetadataRepository: AppMetadataRepository,
+    @param:ApplicationContext private val context: Context
 ) : ViewModel() {
-    private val packageManager: PackageManager = context.packageManager
 
     private val _selectedDate = MutableStateFlow(DateUtil.getCurrentLocalDateString())
     private val _selectedPeriod = MutableStateFlow(UnlockPeriod.Daily)
@@ -96,23 +97,18 @@ class UnlocksViewModel @Inject constructor(
                 records
                     .groupBy { it.packageName }
                     .mapValues { entry -> entry.value.sumOf { it.appOpenCount } }
-                    .map { (pkg, count) ->
-                        Triple(pkg, count, getAppName(pkg))
-                    }
-                    .filter { it.second > 0 }
-                    .sortedByDescending { it.second }
-                    .mapNotNull { (pkg, count, name) ->
-                        try {
+                    .filter { it.value > 0 }
+                    .mapNotNull { (pkg, count) ->
+                        appMetadataRepository.getAppMetadata(pkg)?.let { metadata ->
                             AppOpenUiItem(
                                 packageName = pkg,
-                                appName = name,
-                                icon = packageManager.getApplicationIcon(pkg),
+                                appName = metadata.appName,
+                                icon = appMetadataRepository.getIconDrawable(pkg),
                                 openCount = count
                             )
-                        } catch (e: PackageManager.NameNotFoundException) {
-                            null
                         }
                     }
+                    .sortedByDescending { it.openCount }
             }
             emit(UnlocksUiState.Success(appOpens, period, date, title))
         }
@@ -130,14 +126,5 @@ class UnlocksViewModel @Inject constructor(
         _selectedDate.value = date
         // When a new date is selected from heatmap, default to Daily view
         _selectedPeriod.value = UnlockPeriod.Daily
-    }
-
-    private suspend fun getAppName(packageName: String): String = withContext(Dispatchers.IO) {
-        try {
-            val appInfo = packageManager.getApplicationInfo(packageName, 0)
-            packageManager.getApplicationLabel(appInfo).toString()
-        } catch (e: PackageManager.NameNotFoundException) {
-            packageName
-        }
     }
 } 
