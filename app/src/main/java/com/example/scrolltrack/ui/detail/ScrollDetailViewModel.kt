@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.scrolltrack.data.AppMetadataRepository
 import com.example.scrolltrack.data.AppScrollData
 import com.example.scrolltrack.data.ScrollDataRepository
+import com.example.scrolltrack.ui.mappers.AppUiModelMapper
 import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,6 +23,7 @@ import javax.inject.Inject
 class ScrollDetailViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
     private val appMetadataRepository: AppMetadataRepository,
+    private val mapper: AppUiModelMapper,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
@@ -36,7 +38,7 @@ class ScrollDetailViewModel @Inject constructor(
             repository.getAggregatedScrollDataForDate(dateString)
                 .map { appScrollDataList ->
                     Log.d("ScrollDetailViewModel", "Received ${appScrollDataList.size} raw scroll items for $dateString")
-                    val uiItems = mapToAppScrollUiItems(appScrollDataList)
+                    val uiItems = appScrollDataList.map { mapper.mapToAppScrollUiItem(it) }
                     Log.d("ScrollDetailViewModel", "Mapped to ${uiItems.size} UI scroll items for $dateString")
                     uiItems
                 }
@@ -51,28 +53,5 @@ class ScrollDetailViewModel @Inject constructor(
 
     fun updateSelectedDateForScrollDetail(dateMillis: Long) {
         _selectedDateForScrollDetail.value = DateUtil.formatDateToYyyyMmDdString(Date(dateMillis))
-    }
-
-    private suspend fun mapToAppScrollUiItems(appScrollDataList: List<AppScrollData>): List<AppScrollUiItem> {
-        return withContext(Dispatchers.IO) {
-            appScrollDataList.mapNotNull { appData ->
-                val metadata = appMetadataRepository.getAppMetadata(appData.packageName)
-                val icon = appMetadataRepository.getIconDrawable(appData.packageName)
-
-                if (metadata != null) {
-                    AppScrollUiItem(
-                        id = appData.packageName,
-                        appName = metadata.appName,
-                        icon = icon,
-                        totalScroll = appData.totalScroll,
-                        packageName = appData.packageName
-                    )
-                } else {
-                    Log.w("ScrollDetailViewModel", "No metadata found for scroll item ${appData.packageName}, creating fallback UI item.")
-                    val fallbackAppName = appData.packageName.substringAfterLast('.', appData.packageName)
-                    AppScrollUiItem(appData.packageName, fallbackAppName, null, appData.totalScroll, appData.packageName)
-                }
-            }
-        }
     }
 } 

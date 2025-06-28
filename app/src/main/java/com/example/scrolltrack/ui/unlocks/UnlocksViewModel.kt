@@ -6,6 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.data.AppMetadataRepository
+import com.example.scrolltrack.db.DailyDeviceSummary
+import com.example.scrolltrack.ui.mappers.AppUiModelMapper
+import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -19,6 +22,7 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import android.content.Context
+import java.io.File
 
 enum class UnlockPeriod {
     Daily, Weekly, Monthly
@@ -53,8 +57,7 @@ sealed interface UnlocksUiState {
 @HiltViewModel
 class UnlocksViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
-    private val appMetadataRepository: AppMetadataRepository,
-    @param:ApplicationContext private val context: Context
+    private val appMetadataRepository: AppMetadataRepository
 ) : ViewModel() {
 
     private val _selectedDate = MutableStateFlow(DateUtil.getCurrentLocalDateString())
@@ -100,10 +103,11 @@ class UnlocksViewModel @Inject constructor(
                     .filter { it.value > 0 }
                     .mapNotNull { (pkg, count) ->
                         appMetadataRepository.getAppMetadata(pkg)?.let { metadata ->
+                            val iconFile = appMetadataRepository.getIconFile(pkg)
                             AppOpenUiItem(
                                 packageName = pkg,
                                 appName = metadata.appName,
-                                icon = appMetadataRepository.getIconDrawable(pkg),
+                                icon = getDrawableFromIconFile(iconFile),
                                 openCount = count
                             )
                         }
@@ -117,6 +121,13 @@ class UnlocksViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = UnlocksUiState.Loading
     )
+
+    private fun getDrawableFromIconFile(iconFile: File?): Drawable? {
+        if (iconFile != null && iconFile.exists()) {
+            return Drawable.createFromPath(iconFile.absolutePath)
+        }
+        return null
+    }
 
     fun selectPeriod(period: UnlockPeriod) {
         _selectedPeriod.value = period

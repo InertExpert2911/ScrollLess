@@ -72,10 +72,10 @@ class AppMetadataRepositoryImpl @Inject constructor(
         return@withContext fetchFromPackageManagerAndCache(packageName)
     }
 
-    override fun getIconDrawable(packageName: String): Drawable? {
+    override fun getIconFile(packageName: String): File? {
         val iconFile = File(iconDir, "$packageName.png")
         if (iconFile.exists()) {
-            return Drawable.createFromPath(iconFile.absolutePath)
+            return iconFile
         }
         return null // We don't fallback to PackageManager here to enforce using our cache.
     }

@@ -43,6 +43,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import com.example.scrolltrack.data.AppMetadataRepository
+import com.example.scrolltrack.ui.mappers.AppUiModelMapper
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -50,6 +51,7 @@ class TodaySummaryViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
     private val settingsRepository: SettingsRepository,
     private val appMetadataRepository: AppMetadataRepository,
+    private val mapper: AppUiModelMapper,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -117,34 +119,10 @@ class TodaySummaryViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Eagerly, "Hello! 👋")
 
     // --- Helper function to filter and map DailyAppUsageRecords to AppUsageUiItems ---
-    private suspend fun processSingleUsageRecordToUiItem(record: DailyAppUsageRecord): AppUsageUiItem? {
-        return withContext(Dispatchers.IO) {
-            val metadata = appMetadataRepository.getAppMetadata(record.packageName)
-            // The icon is now fetched separately and is a file-based cache.
-            val icon = appMetadataRepository.getIconDrawable(record.packageName)
-
-            if (metadata != null) {
-                AppUsageUiItem(
-                    id = record.packageName,
-                    appName = metadata.appName,
-                    icon = icon,
-                    usageTimeMillis = record.usageTimeMillis,
-                    packageName = record.packageName
-                )
-            } else {
-                // This case should be very rare now, but good to have a fallback.
-                Log.w("TodaySummaryViewModel", "No metadata found for ${record.packageName}, creating fallback UI item.")
-                val fallbackAppName = record.packageName.substringAfterLast('.', record.packageName)
-                AppUsageUiItem(record.packageName, fallbackAppName, null, record.usageTimeMillis, record.packageName)
-            }
-        }
-    }
-
     private suspend fun processUsageRecords(records: List<DailyAppUsageRecord>): List<AppUsageUiItem> {
         return withContext(Dispatchers.IO) {
-            records.mapNotNull { record ->
-                processSingleUsageRecordToUiItem(record)
-            }.sortedByDescending { it.usageTimeMillis }
+            records.map { mapper.mapToAppUsageUiItem(it) }
+                .sortedByDescending { it.usageTimeMillis }
         }
     }
 
@@ -156,7 +134,6 @@ class TodaySummaryViewModel @Inject constructor(
             else -> DateUtil.formatDuration(totalMillis)
         }
     }
-
 
     // --- Data for TODAY'S SUMMARY (Main Screen) ---
     val todaysAppUsageUiList: StateFlow<List<AppUsageUiItem>> =
@@ -176,7 +153,7 @@ class TodaySummaryViewModel @Inject constructor(
 
     val aggregatedScrollDataToday: StateFlow<List<AppScrollUiItem>> =
         repository.getAggregatedScrollDataForDate(_todayDateString)
-            .map { appScrollDataList -> mapToAppScrollUiItems(appScrollDataList) }
+            .map { appScrollDataList -> appScrollDataList.map { mapper.mapToAppScrollUiItem(it) } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     val totalScrollToday: StateFlow<Long> =
@@ -227,7 +204,7 @@ class TodaySummaryViewModel @Inject constructor(
                         dateString = endDateString,
                         usageTimeMillis = totalTime
                     )
-                    emit(processSingleUsageRecordToUiItem(representativeRecord))
+                    emit(mapper.mapToAppUsageUiItem(representativeRecord))
                 } else {
                     emit(null)
                 }
@@ -236,31 +213,6 @@ class TodaySummaryViewModel @Inject constructor(
                 emit(null)
             }.collect()
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-
-
-    // Helper to map ScrollData to ScrollUiItem
-    private suspend fun mapToAppScrollUiItems(appScrollDataList: List<AppScrollData>): List<AppScrollUiItem> {
-        return withContext(Dispatchers.IO) {
-            appScrollDataList.mapNotNull { appData ->
-                val metadata = appMetadataRepository.getAppMetadata(appData.packageName)
-                val icon = appMetadataRepository.getIconDrawable(appData.packageName)
-
-                if (metadata != null) {
-                    AppScrollUiItem(
-                        id = appData.packageName,
-                        appName = metadata.appName,
-                        icon = icon,
-                        totalScroll = appData.totalScroll,
-                        packageName = appData.packageName
-                    )
-                } else {
-                    Log.w("TodaySummaryViewModel", "No metadata found for scroll item ${appData.packageName}, creating fallback UI item.")
-                    val fallbackAppName = appData.packageName.substringAfterLast('.', appData.packageName)
-                    AppScrollUiItem(appData.packageName, fallbackAppName, null, appData.totalScroll, appData.packageName)
-                }
-            }
-        }
-    }
 
     // Corrected helper to check permission
     @Suppress("DEPRECATION")

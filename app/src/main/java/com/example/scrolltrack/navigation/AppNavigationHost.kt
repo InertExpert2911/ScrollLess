@@ -27,7 +27,6 @@ import com.example.scrolltrack.util.DateUtil
 @Composable
 fun AppNavigationHost(
     navController: NavHostController,
-    viewModel: TodaySummaryViewModel,
     isAccessibilityEnabledState: Boolean,
     isUsageStatsGrantedState: Boolean,
     isNotificationListenerEnabledState: Boolean,
@@ -37,6 +36,7 @@ fun AppNavigationHost(
 ) {
     NavHost(navController = navController, startDestination = ScreenRoutes.TodaySummary.route) {
         composable(ScreenRoutes.TodaySummary.route) {
+            val viewModel: TodaySummaryViewModel = hiltViewModel()
             val greeting by viewModel.greeting.collectAsStateWithLifecycle()
             val appScrollItems by viewModel.aggregatedScrollDataToday.collectAsStateWithLifecycle()
             val totalScrollUnits by viewModel.totalScrollToday.collectAsStateWithLifecycle()

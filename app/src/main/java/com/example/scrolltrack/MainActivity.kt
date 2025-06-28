@@ -90,7 +90,6 @@ class MainActivity : ComponentActivity() {
                 val navController = rememberNavController()
                 AppNavigationHost(
                     navController = navController,
-                    viewModel = viewModel,
                     isAccessibilityEnabledState = isAccessibilityEnabled,
                     isUsageStatsGrantedState = isUsageStatsGranted,
                     isNotificationListenerEnabledState = isNotificationListenerEnabled,

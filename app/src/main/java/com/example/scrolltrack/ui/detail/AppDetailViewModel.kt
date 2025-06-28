@@ -43,7 +43,7 @@ class AppDetailViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
     private val appMetadataRepository: AppMetadataRepository,
     savedStateHandle: SavedStateHandle,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val packageName: String = savedStateHandle.get<String>("packageName")!!
@@ -113,7 +113,8 @@ class AppDetailViewModel @Inject constructor(
             val metadata = appMetadataRepository.getAppMetadata(packageName)
             if (metadata != null) {
                 _appDetailAppName.value = metadata.appName
-                _appDetailAppIcon.value = appMetadataRepository.getIconDrawable(packageName)
+                val iconFile = appMetadataRepository.getIconFile(packageName)
+                _appDetailAppIcon.value = iconFile?.let { Drawable.createFromPath(it.absolutePath) }
             } else {
                 Log.w("AppDetailViewModel", "App info not found for $packageName in AppDetailScreen")
                 _appDetailAppName.value = packageName.substringAfterLast('.', packageName)
