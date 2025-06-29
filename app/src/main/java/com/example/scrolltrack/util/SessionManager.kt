@@ -17,6 +17,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.max
 import kotlin.math.min
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 
 @Singleton
 class SessionManager @Inject constructor(
@@ -42,8 +44,7 @@ class SessionManager @Inject constructor(
         const val RECOVERED_DRAFT = "RECOVERED_DRAFT"
     }
 
-    private val handler = Handler(Looper.getMainLooper())
-    private var pendingDraftSave: Runnable? = null
+    private var draftSaveJob: Job? = null
     private companion object {
         const val DRAFT_SAVE_INTERVAL_MS = 10000L
     }
@@ -74,7 +75,9 @@ class SessionManager @Inject constructor(
         }
         currentAppScrollAccumulator += scrollDelta
         Log.d(TAG, "Scroll in $currentAppPackage: Added:$scrollDelta, SessionTotal:$currentAppScrollAccumulator")
-        scheduleDraftSave()
+        sessionManagerScope.launch {
+            scheduleDraftSave()
+        }
     }
 
     fun finalizeAndSaveCurrentSession(sessionEndTimeUTC: Long, reason: String) {
@@ -160,14 +163,15 @@ class SessionManager @Inject constructor(
         } ?: Log.i(TAG, "No draft session to recover.")
     }
 
-    private fun scheduleDraftSave() {
+    private suspend fun scheduleDraftSave() {
         if (currentAppPackage == null || currentSessionStartTime == 0L) {
-             Log.v(TAG, "PREFS SAVE (SessionManager): Skipped schedule, no active session.")
+             Log.v(TAG, "DRAFT SAVE: Skipped schedule, no active session.")
             return
         }
 
-        pendingDraftSave?.let { handler.removeCallbacks(it) }
-        pendingDraftSave = Runnable {
+        draftSaveJob?.cancel() // Cancel any previously scheduled save
+        draftSaveJob = sessionManagerScope.launch {
+            delay(DRAFT_SAVE_INTERVAL_MS)
             // Ensure these are not null before creating SessionDraft
             val pkg = currentAppPackage
             val startTime = currentSessionStartTime
@@ -180,13 +184,12 @@ class SessionManager @Inject constructor(
                     lastUpdateTime = System.currentTimeMillis()
                 )
                 draftRepository.saveDraft(sessionToSave)
-                Log.i(TAG, "PREFS SAVE (SessionManager): Saved draft for ${sessionToSave.packageName}, Amount: ${sessionToSave.scrollAmount}")
+                Log.i(TAG, "DRAFT SAVE: Saved draft for ${sessionToSave.packageName}, Amount: ${sessionToSave.scrollAmount}")
             } else {
-                 Log.w(TAG, "PREFS SAVE (SessionManager): Runnable executed but session info was null/invalid.")
+                 Log.w(TAG, "DRAFT SAVE: Coroutine executed but session info was null/invalid.")
             }
         }
-        handler.postDelayed(pendingDraftSave!!, DRAFT_SAVE_INTERVAL_MS)
-        Log.v(TAG, "PREFS SAVE (SessionManager): Scheduled draft save for $currentAppPackage in ${DRAFT_SAVE_INTERVAL_MS}ms")
+        Log.v(TAG, "DRAFT SAVE: Scheduled draft save for $currentAppPackage in ${DRAFT_SAVE_INTERVAL_MS}ms")
     }
 
     fun resetCurrentSessionState() {
@@ -194,7 +197,7 @@ class SessionManager @Inject constructor(
         currentAppActivity = null
         currentAppScrollAccumulator = 0L
         currentSessionStartTime = 0L
-        pendingDraftSave?.let { handler.removeCallbacks(it) }
+        draftSaveJob?.cancel()
         Log.d(TAG, "Session state reset by SessionManager.")
     }
 
@@ -211,7 +214,7 @@ class SessionManager @Inject constructor(
                 lastUpdateTime = System.currentTimeMillis()
             )
             draftRepository.saveDraft(sessionToSave)
-            Log.i(TAG, "PREFS SAVE (SessionManager - onStop): Immediate draft saved for ${sessionToSave.packageName}")
+            Log.i(TAG, "DRAFT SAVE (onStop): Immediate draft saved for ${sessionToSave.packageName}")
         }
         finalizeAndSaveCurrentSession(System.currentTimeMillis(), reason)
     }

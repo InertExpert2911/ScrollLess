@@ -24,6 +24,7 @@ import kotlin.math.min // Added for minOf
 import kotlinx.coroutines.withContext // Ensure this is imported
 import kotlinx.coroutines.Dispatchers // Ensure this is imported
 import android.annotation.SuppressLint
+import androidx.room.withTransaction
 import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.ui.model.AppDailyDetailData
@@ -36,9 +37,11 @@ import java.util.TimeZone
 import javax.inject.Inject
 import javax.inject.Singleton
 import dagger.hilt.android.qualifiers.ApplicationContext
+import com.example.scrolltrack.db.AppDatabase
 
 @Singleton
 class ScrollDataRepositoryImpl @Inject constructor(
+    private val appDatabase: AppDatabase,
     private val scrollSessionDao: ScrollSessionDao,
     private val dailyAppUsageDao: DailyAppUsageDao, // Make sure this is passed in constructor
     private val rawAppEventDao: RawAppEventDao, // Added RawAppEventDao
@@ -445,59 +448,57 @@ class ScrollDataRepositoryImpl @Inject constructor(
                     continue
                 }
 
-                // Step 2: Clear old raw events for that day and insert the new combined list
-                rawAppEventDao.deleteEventsForDateString(historicalDateString)
-                rawAppEventDao.insertEvents(allEventsForDay)
-                Log.i(TAG_REPO, "Successfully inserted ${allEventsForDay.size} combined raw events for $historicalDateString.")
-
-                // START of new code
-                val unlockCount = calculateUnlocks(allEventsForDay)
-                val debouncedNotifications = calculateDebouncedNotificationCounts(historicalDateString)
-                val totalNotifications = debouncedNotifications.values.sum()
-
-                val summary = DailyDeviceSummary(
-                    dateString = historicalDateString,
-                    totalUnlockCount = unlockCount,
-                    totalNotificationCount = totalNotifications,
-                    lastUpdatedTimestamp = System.currentTimeMillis()
-                )
-                dailyDeviceSummaryDao.insertOrUpdateSummary(summary)
-                Log.i(TAG_REPO, "Backfilled device summary for $historicalDateString. Unlocks=$unlockCount, Notifications=$totalNotifications")
-                // END of new code
-
                 // Step 3: Aggregate usage, active time, and app opens from the combined raw events
                 val aggregatedData = aggregateUsage(allEventsForDay, endOfDayUTC)
                 val appOpenCounts = calculateAppOpens(allEventsForDay)
 
-                if (aggregatedData.isEmpty()) {
-                    Log.d(TAG_REPO, "No relevant app usage found for $historicalDateString after aggregation.")
-                    continue
-                }
+                // --- Start Atomic Transaction ---
+                appDatabase.withTransaction {
+                    // Step 2: Clear old raw events for that day and insert the new combined list
+                    rawAppEventDao.deleteEventsForDateString(historicalDateString)
+                    rawAppEventDao.insertEvents(allEventsForDay)
+                    Log.i(TAG_REPO, "Successfully inserted ${allEventsForDay.size} combined raw events for $historicalDateString.")
 
-                // Step 4: Create final records with all aggregated data
-                val recordsToInsert = aggregatedData.map { (key, values) ->
-                    val (pkg, date) = key
-                    val (usage, active) = values
-                    val opens = appOpenCounts[pkg] ?: 0
+                    val unlockCount = calculateUnlocks(allEventsForDay)
+                    val debouncedNotifications = calculateDebouncedNotificationCounts(historicalDateString)
+                    val totalNotifications = debouncedNotifications.values.sum()
 
-                    DailyAppUsageRecord(
-                        packageName = pkg,
-                        dateString = date,
-                        usageTimeMillis = usage,
-                        activeTimeMillis = active,
-                        appOpenCount = opens,
-                        notificationCount = 0, // Cannot be backfilled
+                    val summary = DailyDeviceSummary(
+                        dateString = historicalDateString,
+                        totalUnlockCount = unlockCount,
+                        totalNotificationCount = totalNotifications,
                         lastUpdatedTimestamp = System.currentTimeMillis()
                     )
-                }
+                    dailyDeviceSummaryDao.insertOrUpdateSummary(summary)
+                    Log.i(TAG_REPO, "Backfilled device summary for $historicalDateString. Unlocks=$unlockCount, Notifications=$totalNotifications")
 
-                // Step 5: Atomically update the database for the historical day
-                dailyAppUsageDao.deleteUsageForDate(historicalDateString)
-                dailyAppUsageDao.insertAllUsage(recordsToInsert)
-                if (recordsToInsert.isNotEmpty()) {
-                    anyDataFound = true
+                    // Step 5: Atomically update the database for the historical day
+                    dailyAppUsageDao.deleteUsageForDate(historicalDateString)
+
+                    if (aggregatedData.isNotEmpty()) {
+                        val recordsToInsert = aggregatedData.map { (key, values) ->
+                            val (pkg, date) = key
+                            val (usage, active) = values
+                            val opens = appOpenCounts[pkg] ?: 0
+
+                            DailyAppUsageRecord(
+                                packageName = pkg,
+                                dateString = date,
+                                usageTimeMillis = usage,
+                                activeTimeMillis = active,
+                                appOpenCount = opens,
+                                notificationCount = 0, // Cannot be backfilled
+                                lastUpdatedTimestamp = System.currentTimeMillis()
+                            )
+                        }
+                        dailyAppUsageDao.insertAllUsage(recordsToInsert)
+                        anyDataFound = true
+                        Log.i(TAG_REPO, "Successfully backfilled ${recordsToInsert.size} usage records for $historicalDateString.")
+                    } else {
+                        Log.d(TAG_REPO, "No relevant app usage found for $historicalDateString after aggregation. Old usage records (if any) were cleared.")
+                    }
                 }
-                Log.i(TAG_REPO, "Successfully backfilled ${recordsToInsert.size} usage records for $historicalDateString.")
+                // --- End Atomic Transaction ---
 
             } catch (e: Exception) {
                 Log.e(TAG_REPO, "Error during backfill for $historicalDateString: ${e.message}", e)

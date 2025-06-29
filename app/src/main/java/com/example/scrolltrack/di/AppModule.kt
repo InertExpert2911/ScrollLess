@@ -20,10 +20,6 @@ abstract class AppModule {
 
     @Binds
     @Singleton
-    abstract fun bindScrollDataRepository(impl: ScrollDataRepositoryImpl): ScrollDataRepository
-
-    @Binds
-    @Singleton
     abstract fun bindSettingsRepository(impl: SettingsRepositoryImpl): SettingsRepository
 
     @Binds
@@ -35,6 +31,28 @@ abstract class AppModule {
     abstract fun bindAppMetadataRepository(impl: AppMetadataRepositoryImpl): AppMetadataRepository
 
     companion object {
+        @Provides
+        @Singleton
+        fun provideScrollDataRepository(
+            appDatabase: AppDatabase,
+            scrollSessionDao: ScrollSessionDao,
+            dailyAppUsageDao: DailyAppUsageDao,
+            rawAppEventDao: RawAppEventDao,
+            notificationDao: NotificationDao,
+            dailyDeviceSummaryDao: DailyDeviceSummaryDao,
+            @ApplicationContext context: Context
+        ): ScrollDataRepository {
+            return ScrollDataRepositoryImpl(
+                appDatabase,
+                scrollSessionDao,
+                dailyAppUsageDao,
+                rawAppEventDao,
+                notificationDao,
+                dailyDeviceSummaryDao,
+                context
+            )
+        }
+
         @Provides
         @Singleton
         fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
