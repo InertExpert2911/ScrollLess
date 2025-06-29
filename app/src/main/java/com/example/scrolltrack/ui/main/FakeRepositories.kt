@@ -10,19 +10,20 @@ import com.example.scrolltrack.db.ScrollSessionRecord
 import com.example.scrolltrack.ui.model.AppScrollUiItem
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class FakeSettingsRepository : SettingsRepository {
-    private var theme = "oled_dark"
+    private val _theme = MutableStateFlow("oled_dark")
 
-    override fun getSelectedTheme(): String = theme
-    override fun setSelectedTheme(theme: String) {
-        this.theme = theme
+    override val selectedTheme: Flow<String> = _theme
+
+    override suspend fun setSelectedTheme(theme: String) {
+        _theme.value = theme
     }
 }
 
 class FakeScrollDataRepository : ScrollDataRepository {
     override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> =
-
         flowOf(emptyList())
 
     override fun getTotalScrollForDate(dateString: String): Flow<Long?> = flowOf(13106L)
@@ -54,7 +55,7 @@ class FakeScrollDataRepository : ScrollDataRepository {
         dateStrings: List<String>
     ): List<AppScrollDataPerDate> = emptyList()
 
-        override suspend fun insertScrollSession(session: ScrollSessionRecord) {}
+    override suspend fun insertScrollSession(session: ScrollSessionRecord) {}
 
     override fun getTotalUnlockCountForDate(dateString: String): Flow<Int> = flowOf(24)
 

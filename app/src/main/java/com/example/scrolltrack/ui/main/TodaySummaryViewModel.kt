@@ -66,15 +66,15 @@ class TodaySummaryViewModel @Inject constructor(
     val isNotificationListenerEnabled: StateFlow<Boolean> = _isNotificationListenerEnabled.asStateFlow()
 
     // --- Theme Management ---
-    private val _selectedThemeVariant = MutableStateFlow(settingsRepository.getSelectedTheme())
-    val selectedThemeVariant: StateFlow<String> = _selectedThemeVariant.asStateFlow()
+    val selectedThemeVariant: StateFlow<String> = settingsRepository.selectedTheme
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "oled_dark")
 
     // Ensure _todayDateString is initialized before _selectedDateForHistory
     private val _todayDateString = DateUtil.getCurrentLocalDateString()
 
     init {
-        // Load saved theme or use default
-        Log.d("TodaySummaryViewModel", "Initial theme loaded: ${settingsRepository.getSelectedTheme()}")
+        // The flow from the repo will provide the initial value.
+        Log.d("TodaySummaryViewModel", "ViewModel created, theme will be provided by repository flow.")
         // Check initial permission state
         checkAllPermissions()
         // Initial data refresh
@@ -82,10 +82,9 @@ class TodaySummaryViewModel @Inject constructor(
     }
 
     fun updateThemeVariant(newVariant: String) {
-        if (newVariant != _selectedThemeVariant.value) {
-            _selectedThemeVariant.value = newVariant
+        viewModelScope.launch {
             settingsRepository.setSelectedTheme(newVariant)
-            Log.d("TodaySummaryViewModel", "Theme updated and saved: $newVariant")
+            Log.d("TodaySummaryViewModel", "Theme update requested: $newVariant")
         }
     }
 

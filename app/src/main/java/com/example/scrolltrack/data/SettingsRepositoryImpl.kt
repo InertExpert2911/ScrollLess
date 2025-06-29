@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,11 +25,21 @@ class SettingsRepositoryImpl @Inject constructor(@ApplicationContext context: Co
         appPrefs = context.getSharedPreferences(PREFS_APP_SETTINGS, Context.MODE_PRIVATE)
     }
 
-    override fun getSelectedTheme(): String {
-        return appPrefs.getString(KEY_SELECTED_THEME, DEFAULT_THEME) ?: DEFAULT_THEME
+    override val selectedTheme: Flow<String> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_SELECTED_THEME) {
+                trySend(appPrefs.getString(KEY_SELECTED_THEME, DEFAULT_THEME) ?: DEFAULT_THEME)
+            }
+        }
+        appPrefs.registerOnSharedPreferenceChangeListener(listener)
+
+        // Emit the initial value
+        trySend(appPrefs.getString(KEY_SELECTED_THEME, DEFAULT_THEME) ?: DEFAULT_THEME)
+
+        awaitClose { appPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
-    override fun setSelectedTheme(theme: String) {
+    override suspend fun setSelectedTheme(theme: String) {
         appPrefs.edit {
             putString(KEY_SELECTED_THEME, theme)
         }

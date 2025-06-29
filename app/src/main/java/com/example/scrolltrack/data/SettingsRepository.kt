@@ -1,6 +1,8 @@
 package com.example.scrolltrack.data
 
+import kotlinx.coroutines.flow.Flow
+
 interface SettingsRepository {
-    fun getSelectedTheme(): String
-    fun setSelectedTheme(theme: String)
+    val selectedTheme: Flow<String>
+    suspend fun setSelectedTheme(theme: String)
 } 

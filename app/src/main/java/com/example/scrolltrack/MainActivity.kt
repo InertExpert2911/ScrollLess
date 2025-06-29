@@ -78,7 +78,7 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            val selectedTheme by viewModel.selectedThemeVariant.collectAsStateWithLifecycle()
+            val selectedTheme by viewModel.selectedThemeVariant.collectAsState()
             val isAccessibilityEnabled by viewModel.isAccessibilityServiceEnabled.collectAsStateWithLifecycle()
             val isUsageStatsGranted by viewModel.isUsagePermissionGranted.collectAsStateWithLifecycle()
             val isNotificationListenerEnabled by viewModel.isNotificationListenerEnabled.collectAsStateWithLifecycle()
