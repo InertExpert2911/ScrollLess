@@ -34,7 +34,7 @@ class AppMetadataRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun getAppMetadata(packageName: String): AppMetadata? = withContext(Dispatchers.IO) {
+    override suspend fun getAppMetadata(packageName: String): AppMetadata? {
         val fromDb = appMetadataDao.getByPackageName(packageName)
 
         // Case 1: App is in our DB and marked as installed.
@@ -51,25 +51,25 @@ class AppMetadataRepositoryImpl @Inject constructor(
 
                 if (fromDb.versionCode != currentVersionCode) {
                     Log.d(TAG, "App update detected for $packageName. Re-fetching metadata.")
-                    return@withContext fetchFromPackageManagerAndCache(packageName)
+                    return fetchFromPackageManagerAndCache(packageName)
                 } else {
-                    return@withContext fromDb // Version is the same, return cached data.
+                    return fromDb // Version is the same, return cached data.
                 }
             } catch (e: PackageManager.NameNotFoundException) {
                 // App was marked as installed, but is no longer on device. Correct this.
                 Log.w(TAG, "Correcting record: $packageName was marked installed but not found.")
                 handleAppUninstalled(packageName)
-                return@withContext appMetadataDao.getByPackageName(packageName) // Return the updated (uninstalled) record
+                return appMetadataDao.getByPackageName(packageName) // Return the updated (uninstalled) record
             }
         }
 
         // Case 2: App is in our DB but marked as uninstalled.
         if (fromDb != null && !fromDb.isInstalled) {
-            return@withContext fromDb
+            return fromDb
         }
 
         // Case 3: App is not in our DB at all.
-        return@withContext fetchFromPackageManagerAndCache(packageName)
+        return fetchFromPackageManagerAndCache(packageName)
     }
 
     override fun getIconFile(packageName: String): File? {
@@ -80,7 +80,7 @@ class AppMetadataRepositoryImpl @Inject constructor(
         return null // We don't fallback to PackageManager here to enforce using our cache.
     }
 
-    override suspend fun syncAllInstalledApps(): Unit = withContext(Dispatchers.IO) {
+    override suspend fun syncAllInstalledApps() {
         Log.d(TAG, "Starting full sync of installed apps...")
         val allPmApps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
         val allDbPackageNames = appMetadataDao.getAllKnownPackageNames().toSet()
@@ -105,24 +105,24 @@ class AppMetadataRepositoryImpl @Inject constructor(
         Log.d(TAG, "Full sync complete.")
     }
 
-    override suspend fun handleAppUninstalled(packageName: String): Unit = withContext(Dispatchers.IO) {
+    override suspend fun handleAppUninstalled(packageName: String) {
         appMetadataDao.markAsUninstalled(packageName, System.currentTimeMillis())
         deleteIconFile(packageName)
         Log.d(TAG, "Handled app uninstallation for $packageName.")
     }
 
-    override suspend fun handleAppInstalledOrUpdated(packageName: String): Unit = withContext(Dispatchers.IO) {
+    override suspend fun handleAppInstalledOrUpdated(packageName: String) {
         fetchFromPackageManagerAndCache(packageName)
         Log.d(TAG, "Handled app installation/update for $packageName.")
     }
 
-    private suspend fun fetchFromPackageManagerAndCache(packageName: String): AppMetadata? = withContext(Dispatchers.IO) {
+    private suspend fun fetchFromPackageManagerAndCache(packageName: String): AppMetadata? {
         try {
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
             val appInfo = packageInfo.applicationInfo
             if (appInfo == null) {
                 Log.e(TAG, "ApplicationInfo is null for $packageName. Cannot cache.")
-                return@withContext null
+                return null
             }
             val appName = packageManager.getApplicationLabel(appInfo).toString()
             val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
@@ -152,10 +152,10 @@ class AppMetadataRepositoryImpl @Inject constructor(
 
             appMetadataDao.insertOrUpdate(metadata)
             Log.d(TAG, "Fetched and cached new metadata for $packageName.")
-            return@withContext metadata
+            return metadata
         } catch (e: PackageManager.NameNotFoundException) {
             Log.w(TAG, "Could not fetch metadata for $packageName, it may have been uninstalled quickly.", e)
-            return@withContext null
+            return null
         }
     }
 

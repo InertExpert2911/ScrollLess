@@ -38,6 +38,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.example.scrolltrack.db.AppDatabase
+import com.example.scrolltrack.util.AppConstants
 
 @Singleton
 class ScrollDataRepositoryImpl @Inject constructor(
@@ -72,17 +73,6 @@ class ScrollDataRepositoryImpl @Inject constructor(
     internal fun isFilteredPackage(packageName: String): Boolean {
         return packageName == "com.example.scrolltrack" ||
                 packageName.contains("launcher")
-    }
-
-    companion object {
-        private const val CONFIG_CHANGE_PEEK_AHEAD_MS = 1000L // Time to look ahead for config change after a pause
-        private const val CONFIG_CHANGE_MERGE_THRESHOLD_MS = 3000L // Time within which a resume merges a transient config-change pause
-        private const val MINIMUM_SIGNIFICANT_SESSION_DURATION_MS = 2000L // Ignore sessions shorter than this
-        private const val QUICK_SWITCH_THRESHOLD_MS = 2000L // Minimum duration for a session to be considered significant
-        private const val EVENT_FETCH_OVERLAP_MS = 10000L // 10 seconds overlap for iterative fetching
-        private const val ACTIVE_TIME_INTERACTION_WINDOW_MS = 2000L // Define the active time interaction window
-        private const val NOTIFICATION_DEBOUNCE_WINDOW_MS = 30000L // 30 seconds
-        private const val UNLOCK_EVENT_FOLLOW_WINDOW_MS = 2000L // 2 seconds
     }
 
     override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> {
@@ -143,7 +133,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
                 var lastCountedNotificationTime = 0L
 
                 sortedRecords.forEach { record ->
-                    if (count == 0 || record.postTimeUTC - lastCountedNotificationTime > NOTIFICATION_DEBOUNCE_WINDOW_MS) {
+                    if (count == 0 || record.postTimeUTC - lastCountedNotificationTime > AppConstants.NOTIFICATION_DEBOUNCE_WINDOW_MS) {
                         count++
                         lastCountedNotificationTime = record.postTimeUTC
                     }
@@ -202,12 +192,12 @@ class ScrollDataRepositoryImpl @Inject constructor(
         )
     }
 
-    override suspend fun updateTodayAppUsageStats(): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun updateTodayAppUsageStats(): Boolean {
         val usageStatsManager =
             context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
                 ?: run {
                     Log.e(TAG_REPO, "UsageStatsManager not available.")
-                    return@withContext false
+                    return false
                 }
 
         val todayDateString = DateUtil.getCurrentLocalDateString()
@@ -276,10 +266,10 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
         } catch (e: Exception) {
             Log.e(TAG_REPO, "Error during today's usage update for $todayDateString: ${e.message}", e)
-            return@withContext false
+            return false
         }
         
-        return@withContext true
+        return true
     }
 
     /**
@@ -287,14 +277,14 @@ class ScrollDataRepositoryImpl @Inject constructor(
      * @param dateString The date to calculate active time for.
      * @return A map of package name to its total active time in milliseconds.
      */
-    private suspend fun calculateActiveTimesForDay(dateString: String): Map<String, Long> = withContext(Dispatchers.IO) {
+    private suspend fun calculateActiveTimesForDay(dateString: String): Map<String, Long> {
         val startOfDayUTC = DateUtil.getStartOfDayUtcMillis(dateString)
         val endOfDayUTC = DateUtil.getEndOfDayUtcMillis(dateString)
 
         val interactionEvents = rawAppEventDao.getEventsForPeriod(startOfDayUTC, endOfDayUTC)
             .filter { RawAppEvent.isAccessibilityEvent(it.eventType) }
 
-        if (interactionEvents.isEmpty()) return@withContext emptyMap()
+        if (interactionEvents.isEmpty()) return emptyMap()
 
         val eventsByPackage = interactionEvents.groupBy { it.packageName }
         val activeTimeByPackage = mutableMapOf<String, Long>()
@@ -303,13 +293,13 @@ class ScrollDataRepositoryImpl @Inject constructor(
             val interactionTimestamps = events.map { it.eventTimestamp }.sorted()
             activeTimeByPackage[pkg] = calculateActiveTimeFromInteractions(interactionTimestamps, startOfDayUTC, endOfDayUTC)
         }
-        return@withContext activeTimeByPackage
+        return activeTimeByPackage
     }
 
     private fun calculateActiveTimeFromInteractions(interactionTimestamps: List<Long>, sessionStartTime: Long, sessionEndTime: Long): Long {
         if (interactionTimestamps.isEmpty()) return 0L
 
-        val intervals = interactionTimestamps.map { it to it + ACTIVE_TIME_INTERACTION_WINDOW_MS }.sortedBy { it.first }
+        val intervals = interactionTimestamps.map { it to it + AppConstants.ACTIVE_TIME_INTERACTION_WINDOW_MS }.sortedBy { it.first }
         val merged = mutableListOf<Pair<Long, Long>>()
         
         intervals.firstOrNull()?.let { merged.add(it) } ?: return 0L
@@ -381,7 +371,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
         sessions.forEach { session ->
             val usageTime = session.endTime - session.startTime
-            if (usageTime < MINIMUM_SIGNIFICANT_SESSION_DURATION_MS) return@forEach
+            if (usageTime < AppConstants.MINIMUM_SIGNIFICANT_SESSION_DURATION_MS) return@forEach
 
             val dateString = DateUtil.formatUtcTimestampToLocalDateString(session.startTime)
             val key = Pair(session.pkg, dateString)
@@ -404,10 +394,10 @@ class ScrollDataRepositoryImpl @Inject constructor(
         return dailyAppUsageDao.getTotalUsageTimeMillisForDate(dateString)
     }
 
-    override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean {
         val usageStatsManager =
             context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
-                ?: return@withContext false
+                ?: return false
 
         val today = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
         var overallSuccess = true
@@ -505,7 +495,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
                 overallSuccess = false
             }
         }
-        return@withContext overallSuccess && anyDataFound
+        return overallSuccess && anyDataFound
     }
 
     @SuppressLint("PackageManagerGetSignatures")
