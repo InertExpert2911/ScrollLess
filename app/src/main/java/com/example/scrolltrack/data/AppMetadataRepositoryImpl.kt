@@ -116,6 +116,10 @@ class AppMetadataRepositoryImpl @Inject constructor(
         Log.d(TAG, "Handled app installation/update for $packageName.")
     }
 
+    override suspend fun getNonVisiblePackageNames(): List<String> {
+        return appMetadataDao.getNonVisiblePackageNames()
+    }
+
     private suspend fun fetchFromPackageManagerAndCache(packageName: String): AppMetadata? {
         try {
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
@@ -138,6 +142,37 @@ class AppMetadataRepositoryImpl @Inject constructor(
                 packageInfo.versionCode.toLong()
             }
 
+            // --- Heuristic for isUserVisible ---
+            val hasLaunchIntent = packageManager.getLaunchIntentForPackage(packageName) != null
+
+            val appCategory = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                appInfo.category
+            } else {
+                -1 // ApplicationInfo.CATEGORY_UNDEFINED
+            }
+
+            // A set of categories for apps that are almost always user-facing.
+            val userVisibleCategories = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                setOf(
+                    ApplicationInfo.CATEGORY_GAME,
+                    ApplicationInfo.CATEGORY_SOCIAL,
+                    ApplicationInfo.CATEGORY_VIDEO,
+                    ApplicationInfo.CATEGORY_AUDIO,
+                    ApplicationInfo.CATEGORY_MAPS,
+                    ApplicationInfo.CATEGORY_NEWS,
+                    ApplicationInfo.CATEGORY_PRODUCTIVITY,
+                    ApplicationInfo.CATEGORY_IMAGE
+                )
+            } else {
+                emptySet()
+            }
+
+            // An app is considered user-visible if it's NOT a system app,
+            // OR it has a launcher icon,
+            // OR it belongs to a clearly interactive category.
+            val isUserVisible = !isSystem || hasLaunchIntent || userVisibleCategories.contains(appCategory)
+            // --- End of Heuristic ---
+
             val metadata = AppMetadata(
                 packageName = packageName,
                 appName = appName,
@@ -146,12 +181,14 @@ class AppMetadataRepositoryImpl @Inject constructor(
                 isSystemApp = isSystem,
                 isInstalled = true,
                 isIconCached = iconCached,
+                appCategory = appCategory,
+                isUserVisible = isUserVisible,
                 installTimestamp = packageInfo.firstInstallTime,
                 lastUpdateTimestamp = System.currentTimeMillis()
             )
 
             appMetadataDao.insertOrUpdate(metadata)
-            Log.d(TAG, "Fetched and cached new metadata for $packageName.")
+            Log.d(TAG, "Fetched and cached new metadata for $packageName. IsUserVisible: $isUserVisible, Category: $appCategory")
             return metadata
         } catch (e: PackageManager.NameNotFoundException) {
             Log.w(TAG, "Could not fetch metadata for $packageName, it may have been uninstalled quickly.", e)

@@ -35,6 +35,7 @@ abstract class AppModule {
         @Singleton
         fun provideScrollDataRepository(
             appDatabase: AppDatabase,
+            appMetadataRepository: AppMetadataRepository,
             scrollSessionDao: ScrollSessionDao,
             dailyAppUsageDao: DailyAppUsageDao,
             rawAppEventDao: RawAppEventDao,
@@ -44,6 +45,7 @@ abstract class AppModule {
         ): ScrollDataRepository {
             return ScrollDataRepositoryImpl(
                 appDatabase,
+                appMetadataRepository,
                 scrollSessionDao,
                 dailyAppUsageDao,
                 rawAppEventDao,

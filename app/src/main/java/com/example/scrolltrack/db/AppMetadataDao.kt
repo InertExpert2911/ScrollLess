@@ -18,4 +18,7 @@ interface AppMetadataDao {
 
     @Query("SELECT package_name FROM app_metadata")
     suspend fun getAllKnownPackageNames(): List<String>
+
+    @Query("SELECT package_name FROM app_metadata WHERE is_user_visible = 0")
+    suspend fun getNonVisiblePackageNames(): List<String>
 } 

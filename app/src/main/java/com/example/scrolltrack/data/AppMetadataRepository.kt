@@ -10,4 +10,5 @@ interface AppMetadataRepository {
     suspend fun syncAllInstalledApps()
     suspend fun handleAppUninstalled(packageName: String)
     suspend fun handleAppInstalledOrUpdated(packageName: String)
+    suspend fun getNonVisiblePackageNames(): List<String>
 } 

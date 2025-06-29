@@ -39,10 +39,15 @@ import javax.inject.Singleton
 import dagger.hilt.android.qualifiers.ApplicationContext
 import com.example.scrolltrack.db.AppDatabase
 import com.example.scrolltrack.util.AppConstants
+import com.example.scrolltrack.data.AppMetadataRepository
+import android.content.Intent
+import android.content.pm.ResolveInfo
+import android.os.Build
 
 @Singleton
 class ScrollDataRepositoryImpl @Inject constructor(
     private val appDatabase: AppDatabase,
+    private val appMetadataRepository: AppMetadataRepository,
     private val scrollSessionDao: ScrollSessionDao,
     private val dailyAppUsageDao: DailyAppUsageDao, // Make sure this is passed in constructor
     private val rawAppEventDao: RawAppEventDao, // Added RawAppEventDao
@@ -53,26 +58,35 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
     private val TAG_REPO = "ScrollDataRepoImpl"
 
-    // Filter list - add package names of apps to exclude from tracking
-    private val filteredPackages = setOf(
-        "com.example.scrolltrack", // Exclude the app itself
-        "com.android.systemui",
-        "com.google.android.apps.nexuslauncher", // Example: exclude a launcher
-        "com.nothing.launcher",
-        "com.android.permissioncontroller"
-        // Add other system/launcher packages as needed
-    )
+    /**
+     * Builds a comprehensive set of package names that should be ignored during usage aggregation.
+     * This set is created dynamically by fetching all apps that have been pre-identified as
+     * "non-user-visible" from the database.
+     *
+     * @return A `Set<String>` of package names to filter out.
+     */
+    private suspend fun buildFilterSet(): Set<String> {
+        // Fetch all packages marked as non-user-visible by our heuristic.
+        val filters = appMetadataRepository.getNonVisiblePackageNames().toMutableSet()
+
+        // Also add our own app and systemui just in case they aren't marked correctly.
+        filters.add(context.packageName)
+        filters.add("com.android.systemui")
+
+        Log.d(TAG_REPO, "Filter set built with ${filters.size} non-visible packages.")
+        return filters
+    }
 
     /**
-     * Checks if the given package name should be filtered out from tracking.
-     * Currently, it filters out the app's own package and common launcher packages.
+     * Checks if the given package name should be filtered out from tracking based on a
+     * dynamically generated filter set.
      *
      * @param packageName The name of the package to check.
+     * @param filterSet The pre-built set of package names to ignore.
      * @return `true` if the package should be filtered, `false` otherwise.
      */
-    internal fun isFilteredPackage(packageName: String): Boolean {
-        return packageName == "com.example.scrolltrack" ||
-                packageName.contains("launcher")
+    private fun isFiltered(packageName: String, filterSet: Set<String>): Boolean {
+        return filterSet.contains(packageName)
     }
 
     override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> {
@@ -99,7 +113,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
         scrollSessionDao.insertSession(session)
     }
 
-    private fun calculateAppOpens(events: List<RawAppEvent>): Map<String, Int> {
+    private suspend fun calculateAppOpens(events: List<RawAppEvent>): Map<String, Int> {
         val appOpens = mutableMapOf<String, Int>()
         var lastResumedPackage: String? = null
 
@@ -107,9 +121,12 @@ class ScrollDataRepositoryImpl @Inject constructor(
             .filter { it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED }
             .sortedBy { it.eventTimestamp }
 
+        // We must build the filter set once to use for this calculation.
+        val filterSet = buildFilterSet()
+
         resumeEvents.forEach { event ->
             if (event.packageName != lastResumedPackage) {
-                if (!isFilteredPackage(event.packageName)) {
+                if (!isFiltered(event.packageName, filterSet)) {
                     appOpens[event.packageName] = appOpens.getOrDefault(event.packageName, 0) + 1
                 }
             }
@@ -321,44 +338,97 @@ class ScrollDataRepositoryImpl @Inject constructor(
         return clippedIntervals.sumOf { it.second - it.first }
     }
 
-    internal fun aggregateUsage(allEvents: List<RawAppEvent>, periodEndDate: Long): Map<Pair<String, String>, Pair<Long, Long>> {
+    /**
+     * The core aggregation logic that reconstructs usage sessions from a raw event stream.
+     * This version uses a look-ahead approach to accurately determine session end times,
+     * distinguishing between app-to-app switches and app-to-home/screen-off events.
+     *
+     * A session is started when an app receives an `ACTIVITY_RESUMED` event.
+     * When that app later receives a `PAUSED` or `STOPPED` event, this function "looks ahead"
+     * at the next event in the timeline:
+     * - If the next event is another app resuming (an app-to-app switch), the session is ended
+     *   at the timestamp just before the new app starts. This creates a contiguous timeline
+     *   of usage with no gaps.
+     * - If the next event is the user returning to the home screen (a filtered launcher app)
+     *   or the screen turning off, the session is ended at the exact timestamp of the
+     *   `PAUSED` event. This prevents "idle" time on the home screen from being counted.
+     *
+     * This method is the key to providing usage data that closely mirrors system-level
+     * tools like Digital Wellbeing.
+     *
+     * @param allEvents A list of all `RawAppEvent`s for the period, sorted by timestamp.
+     * @param periodEndDate The timestamp marking the end of the aggregation period.
+     * @return A map of (PackageName, DateString) to a pair of (TotalUsage, ActiveUsage).
+     */
+    internal suspend fun aggregateUsage(allEvents: List<RawAppEvent>, periodEndDate: Long): Map<Pair<String, String>, Pair<Long, Long>> {
+        // Data class to hold completed session information.
         data class Session(val pkg: String, val startTime: Long, val endTime: Long)
         val sessions = mutableListOf<Session>()
-        val currentSessionStart = mutableMapOf<String, Long>()
 
-        allEvents.forEach { event ->
+        // A map to track the start time of an app's current foreground session.
+        val foregroundAppStartTimes = mutableMapOf<String, Long>()
+
+        // Build the filter set once for efficiency.
+        val filterSet = buildFilterSet()
+
+        allEvents.forEachIndexed { index, event ->
             val pkg = event.packageName
-            if (isFilteredPackage(pkg)) return@forEach
+            // Ignore events from system packages, launchers, or our own app.
+            if (isFiltered(pkg, filterSet)) return@forEachIndexed
 
-            val isResume = event.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED
-            val isPauseOrStop = event.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED || event.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_STOPPED
-            val isScreenOff = event.eventType == RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE
-
-            if (isResume) {
-                currentSessionStart.keys.filter { it != pkg }.forEach { otherPkg ->
-                    currentSessionStart.remove(otherPkg)?.let { startTime ->
-                        if(event.eventTimestamp > startTime) sessions.add(Session(otherPkg, startTime, event.eventTimestamp - 1))
+            when (event.eventType) {
+                RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED -> {
+                    // An app has come to the foreground. If it wasn't already, start tracking its session.
+                    if (!foregroundAppStartTimes.containsKey(pkg)) {
+                        foregroundAppStartTimes[pkg] = event.eventTimestamp
                     }
                 }
-                if (!currentSessionStart.containsKey(pkg)) {
-                    currentSessionStart[pkg] = event.eventTimestamp
+
+                RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, RawAppEvent.EVENT_TYPE_ACTIVITY_STOPPED -> {
+                    // An app has left the foreground. We need to determine when its session *truly* ended.
+                    foregroundAppStartTimes.remove(pkg)?.let { startTime ->
+                        // Look at the very next event to decide the session's end time.
+                        val nextEvent = allEvents.getOrNull(index + 1)
+                        val endTime = if (nextEvent != null &&
+                            (nextEvent.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED && !isFiltered(nextEvent.packageName, filterSet))
+                        ) {
+                            // Case 1: App-to-App switch. End session right before the next app starts.
+                            nextEvent.eventTimestamp - 1
+                        } else {
+                            // Case 2: App-to-Home or screen off. End session at the exact pause time.
+                            event.eventTimestamp
+                        }
+
+                        if (endTime > startTime) {
+                            sessions.add(Session(pkg, startTime, endTime))
+                        }
+                    }
                 }
-            } else if (isPauseOrStop) {
-                currentSessionStart.remove(pkg)?.let { startTime ->
-                    if(event.eventTimestamp > startTime) sessions.add(Session(pkg, startTime, event.eventTimestamp))
-                }
-            } else if (isScreenOff) {
-                currentSessionStart.keys.toList().forEach { runningPkg ->
-                    currentSessionStart.remove(runningPkg)?.let { startTime ->
-                        if(event.eventTimestamp > startTime) sessions.add(Session(runningPkg, startTime, event.eventTimestamp))
+
+                RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE -> {
+                    // Screen went off. This terminates all currently tracked foreground sessions.
+                    foregroundAppStartTimes.keys.toList().forEach { runningPkg ->
+                        foregroundAppStartTimes.remove(runningPkg)?.let { startTime ->
+                            if (event.eventTimestamp > startTime) {
+                                sessions.add(Session(runningPkg, startTime, event.eventTimestamp))
+                            }
+                        }
                     }
                 }
             }
         }
-        currentSessionStart.forEach { (pkg, startTime) ->
-            if(periodEndDate > startTime) sessions.add(Session(pkg, startTime, periodEndDate))
-        }
 
+        // After iterating through all events, any app still in the map is a session
+        // that was running when the period ended. Finalize it now.
+        foregroundAppStartTimes.forEach { (pkg, startTime) ->
+            if (periodEndDate > startTime) {
+                sessions.add(Session(pkg, startTime, periodEndDate))
+            }
+        }
+        foregroundAppStartTimes.clear()
+
+        // --- Aggregate Sessions into Final Map ---
+        // (This part of the logic remains the same)
         val aggregator = mutableMapOf<Pair<String, String>, Pair<Long, Long>>()
         val accessibilityEventTypes = setOf(
             RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED,

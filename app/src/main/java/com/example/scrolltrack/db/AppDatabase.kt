@@ -11,7 +11,7 @@ import androidx.room.RoomDatabase
  */
 @Database(
     entities = [ScrollSessionRecord::class, DailyAppUsageRecord::class, RawAppEvent::class, NotificationRecord::class, DailyDeviceSummary::class, AppMetadata::class],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
