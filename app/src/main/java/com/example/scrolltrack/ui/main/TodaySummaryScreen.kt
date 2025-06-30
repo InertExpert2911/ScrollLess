@@ -83,6 +83,7 @@ fun TodaySummaryScreen(
     totalNotifications: Int,
     onNavigateToHistoricalUsage: () -> Unit,
     onNavigateToUnlocks: () -> Unit,
+    onNavigateToNotifications: () -> Unit,
     onNavigateToAppDetail: (String) -> Unit,
     onThemeChange: (String) -> Unit,
     currentThemeVariant: String,
@@ -196,7 +197,8 @@ fun TodaySummaryScreen(
                 modifier = Modifier.weight(1f),
                 label = "Notifications",
                 value = totalNotifications.toString(),
-                icon = Icons.Filled.Notifications
+                icon = Icons.Filled.Notifications,
+                onCardClick = onNavigateToNotifications
             )
         }
 

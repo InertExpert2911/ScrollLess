@@ -632,4 +632,12 @@ class ScrollDataRepositoryImpl @Inject constructor(
     override fun getAllDeviceSummaries(): Flow<List<DailyDeviceSummary>> {
         return dailyDeviceSummaryDao.getAllSummaries()
     }
+
+    override fun getNotificationSummaryForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationSummary>> {
+        return notificationDao.getNotificationSummaryForPeriod(startDateString, endDateString)
+    }
+
+    override fun getNotificationCountPerAppForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationCountPerApp>> {
+        return notificationDao.getNotificationCountPerAppForPeriod(startDateString, endDateString)
+    }
 } 

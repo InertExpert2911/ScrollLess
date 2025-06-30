@@ -23,6 +23,8 @@ import com.example.scrolltrack.ui.main.TodaySummaryViewModel
 import com.example.scrolltrack.ui.unlocks.UnlocksScreen
 import com.example.scrolltrack.ui.unlocks.UnlocksViewModel
 import com.example.scrolltrack.util.DateUtil
+import com.example.scrolltrack.ui.notifications.NotificationsViewModel
+import com.example.scrolltrack.ui.notifications.NotificationsScreen
 
 @Composable
 fun AppNavigationHost(
@@ -70,6 +72,9 @@ fun AppNavigationHost(
                 onNavigateToUnlocks = {
                     navController.navigate(ScreenRoutes.UnlocksRoute.route)
                 },
+                onNavigateToNotifications = {
+                    navController.navigate(ScreenRoutes.NotificationsRoute.route)
+                },
                 onNavigateToAppDetail = { packageName ->
                     navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(packageName))
                 },
@@ -78,8 +83,13 @@ fun AppNavigationHost(
             )
         }
 
+        composable(ScreenRoutes.NotificationsRoute.route) {
+            val notificationsViewModel: NotificationsViewModel = hiltViewModel()
+            NotificationsScreen(navController = navController, viewModel = notificationsViewModel)
+        }
+
         composable(ScreenRoutes.UnlocksRoute.route) {
-            val unlocksViewModel: UnlocksViewModel = hiltViewModel() // This line needs the import
+            val unlocksViewModel: UnlocksViewModel = hiltViewModel()
             UnlocksScreen(navController = navController, viewModel = unlocksViewModel)
         }
 

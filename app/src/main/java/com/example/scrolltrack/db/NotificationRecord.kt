@@ -28,6 +28,9 @@ data class NotificationRecord(
     @ColumnInfo(name = "text")
     val text: String?,
 
+    @ColumnInfo(name = "category")
+    val category: String?,
+
     @ColumnInfo(name = "date_string")
     val dateString: String // "YYYY-MM-DD" format for easier grouping by day
 ) 

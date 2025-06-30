@@ -8,6 +8,8 @@ import com.example.scrolltrack.db.ScrollSessionRecord
 import com.example.scrolltrack.db.AppScrollDataPerDate
 import com.example.scrolltrack.ui.model.AppScrollUiItem
 import kotlinx.coroutines.flow.Flow
+import com.example.scrolltrack.data.NotificationSummary
+import com.example.scrolltrack.data.NotificationCountPerApp
 
 interface ScrollDataRepository {
 
@@ -85,4 +87,8 @@ interface ScrollDataRepository {
     fun getAllDistinctUsageDateStrings(): Flow<List<String>>
 
     fun getAllDistinctScrollDateStrings(): Flow<List<String>>
+
+    fun getNotificationSummaryForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationSummary>>
+
+    fun getNotificationCountPerAppForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationCountPerApp>>
 }

@@ -48,8 +48,9 @@ class NotificationListener : NotificationListenerService() {
         val title = notification.extras.getString("android.title")
         val text = notification.extras.getCharSequence("android.text")?.toString()
         val postTime = sbn.postTime
+        val category = notification.category
 
-        Log.d(TAG, "Notification Posted: Pkg=$packageName, Title='$title', Text='$text'")
+        Log.d(TAG, "Notification Posted: Pkg=$packageName, Category=$category, Title='$title'")
 
         serviceScope.launch {
             try {
@@ -58,6 +59,7 @@ class NotificationListener : NotificationListenerService() {
                     postTimeUTC = postTime,
                     title = title,
                     text = text,
+                    category = category,
                     dateString = DateUtil.formatUtcTimestampToLocalDateString(postTime)
                 )
                 notificationDao.insertNotification(record)

@@ -62,7 +62,8 @@ abstract class AppModule {
                 context,
                 AppDatabase::class.java,
                 "scroll_track_database"
-            ).fallbackToDestructiveMigration(true)
+            ).addMigrations(MIGRATION_9_10)
+                .fallbackToDestructiveMigration(true)
                 .build()
         }
 

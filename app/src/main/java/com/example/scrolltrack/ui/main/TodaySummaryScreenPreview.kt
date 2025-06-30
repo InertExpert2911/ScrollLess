@@ -37,6 +37,7 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
             onNavigateToHistoricalUsage = {},
             onNavigateToUnlocks = {},
             onNavigateToAppDetail = {},
+            onNavigateToNotifications = {},
             onThemeChange = {},
             currentThemeVariant = "oled_dark"
         )
@@ -75,6 +76,7 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
             onNavigateToHistoricalUsage = {},
             onNavigateToUnlocks = {},
             onNavigateToAppDetail = {},
+            onNavigateToNotifications = {},
             onThemeChange = {},
             currentThemeVariant = "oled_dark"
         )

@@ -11,6 +11,8 @@ import com.example.scrolltrack.ui.model.AppScrollUiItem
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
+import com.example.scrolltrack.data.NotificationCountPerApp
+import com.example.scrolltrack.data.NotificationSummary
 
 class FakeSettingsRepository : SettingsRepository {
     private val _theme = MutableStateFlow("oled_dark")
@@ -66,4 +68,14 @@ class FakeScrollDataRepository : ScrollDataRepository {
     override fun getAllDistinctUsageDateStrings(): Flow<List<String>> = flowOf(emptyList())
 
     override fun getAllDistinctScrollDateStrings(): Flow<List<String>> = flowOf(emptyList())
+
+    override fun getNotificationSummaryForPeriod(
+        startDateString: String,
+        endDateString: String
+    ): Flow<List<NotificationSummary>> = flowOf(emptyList())
+
+    override fun getNotificationCountPerAppForPeriod(
+        startDateString: String,
+        endDateString: String
+    ): Flow<List<NotificationCountPerApp>> = flowOf(emptyList())
 } 

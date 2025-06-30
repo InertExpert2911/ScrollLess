@@ -8,7 +8,7 @@ interface AppMetadataRepository {
     suspend fun getAppMetadata(packageName: String): AppMetadata?
     fun getIconFile(packageName: String): File?
     suspend fun syncAllInstalledApps()
-    suspend fun handleAppUninstalled(packageName: String)
+    suspend fun handleAppUninstalled(packageName: String): AppMetadata?
     suspend fun handleAppInstalledOrUpdated(packageName: String)
     suspend fun getNonVisiblePackageNames(): List<String>
 } 

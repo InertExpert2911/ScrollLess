@@ -58,8 +58,7 @@ class AppMetadataRepositoryImpl @Inject constructor(
             } catch (e: PackageManager.NameNotFoundException) {
                 // App was marked as installed, but is no longer on device. Correct this.
                 Log.w(TAG, "Correcting record: $packageName was marked installed but not found.")
-                handleAppUninstalled(packageName)
-                return appMetadataDao.getByPackageName(packageName) // Return the updated (uninstalled) record
+                return handleAppUninstalled(packageName)
             }
         }
 
@@ -105,10 +104,11 @@ class AppMetadataRepositoryImpl @Inject constructor(
         Log.d(TAG, "Full sync complete.")
     }
 
-    override suspend fun handleAppUninstalled(packageName: String) {
+    override suspend fun handleAppUninstalled(packageName: String): AppMetadata? {
         appMetadataDao.markAsUninstalled(packageName, System.currentTimeMillis())
         deleteIconFile(packageName)
         Log.d(TAG, "Handled app uninstallation for $packageName.")
+        return appMetadataDao.getByPackageName(packageName)
     }
 
     override suspend fun handleAppInstalledOrUpdated(packageName: String) {
