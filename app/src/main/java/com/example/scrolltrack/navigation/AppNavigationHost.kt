@@ -25,10 +25,16 @@ import com.example.scrolltrack.ui.unlocks.UnlocksViewModel
 import com.example.scrolltrack.util.DateUtil
 import com.example.scrolltrack.ui.notifications.NotificationsViewModel
 import com.example.scrolltrack.ui.notifications.NotificationsScreen
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Alignment
 
 @Composable
 fun AppNavigationHost(
     navController: NavHostController,
+    modifier: Modifier = Modifier,
     isAccessibilityEnabledState: Boolean,
     isUsageStatsGrantedState: Boolean,
     isNotificationListenerEnabledState: Boolean,
@@ -36,8 +42,12 @@ fun AppNavigationHost(
     onEnableUsageStatsClick: () -> Unit,
     onEnableNotificationListenerClick: () -> Unit
 ) {
-    NavHost(navController = navController, startDestination = ScreenRoutes.TodaySummary.route) {
-        composable(ScreenRoutes.TodaySummary.route) {
+    NavHost(
+        navController = navController,
+        startDestination = ScreenRoutes.Dashboard.route,
+        modifier = modifier
+    ) {
+        composable(ScreenRoutes.Dashboard.route) {
             val viewModel: TodaySummaryViewModel = hiltViewModel()
             val greeting by viewModel.greeting.collectAsStateWithLifecycle()
             val appScrollItems by viewModel.aggregatedScrollDataToday.collectAsStateWithLifecycle()
@@ -84,6 +94,20 @@ fun AppNavigationHost(
                 isDarkMode = isDarkMode,
                 onDarkModeChange = viewModel::setIsDarkMode
             )
+        }
+
+        composable(ScreenRoutes.Insights.route) {
+            // Placeholder for Insights Screen
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Insights Screen", style = MaterialTheme.typography.headlineMedium)
+            }
+        }
+
+        composable(ScreenRoutes.Settings.route) {
+            // Placeholder for Settings Screen
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Settings Screen", style = MaterialTheme.typography.headlineMedium)
+            }
         }
 
         composable(ScreenRoutes.NotificationsRoute.route) {

@@ -25,6 +25,7 @@ import com.example.scrolltrack.util.PermissionUtils
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import com.example.scrolltrack.ui.main.MainScreen
 
 // Constants for theme variants to be used by the Switch logic
 private const val THEME_LIGHT = "light"
@@ -89,9 +90,7 @@ class MainActivity : ComponentActivity() {
                 darkTheme = useDarkTheme,
                 dynamicColor = false
             ) {
-                val navController = rememberNavController()
-                AppNavigationHost(
-                    navController = navController,
+                MainScreen(
                     isAccessibilityEnabledState = isAccessibilityEnabled,
                     isUsageStatsGrantedState = isUsageStatsGranted,
                     isNotificationListenerEnabledState = isNotificationListenerEnabled,

@@ -122,4 +122,7 @@ dependencies {
 
     androidTestImplementation(libs.androidx.junit)
 
+    // Lottie for animated icons
+    implementation(libs.lottie.compose)
+
 }
