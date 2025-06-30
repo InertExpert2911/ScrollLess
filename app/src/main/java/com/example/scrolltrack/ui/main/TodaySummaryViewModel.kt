@@ -44,6 +44,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import com.example.scrolltrack.data.AppMetadataRepository
 import com.example.scrolltrack.ui.mappers.AppUiModelMapper
+import com.example.scrolltrack.ui.theme.AppTheme
+import com.example.scrolltrack.util.AppConstants
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -66,8 +68,11 @@ class TodaySummaryViewModel @Inject constructor(
     val isNotificationListenerEnabled: StateFlow<Boolean> = _isNotificationListenerEnabled.asStateFlow()
 
     // --- Theme Management ---
-    val selectedThemeVariant: StateFlow<String> = settingsRepository.selectedTheme
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "oled_dark")
+    private val _selectedThemePalette = MutableStateFlow(AppTheme.CalmLavender)
+    val selectedThemePalette: StateFlow<AppTheme> = _selectedThemePalette.asStateFlow()
+
+    private val _isDarkMode = MutableStateFlow(true)
+    val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
 
     // Ensure _todayDateString is initialized before _selectedDateForHistory
     private val _todayDateString = DateUtil.getCurrentLocalDateString()
@@ -79,12 +84,27 @@ class TodaySummaryViewModel @Inject constructor(
         checkAllPermissions()
         // Initial data refresh
         refreshDataForToday()
+        viewModelScope.launch {
+            settingsRepository.selectedTheme.collect { theme ->
+                _selectedThemePalette.value = theme
+            }
+        }
+        viewModelScope.launch {
+            settingsRepository.isDarkMode.collect { isDark ->
+                _isDarkMode.value = isDark
+            }
+        }
     }
 
-    fun updateThemeVariant(newVariant: String) {
+    fun updateThemePalette(theme: AppTheme) {
         viewModelScope.launch {
-            settingsRepository.setSelectedTheme(newVariant)
-            Log.d("TodaySummaryViewModel", "Theme update requested: $newVariant")
+            settingsRepository.setSelectedTheme(theme)
+        }
+    }
+
+    fun setIsDarkMode(isDark: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setIsDarkMode(isDark)
         }
     }
 
@@ -161,9 +181,9 @@ class TodaySummaryViewModel @Inject constructor(
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
 
     val scrollDistanceTodayFormatted: StateFlow<Pair<String, String>> =
-        totalScrollToday.map {
-            ConversionUtil.formatScrollDistance(it, context)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0 m" to "0.00 miles")
+        totalScrollToday.map { scrollUnits ->
+            ConversionUtil.formatScrollDistance(scrollUnits, context)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "0 m" to "meters")
 
     val totalUnlocksToday: StateFlow<Int> =
         repository.getTotalUnlockCountForDate(_todayDateString)

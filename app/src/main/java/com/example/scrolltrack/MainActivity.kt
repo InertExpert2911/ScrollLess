@@ -78,15 +78,17 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            val selectedTheme by viewModel.selectedThemeVariant.collectAsState()
+            val selectedPalette by viewModel.selectedThemePalette.collectAsState()
+            val useDarkTheme by viewModel.isDarkMode.collectAsState()
             val isAccessibilityEnabled by viewModel.isAccessibilityServiceEnabled.collectAsStateWithLifecycle()
             val isUsageStatsGranted by viewModel.isUsagePermissionGranted.collectAsStateWithLifecycle()
             val isNotificationListenerEnabled by viewModel.isNotificationListenerEnabled.collectAsStateWithLifecycle()
 
-            // Determine darkTheme based on selectedTheme. "light" is light, others are dark.
-            val useDarkTheme = selectedTheme != THEME_LIGHT
-
-            ScrollTrackTheme(darkTheme = useDarkTheme, dynamicColor = false) { // Updated call
+            ScrollTrackTheme(
+                appTheme = selectedPalette,
+                darkTheme = useDarkTheme,
+                dynamicColor = false
+            ) {
                 val navController = rememberNavController()
                 AppNavigationHost(
                     navController = navController,

@@ -46,7 +46,8 @@ fun AppNavigationHost(
             val totalUsageTimeMillis: Long by viewModel.totalPhoneUsageTodayMillis.collectAsStateWithLifecycle()
             val scrollDistance by viewModel.scrollDistanceTodayFormatted.collectAsStateWithLifecycle()
             val topWeeklyApp by viewModel.topUsedAppLast7Days.collectAsStateWithLifecycle()
-            val selectedTheme by viewModel.selectedThemeVariant.collectAsStateWithLifecycle()
+            val selectedTheme by viewModel.selectedThemePalette.collectAsStateWithLifecycle()
+            val isDarkMode by viewModel.isDarkMode.collectAsStateWithLifecycle()
             val totalUnlocks by viewModel.totalUnlocksToday.collectAsStateWithLifecycle()
             val totalNotifications by viewModel.totalNotificationsToday.collectAsStateWithLifecycle()
 
@@ -78,8 +79,10 @@ fun AppNavigationHost(
                 onNavigateToAppDetail = { packageName ->
                     navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(packageName))
                 },
-                onThemeChange = viewModel::updateThemeVariant,
-                currentThemeVariant = selectedTheme
+                onThemePaletteChange = viewModel::updateThemePalette,
+                currentThemePalette = selectedTheme,
+                isDarkMode = isDarkMode,
+                onDarkModeChange = viewModel::setIsDarkMode
             )
         }
 

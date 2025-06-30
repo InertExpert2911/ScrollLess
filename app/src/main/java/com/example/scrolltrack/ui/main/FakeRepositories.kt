@@ -13,14 +13,21 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.MutableStateFlow
 import com.example.scrolltrack.data.NotificationCountPerApp
 import com.example.scrolltrack.data.NotificationSummary
+import com.example.scrolltrack.ui.theme.AppTheme
 
 class FakeSettingsRepository : SettingsRepository {
-    private val _theme = MutableStateFlow("oled_dark")
+    private val _theme = MutableStateFlow(AppTheme.CalmLavender)
+    override val selectedTheme: Flow<AppTheme> = _theme
 
-    override val selectedTheme: Flow<String> = _theme
+    private val _isDarkMode = MutableStateFlow(true)
+    override val isDarkMode: Flow<Boolean> = _isDarkMode
 
-    override suspend fun setSelectedTheme(theme: String) {
+    override suspend fun setSelectedTheme(theme: AppTheme) {
         _theme.value = theme
+    }
+
+    override suspend fun setIsDarkMode(isDark: Boolean) {
+        _isDarkMode.value = isDark
     }
 }
 
