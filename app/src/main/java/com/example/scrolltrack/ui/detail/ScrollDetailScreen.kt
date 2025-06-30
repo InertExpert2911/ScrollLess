@@ -103,8 +103,7 @@ fun ScrollDetailScreenContent(
                     titleContentColor = MaterialTheme.colorScheme.onSurface,
                     navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
                     actionIconContentColor = MaterialTheme.colorScheme.primary
-                ),
-                modifier = Modifier.statusBarsPadding()
+                )
             )
         },
         modifier = Modifier
@@ -115,7 +114,7 @@ fun ScrollDetailScreenContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(horizontal = 16.dp)
         ) {
             if (scrollData.isEmpty()) {
                 Box(

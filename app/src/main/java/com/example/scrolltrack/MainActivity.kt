@@ -26,6 +26,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.example.scrolltrack.ui.main.MainScreen
+import androidx.core.view.WindowCompat
 
 // Constants for theme variants to be used by the Switch logic
 private const val THEME_LIGHT = "light"
@@ -46,6 +47,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         globalPrefs = getSharedPreferences(PREFS_GLOBAL, Context.MODE_PRIVATE)
 
         // The ViewModelFactory and ViewModelProvider are no longer needed.

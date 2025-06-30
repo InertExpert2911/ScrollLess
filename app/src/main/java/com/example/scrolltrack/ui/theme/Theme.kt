@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import androidx.compose.ui.graphics.Color
 
 // Explicitly import our custom AppTypography
 import com.example.scrolltrack.ui.theme.AppTypography as Typography
@@ -348,6 +349,18 @@ private val OptimisticYellowDarkColorScheme = darkColorScheme(
 )
 
 @Composable
+fun getThemeColors(theme: AppTheme, darkTheme: Boolean = isSystemInDarkTheme()): ColorScheme {
+    return when (theme) {
+        AppTheme.ClarityTeal -> if (darkTheme) ClarityTealDarkColorScheme else ClarityTealLightColorScheme
+        AppTheme.FocusBlue -> if (darkTheme) FocusBlueDarkColorScheme else FocusBlueLightColorScheme
+        AppTheme.CalmLavender -> if (darkTheme) CalmLavenderDarkColorScheme else CalmLavenderLightColorScheme
+        AppTheme.VitalityOrange -> if (darkTheme) VitalityOrangeDarkColorScheme else VitalityOrangeLightColorScheme
+        AppTheme.UpliftingGreen -> if (darkTheme) UpliftingGreenDarkColorScheme else UpliftingGreenLightColorScheme
+        AppTheme.OptimisticYellow -> if (darkTheme) OptimisticYellowDarkColorScheme else OptimisticYellowLightColorScheme
+    }
+}
+
+@Composable
 fun ScrollTrackTheme(
     appTheme: AppTheme = AppTheme.CalmLavender,
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -360,21 +373,18 @@ fun ScrollTrackTheme(
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        else -> when (appTheme) {
-            AppTheme.ClarityTeal -> if (darkTheme) ClarityTealDarkColorScheme else ClarityTealLightColorScheme
-            AppTheme.FocusBlue -> if (darkTheme) FocusBlueDarkColorScheme else FocusBlueLightColorScheme
-            AppTheme.CalmLavender -> if (darkTheme) CalmLavenderDarkColorScheme else CalmLavenderLightColorScheme
-            AppTheme.VitalityOrange -> if (darkTheme) VitalityOrangeDarkColorScheme else VitalityOrangeLightColorScheme
-            AppTheme.UpliftingGreen -> if (darkTheme) UpliftingGreenDarkColorScheme else UpliftingGreenLightColorScheme
-            AppTheme.OptimisticYellow -> if (darkTheme) OptimisticYellowDarkColorScheme else OptimisticYellowLightColorScheme
-        }
+        else -> getThemeColors(appTheme, darkTheme)
     }
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.surface.toArgb()
+            @Suppress("DEPRECATION")
+            window.statusBarColor = Color.Transparent.toArgb()
+            @Suppress("DEPRECATION")
+            window.navigationBarColor = Color.Transparent.toArgb()
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            WindowCompat.getInsetsController(window, view).isAppearanceLightNavigationBars = !darkTheme
         }
     }
 

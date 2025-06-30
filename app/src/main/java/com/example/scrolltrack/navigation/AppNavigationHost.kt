@@ -7,11 +7,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import androidx.navigation.navigation
 import com.example.scrolltrack.ui.detail.AppDetailScreen
 import com.example.scrolltrack.ui.detail.AppDetailViewModel
 import com.example.scrolltrack.ui.detail.ScrollDetailScreen
@@ -30,6 +32,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Alignment
+import com.example.scrolltrack.ui.settings.SettingsViewModel
+import com.example.scrolltrack.ui.settings.SettingsScreen
 
 @Composable
 fun AppNavigationHost(
@@ -44,8 +48,35 @@ fun AppNavigationHost(
 ) {
     NavHost(
         navController = navController,
-        startDestination = ScreenRoutes.Dashboard.route,
+        startDestination = DASHBOARD_GRAPH_ROUTE,
         modifier = modifier
+    ) {
+        addDashboardGraph(
+            navController = navController,
+            isAccessibilityEnabledState = isAccessibilityEnabledState,
+            isUsageStatsGrantedState = isUsageStatsGrantedState,
+            isNotificationListenerEnabledState = isNotificationListenerEnabledState,
+            onEnableAccessibilityClick = onEnableAccessibilityClick,
+            onEnableUsageStatsClick = onEnableUsageStatsClick,
+            onEnableNotificationListenerClick = onEnableNotificationListenerClick
+        )
+        addInsightsGraph(navController)
+        addSettingsGraph(navController)
+    }
+}
+
+private fun NavGraphBuilder.addDashboardGraph(
+    navController: NavHostController,
+    isAccessibilityEnabledState: Boolean,
+    isUsageStatsGrantedState: Boolean,
+    isNotificationListenerEnabledState: Boolean,
+    onEnableAccessibilityClick: () -> Unit,
+    onEnableUsageStatsClick: () -> Unit,
+    onEnableNotificationListenerClick: () -> Unit
+) {
+    navigation(
+        startDestination = ScreenRoutes.Dashboard.route,
+        route = DASHBOARD_GRAPH_ROUTE
     ) {
         composable(ScreenRoutes.Dashboard.route) {
             val viewModel: TodaySummaryViewModel = hiltViewModel()
@@ -88,26 +119,8 @@ fun AppNavigationHost(
                 },
                 onNavigateToAppDetail = { packageName ->
                     navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(packageName))
-                },
-                onThemePaletteChange = viewModel::updateThemePalette,
-                currentThemePalette = selectedTheme,
-                isDarkMode = isDarkMode,
-                onDarkModeChange = viewModel::setIsDarkMode
+                }
             )
-        }
-
-        composable(ScreenRoutes.Insights.route) {
-            // Placeholder for Insights Screen
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Insights Screen", style = MaterialTheme.typography.headlineMedium)
-            }
-        }
-
-        composable(ScreenRoutes.Settings.route) {
-            // Placeholder for Settings Screen
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Settings Screen", style = MaterialTheme.typography.headlineMedium)
-            }
         }
 
         composable(ScreenRoutes.NotificationsRoute.route) {
@@ -169,5 +182,33 @@ fun AppNavigationHost(
                 Text("Error: Date not found for Scroll Detail.")
             }
         }
+    }
+}
+
+private fun NavGraphBuilder.addInsightsGraph(navController: NavHostController) {
+    navigation(
+        startDestination = ScreenRoutes.Insights.route,
+        route = INSIGHTS_GRAPH_ROUTE
+    ) {
+        composable(ScreenRoutes.Insights.route) {
+            // Placeholder for Insights Screen
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Insights Screen", style = MaterialTheme.typography.headlineMedium)
+            }
+        }
+        // Add other destinations for the insights tab here
+    }
+}
+
+private fun NavGraphBuilder.addSettingsGraph(navController: NavHostController) {
+    navigation(
+        startDestination = ScreenRoutes.Settings.route,
+        route = SETTINGS_GRAPH_ROUTE
+    ) {
+        composable(ScreenRoutes.Settings.route) {
+            val settingsViewModel: SettingsViewModel = hiltViewModel()
+            SettingsScreen(navController = navController, viewModel = settingsViewModel)
+        }
+        // Add other destinations for the settings tab here
     }
 }

@@ -76,6 +76,14 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.tooling.preview.PreviewParameter
+import com.example.scrolltrack.ui.theme.ScrollTrackTheme
+import androidx.compose.ui.tooling.preview.PreviewParameterProvider
+import com.example.scrolltrack.ui.theme.AppTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,33 +107,15 @@ fun TodaySummaryScreen(
     onNavigateToUnlocks: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppDetail: (String) -> Unit,
-    onThemePaletteChange: (AppTheme) -> Unit,
-    currentThemePalette: AppTheme,
-    isDarkMode: Boolean,
-    onDarkModeChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showThemeSelectorDialog by remember { mutableStateOf(false) }
-
-    if (showThemeSelectorDialog) {
-        ThemeSelectorDialog(
-            currentTheme = currentThemePalette,
-            onThemeSelected = {
-                onThemePaletteChange(it)
-                showThemeSelectorDialog = false
-            },
-            onDismissRequest = { showThemeSelectorDialog = false }
-        )
-    }
-
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp)
     ) {
-        Spacer(modifier = Modifier.height(32.dp))
         // Header Section
         Row(
             modifier = Modifier
@@ -139,23 +129,6 @@ fun TodaySummaryScreen(
                 style = MaterialTheme.typography.displaySmall,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { showThemeSelectorDialog = true }) {
-                    Icon(Icons.Filled.Palette, contentDescription = "Select Theme Palette")
-                }
-                Spacer(Modifier.width(8.dp))
-                Switch(
-                    checked = isDarkMode,
-                    onCheckedChange = onDarkModeChange,
-                    thumbContent = {
-                        Icon(
-                            imageVector = if (isDarkMode) Icons.Filled.Brightness2 else Icons.Filled.WbSunny,
-                            contentDescription = if (isDarkMode) "Switch to Light Mode" else "Switch to Dark Mode",
-                            modifier = Modifier.size(SwitchDefaults.IconSize)
-                        )
-                    }
-                )
-            }
         }
 
         Text(
@@ -256,75 +229,9 @@ fun TodaySummaryScreen(
             }
         )
 
-        // New Theme Selector
-        ThemePaletteSelector(
-            currentPalette = currentThemePalette,
-            onPaletteSelected = onThemePaletteChange
-        )
-
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
-
-@Composable
-fun ThemePaletteSelector(
-    modifier: Modifier = Modifier,
-    currentPalette: AppTheme,
-    onPaletteSelected: (AppTheme) -> Unit
-) {
-    val palettes = AppTheme.entries
-    Column(modifier.fillMaxWidth()) {
-        Text(
-            text = "Theme Palette",
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(horizontal = 4.dp)
-        ) {
-            items(palettes) { palette ->
-                val colors = themeColors(palette = palette)
-                val isSelected = currentPalette == palette
-
-                val border = if (isSelected) {
-                    BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-                } else {
-                    BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                }
-
-                Card(
-                    modifier = Modifier
-                        .size(width = 100.dp, height = 60.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    border = border,
-                    onClick = { onPaletteSelected(palette) }
-                ) {
-                    Row(Modifier.fillMaxSize()) {
-                        Box(modifier = Modifier.weight(1f).background(colors.primary))
-                        Box(modifier = Modifier.weight(1f).background(colors.secondary))
-                        Box(modifier = Modifier.weight(1f).background(colors.tertiary))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun themeColors(palette: AppTheme): ThemeColors {
-    return when (palette) {
-        AppTheme.ClarityTeal -> ThemeColors(ClarityTeal.primaryLight, ClarityTeal.secondaryLight, ClarityTeal.tertiaryLight)
-        AppTheme.FocusBlue -> ThemeColors(FocusBlue.primaryLight, FocusBlue.secondaryLight, FocusBlue.tertiaryLight)
-        AppTheme.CalmLavender -> ThemeColors(CalmLavender.primaryLight, CalmLavender.secondaryLight, CalmLavender.tertiaryLight)
-        AppTheme.VitalityOrange -> ThemeColors(VitalityOrange.primaryLight, VitalityOrange.secondaryLight, VitalityOrange.tertiaryLight)
-        AppTheme.UpliftingGreen -> ThemeColors(UpliftingGreen.primaryLight, UpliftingGreen.secondaryLight, UpliftingGreen.tertiaryLight)
-        AppTheme.OptimisticYellow -> ThemeColors(OptimisticYellow.primaryLight, OptimisticYellow.secondaryLight, OptimisticYellow.tertiaryLight)
-    }
-}
-
-private data class ThemeColors(val primary: Color, val secondary: Color, val tertiary: Color)
 
 @Composable
 fun ThemeSelectorDialog(
@@ -336,21 +243,32 @@ fun ThemeSelectorDialog(
         onDismissRequest = onDismissRequest,
         title = { Text("Select a Theme") },
         text = {
-            LazyColumn {
-                items(AppTheme.entries) { theme ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onThemeSelected(theme) }
-                            .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = theme == currentTheme,
-                            onClick = { onThemeSelected(theme) }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("Theme Palette", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 16.dp))
+
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    items(AppTheme.entries) { theme ->
+                        val isSelected = theme == currentTheme
+                        val themeColors = getThemeColors(theme = theme, darkTheme = false)
+                        val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
+
+                        Box(
+                            modifier = Modifier
+                                .size(56.dp)
+                                .clip(CircleShape)
+                                .background(themeColors.primary)
+                                .border(BorderStroke(3.dp, borderColor), CircleShape)
+                                .clickable { onThemeSelected(theme) }
                         )
-                        Spacer(Modifier.width(16.dp))
-                        Text(theme.visibleName, style = MaterialTheme.typography.bodyLarge)
                     }
                 }
             }

@@ -9,19 +9,19 @@ sealed class BottomNavItem(
     @RawRes val animResId: Int
 ) {
     object Dashboard : BottomNavItem(
-        route = "dashboard",
+        route = DASHBOARD_GRAPH_ROUTE,
         title = "Dashboard",
         animResId = R.raw.home_nav_bar_anim_icon
     )
 
     object Insights : BottomNavItem(
-        route = "insights",
+        route = INSIGHTS_GRAPH_ROUTE,
         title = "Insights",
         animResId = R.raw.bolt_nav_bar_anim_icon
     )
 
     object Settings : BottomNavItem(
-        route = "settings",
+        route = SETTINGS_GRAPH_ROUTE,
         title = "Settings",
         animResId = R.raw.settings_nav_bar_anim_icon
     )

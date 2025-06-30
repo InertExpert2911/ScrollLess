@@ -81,8 +81,7 @@ fun HistoricalUsageScreen(
                     titleContentColor = MaterialTheme.colorScheme.onSurface,
                     navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
                     actionIconContentColor = MaterialTheme.colorScheme.primary
-                ),
-                modifier = Modifier.statusBarsPadding()
+                )
             )
         },
         modifier = modifier.navigationBarsPadding().background(MaterialTheme.colorScheme.background)
@@ -91,7 +90,7 @@ fun HistoricalUsageScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(

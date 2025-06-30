@@ -45,11 +45,7 @@ fun TodaySummaryScreenPreview() {
             onNavigateToHistoricalUsage = {},
             onNavigateToUnlocks = {},
             onNavigateToNotifications = {},
-            onNavigateToAppDetail = {},
-            onThemePaletteChange = {},
-            currentThemePalette = AppTheme.CalmLavender,
-            isDarkMode = false,
-            onDarkModeChange = {}
+            onNavigateToAppDetail = {}
         )
     }
 }
@@ -82,11 +78,7 @@ fun TodaySummaryScreenDarkPreview() {
             onNavigateToHistoricalUsage = {},
             onNavigateToUnlocks = {},
             onNavigateToNotifications = {},
-            onNavigateToAppDetail = {},
-            onThemePaletteChange = {},
-            currentThemePalette = AppTheme.CalmLavender,
-            isDarkMode = true,
-            onDarkModeChange = {}
+            onNavigateToAppDetail = {}
         )
     }
 }
@@ -118,11 +110,7 @@ fun TodaySummaryScreenWithPermissionsPreview() {
             onNavigateToHistoricalUsage = {},
             onNavigateToUnlocks = {},
             onNavigateToNotifications = {},
-            onNavigateToAppDetail = {},
-            onThemePaletteChange = {},
-            currentThemePalette = AppTheme.FocusBlue,
-            isDarkMode = true,
-            onDarkModeChange = {}
+            onNavigateToAppDetail = {}
         )
     }
 }
@@ -150,11 +138,7 @@ fun TodaySummaryScreenPermissionsNeededPreview() {
             onNavigateToHistoricalUsage = {},
             onNavigateToUnlocks = {},
             onNavigateToAppDetail = {},
-            onNavigateToNotifications = {},
-            onThemePaletteChange = {},
-            currentThemePalette = AppTheme.FocusBlue,
-            isDarkMode = true,
-            onDarkModeChange = {}
+            onNavigateToNotifications = {}
         )
     }
 }
@@ -191,11 +175,7 @@ fun TodaySummaryScreenAllGrantedWithTopAppPreview() {
             onNavigateToHistoricalUsage = {},
             onNavigateToUnlocks = {},
             onNavigateToAppDetail = {},
-            onNavigateToNotifications = {},
-            onThemePaletteChange = {},
-            currentThemePalette = AppTheme.CalmLavender,
-            isDarkMode = true,
-            onDarkModeChange = {}
+            onNavigateToNotifications = {}
         )
     }
 }

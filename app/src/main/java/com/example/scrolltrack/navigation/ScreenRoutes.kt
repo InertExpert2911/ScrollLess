@@ -1,5 +1,10 @@
 package com.example.scrolltrack.navigation
 
+// Define graph routes
+const val DASHBOARD_GRAPH_ROUTE = "dashboard_graph"
+const val INSIGHTS_GRAPH_ROUTE = "insights_graph"
+const val SETTINGS_GRAPH_ROUTE = "settings_graph"
+
 // Make ScreenRoutes a sealed class
 sealed class ScreenRoutes(val route: String) {
     // --- Main destinations for the Bottom Navigation Bar ---
