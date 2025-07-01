@@ -13,7 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  */
 @Database(
     entities = [ScrollSessionRecord::class, DailyAppUsageRecord::class, RawAppEvent::class, NotificationRecord::class, DailyDeviceSummary::class, AppMetadata::class],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -26,10 +26,4 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun appMetadataDao(): AppMetadataDao
 
     // The companion object getDatabase() is now obsolete as Hilt provides the database.
-}
-
-val MIGRATION_9_10 = object : Migration(9, 10) {
-    override fun migrate(db: SupportSQLiteDatabase) {
-        db.execSQL("ALTER TABLE notification_records ADD COLUMN category TEXT")
-    }
 }

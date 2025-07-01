@@ -21,4 +21,10 @@ interface AppMetadataDao {
 
     @Query("SELECT package_name FROM app_metadata WHERE is_user_visible = 0")
     suspend fun getNonVisiblePackageNames(): List<String>
+
+    @Query("SELECT * FROM app_metadata")
+    suspend fun getAll(): List<AppMetadata>
+
+    @Query("UPDATE app_metadata SET user_hides_override = :userHidesOverride WHERE package_name = :packageName")
+    suspend fun updateUserHidesOverride(packageName: String, userHidesOverride: Boolean?)
 } 

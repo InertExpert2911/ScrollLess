@@ -34,6 +34,9 @@ data class AppMetadata(
     @ColumnInfo(name = "is_user_visible", defaultValue = "1")
     var isUserVisible: Boolean = true,
 
+    @ColumnInfo(name = "user_hides_override")
+    var userHidesOverride: Boolean? = null,
+
     @ColumnInfo(name = "install_timestamp")
     var installTimestamp: Long,
 

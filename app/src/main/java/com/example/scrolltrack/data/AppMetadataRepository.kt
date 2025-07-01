@@ -11,4 +11,6 @@ interface AppMetadataRepository {
     suspend fun handleAppUninstalled(packageName: String): AppMetadata?
     suspend fun handleAppInstalledOrUpdated(packageName: String)
     suspend fun getNonVisiblePackageNames(): List<String>
+    suspend fun updateUserHidesOverride(packageName: String, userHidesOverride: Boolean?)
+    suspend fun getAllMetadata(): List<AppMetadata>
 } 

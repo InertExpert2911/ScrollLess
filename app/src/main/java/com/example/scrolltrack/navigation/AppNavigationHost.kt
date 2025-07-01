@@ -34,6 +34,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Alignment
 import com.example.scrolltrack.ui.settings.SettingsViewModel
 import com.example.scrolltrack.ui.settings.SettingsScreen
+import com.example.scrolltrack.ui.settings.AppVisibilityScreen
 
 @Composable
 fun AppNavigationHost(
@@ -208,6 +209,9 @@ private fun NavGraphBuilder.addSettingsGraph(navController: NavHostController) {
         composable(ScreenRoutes.Settings.route) {
             val settingsViewModel: SettingsViewModel = hiltViewModel()
             SettingsScreen(navController = navController, viewModel = settingsViewModel)
+        }
+        composable(ScreenRoutes.AppVisibility.route) {
+            AppVisibilityScreen(navController = navController)
         }
         // Add other destinations for the settings tab here
     }

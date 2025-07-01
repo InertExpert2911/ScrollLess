@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Brightness2
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.*
@@ -22,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.theme.AppTheme
 import com.example.scrolltrack.ui.theme.getThemeColors
 import androidx.compose.material3.HorizontalDivider
@@ -92,6 +94,18 @@ fun SettingsScreen(
                         .size(24.dp)
                         .clip(CircleShape)
                         .background(currentThemeColors.primary)
+                )
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+            SettingRow(
+                title = "Manage App Visibility",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { navController.navigate(ScreenRoutes.AppVisibility.route) }
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = "Navigate to App Visibility Settings"
                 )
             }
         }

@@ -66,14 +66,19 @@ class ScrollDataRepositoryImpl @Inject constructor(
      * @return A `Set<String>` of package names to filter out.
      */
     private suspend fun buildFilterSet(): Set<String> {
-        // Fetch all packages marked as non-user-visible by our heuristic.
-        val filters = appMetadataRepository.getNonVisiblePackageNames().toMutableSet()
+        val allMetadata = appMetadataRepository.getAllMetadata()
+        val filters = allMetadata.filter { metadata ->
+            // An app is filtered if the user has explicitly hidden it (true),
+            // or if the user has not set an override (null) and the heuristic determines it should be hidden.
+            // If the user has explicitly shown it (false), it is not filtered.
+            metadata.userHidesOverride ?: !metadata.isUserVisible
+        }.map { it.packageName }.toMutableSet()
 
         // Also add our own app and systemui just in case they aren't marked correctly.
         filters.add(context.packageName)
         filters.add("com.android.systemui")
 
-        Log.d(TAG_REPO, "Filter set built with ${filters.size} non-visible packages.")
+        Log.d(TAG_REPO, "Filter set built with ${filters.size} ignored packages.")
         return filters
     }
 

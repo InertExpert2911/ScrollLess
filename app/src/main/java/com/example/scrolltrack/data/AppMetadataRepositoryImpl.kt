@@ -120,8 +120,18 @@ class AppMetadataRepositoryImpl @Inject constructor(
         return appMetadataDao.getNonVisiblePackageNames()
     }
 
+    override suspend fun updateUserHidesOverride(packageName: String, userHidesOverride: Boolean?) {
+        appMetadataDao.updateUserHidesOverride(packageName, userHidesOverride)
+        Log.d(TAG, "User override for $packageName set to $userHidesOverride")
+    }
+
+    override suspend fun getAllMetadata(): List<AppMetadata> {
+        return appMetadataDao.getAll()
+    }
+
     private suspend fun fetchFromPackageManagerAndCache(packageName: String): AppMetadata? {
         try {
+            val existingMetadata = appMetadataDao.getByPackageName(packageName)
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
             val appInfo = packageInfo.applicationInfo
             if (appInfo == null) {
@@ -183,6 +193,7 @@ class AppMetadataRepositoryImpl @Inject constructor(
                 isIconCached = iconCached,
                 appCategory = appCategory,
                 isUserVisible = isUserVisible,
+                userHidesOverride = existingMetadata?.userHidesOverride,
                 installTimestamp = packageInfo.firstInstallTime,
                 lastUpdateTimestamp = System.currentTimeMillis()
             )

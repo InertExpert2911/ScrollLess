@@ -13,6 +13,7 @@ sealed class ScreenRoutes(val route: String) {
     object Settings : ScreenRoutes("settings")
 
     // --- Other screens navigated to from the main destinations ---
+    object AppVisibility : ScreenRoutes("app_visibility")
     object HistoricalUsageRoute : ScreenRoutes("historical_usage")
     object UnlocksRoute : ScreenRoutes("unlocks_route")
     object NotificationsRoute : ScreenRoutes("notifications_route")
