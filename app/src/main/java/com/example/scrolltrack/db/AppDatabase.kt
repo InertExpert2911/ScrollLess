@@ -6,13 +6,22 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.scrolltrack.db.ScrollSessionRecord
+import com.example.scrolltrack.db.ScrollSessionDao
 
 /**
  * Main database class for the application.
  * Includes tables for ScrollSessionRecord and DailyAppUsageRecord.
  */
 @Database(
-    entities = [ScrollSessionRecord::class, DailyAppUsageRecord::class, RawAppEvent::class, NotificationRecord::class, DailyDeviceSummary::class, AppMetadata::class],
+    entities = [
+        ScrollSessionRecord::class,
+        RawAppEvent::class,
+        AppMetadata::class,
+        DailyDeviceSummary::class,
+        DailyAppUsageRecord::class,
+        NotificationRecord::class
+    ],
     version = 11,
     exportSchema = false
 )

@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -204,6 +205,14 @@ fun AppScrollDetailItemEntry(
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurface
                 )
+                if (appItem.dataType == "INFERRED") {
+                    Icon(
+                        imageVector = Icons.Default.Waves,
+                        contentDescription = "Inferred Data",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(16.dp).padding(start = 8.dp)
+                    )
+                }
                 Text(
                     text = "${appItem.totalScroll} units",
                     style = MaterialTheme.typography.bodyMedium,
@@ -228,9 +237,9 @@ fun AppScrollDetailItemEntry(
 @Composable
 fun ScrollDetailScreenPreview() {
     val dummyData = listOf(
-        AppScrollUiItem("1", "App One", null, 12000, "com.app1"),
-        AppScrollUiItem("2", "App Two", null, 8500, "com.app2"),
-        AppScrollUiItem("3", "Another Very Long App Name That Will Surely Overflow", null, 400, "com.app3")
+        AppScrollUiItem("1", "App One", null, 12000, "com.app1", "MEASURED"),
+        AppScrollUiItem("2", "App Two", null, 8500, "com.app2", "INFERRED"),
+        AppScrollUiItem("3", "Another Very Long App Name That Will Surely Overflow", null, 400, "com.app3", "MEASURED")
     )
     ScrollTrackTheme {
         ScrollDetailScreenContent(

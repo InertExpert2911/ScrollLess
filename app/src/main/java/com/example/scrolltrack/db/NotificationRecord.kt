@@ -32,5 +32,8 @@ data class NotificationRecord(
     val category: String?,
 
     @ColumnInfo(name = "date_string")
-    val dateString: String // "YYYY-MM-DD" format for easier grouping by day
+    val dateString: String, // "YYYY-MM-DD" format for easier grouping by day
+
+    @ColumnInfo(name = "removal_reason")
+    val removalReason: Int? = null // To be added in a future migration
 ) 

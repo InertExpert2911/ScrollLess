@@ -71,8 +71,24 @@ class NotificationListener : NotificationListenerService() {
         }
     }
 
-    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
-        super.onNotificationRemoved(sbn)
+    override fun onNotificationRemoved(sbn: StatusBarNotification?, rankingMap: RankingMap?, reason: Int) {
+        super.onNotificationRemoved(sbn, rankingMap, reason)
+        if (sbn == null) return
+
+        val packageName = sbn.packageName
+        if (packageName == applicationContext.packageName) {
+            return // Don't log our own notifications
+        }
+
+        Log.d(TAG, "Notification Removed: Pkg=$packageName, Reason=$reason")
+
+        serviceScope.launch {
+            try {
+                notificationDao.updateRemovalReason(sbn.packageName, sbn.postTime, reason)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating notification removal reason for $packageName", e)
+            }
+        }
     }
 
     override fun onDestroy() {

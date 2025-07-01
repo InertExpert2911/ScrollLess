@@ -34,6 +34,7 @@ class SessionManager @Inject constructor(
     private var currentAppActivity: String? = null
     private var currentAppScrollAccumulator: Long = 0L
     private var currentSessionStartTime: Long = 0L
+    private var isMeasuredScroll: Boolean = false
 
     // Session End Reasons
     object SessionEndReason {
@@ -62,11 +63,12 @@ class SessionManager @Inject constructor(
             currentAppActivity = activityName
             currentAppScrollAccumulator = 0L
             currentSessionStartTime = startTime
+            isMeasuredScroll = false // Reset for new session
             Log.i(TAG, "NEW SESSION: App: $currentAppPackage, Activity: $currentAppActivity at $startTime. Accumulator reset.")
         }
     }
 
-    fun updateCurrentSessionScroll(scrollDelta: Long) {
+    fun updateCurrentSessionScroll(scrollDelta: Long, isMeasured: Boolean) {
         if (currentAppPackage == null || currentSessionStartTime == 0L) {
             Log.w(TAG, "Attempted to update scroll but no active session. ScrollDelta: $scrollDelta. This might happen if a scroll event is received before a window change event establishes the session.")
             // Potentially, if determinedPackageName is available here, we could try to start a session.
@@ -74,6 +76,9 @@ class SessionManager @Inject constructor(
             return
         }
         currentAppScrollAccumulator += scrollDelta
+        if (isMeasured) {
+            isMeasuredScroll = true // If we get even one measured event, the whole session is measured.
+        }
         Log.d(TAG, "Scroll in $currentAppPackage: Added:$scrollDelta, SessionTotal:$currentAppScrollAccumulator")
         sessionManagerScope.launch {
             scheduleDraftSave()
@@ -84,8 +89,9 @@ class SessionManager @Inject constructor(
         val pkgName = currentAppPackage ?: return
         val startTimeUTC = currentSessionStartTime
         val accumulatedScroll = currentAppScrollAccumulator
+        val dataType = if (isMeasuredScroll) "MEASURED" else "INFERRED"
 
-        Log.d(TAG, "Finalizing session for $pkgName. Start: $startTimeUTC, End: $sessionEndTimeUTC, Scroll: $accumulatedScroll, Reason: $reason")
+        Log.d(TAG, "Finalizing session for $pkgName. Start: $startTimeUTC, End: $sessionEndTimeUTC, Scroll: $accumulatedScroll, Reason: $reason, Type: $dataType")
 
         if (startTimeUTC == 0L || accumulatedScroll == 0L) {
             Log.i(TAG, "Skipping save for session ($pkgName) with no start time or zero scroll.")
@@ -106,6 +112,7 @@ class SessionManager @Inject constructor(
                 if (startLocalDateString == endLocalDateString) {
                     val record = ScrollSessionRecord(
                         packageName = pkgName, scrollAmount = accumulatedScroll,
+                        dataType = dataType,
                         sessionStartTime = startTimeUTC, sessionEndTime = effectiveSessionEndTimeUTC,
                         date = startLocalDateString, sessionEndReason = reason
                     )
@@ -121,6 +128,7 @@ class SessionManager @Inject constructor(
                     if (scrollForStartDay > 0 || (accumulatedScroll > 0 && durationInStartDay > 0)) {
                         val record1 = ScrollSessionRecord(
                             packageName = pkgName, scrollAmount = scrollForStartDay,
+                            dataType = dataType,
                             sessionStartTime = startTimeUTC, sessionEndTime = effectiveEndOfStartDay,
                             date = startLocalDateString, sessionEndReason = reason
                         )
@@ -135,6 +143,7 @@ class SessionManager @Inject constructor(
                         if (scrollForEndDay > 0 || (accumulatedScroll > 0 && (effectiveSessionEndTimeUTC - effectiveStartOfEndDay) > 0 && scrollForStartDay == 0L) ) {
                              val record2 = ScrollSessionRecord(
                                 packageName = pkgName, scrollAmount = scrollForEndDay.coerceAtLeast(0L),
+                                dataType = dataType,
                                 sessionStartTime = effectiveStartOfEndDay, sessionEndTime = effectiveSessionEndTimeUTC,
                                 date = endLocalDateString, sessionEndReason = reason
                             )
@@ -197,6 +206,7 @@ class SessionManager @Inject constructor(
         currentAppActivity = null
         currentAppScrollAccumulator = 0L
         currentSessionStartTime = 0L
+        isMeasuredScroll = false
         draftSaveJob?.cancel()
         Log.d(TAG, "Session state reset by SessionManager.")
     }

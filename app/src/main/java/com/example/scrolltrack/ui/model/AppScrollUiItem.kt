@@ -10,5 +10,6 @@ data class AppScrollUiItem(
     val appName: String,
     val icon: Drawable?,
     val totalScroll: Long,
-    val packageName: String
+    val packageName: String,
+    val dataType: String
 ) 

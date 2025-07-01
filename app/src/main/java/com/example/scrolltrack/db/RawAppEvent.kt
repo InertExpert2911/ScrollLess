@@ -51,6 +51,11 @@ data class RawAppEvent(
         const val EVENT_TYPE_ACCESSIBILITY_TYPING = EVENT_TYPE_ACCESSIBILITY_OFFSET + 3
         const val EVENT_TYPE_ACCESSIBILITY_SCROLLED = EVENT_TYPE_ACCESSIBILITY_OFFSET + 4
 
+        // --- Custom event types from our Notification Listener ---
+        const val EVENT_TYPE_NOTIFICATION_OFFSET = 2000
+        const val EVENT_TYPE_NOTIFICATION_POSTED = EVENT_TYPE_NOTIFICATION_OFFSET + 1
+        const val EVENT_TYPE_NOTIFICATION_REMOVED = EVENT_TYPE_NOTIFICATION_OFFSET + 2
+
         // Function to check if an event is from the accessibility service
         fun isAccessibilityEvent(eventType: Int): Boolean {
             return eventType >= EVENT_TYPE_ACCESSIBILITY_OFFSET

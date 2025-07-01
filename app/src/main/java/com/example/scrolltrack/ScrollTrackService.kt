@@ -144,6 +144,7 @@ class ScrollTrackService : AccessibilityService() {
         val info = AccessibilityServiceInfo().apply {
             eventTypes = AccessibilityEvent.TYPE_VIEW_SCROLLED or
                     AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                    AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
                     AccessibilityEvent.TYPE_WINDOWS_CHANGED or
                     AccessibilityEvent.TYPE_VIEW_CLICKED or
                     AccessibilityEvent.TYPE_VIEW_FOCUSED or
@@ -203,7 +204,7 @@ class ScrollTrackService : AccessibilityService() {
                     val totalDelta = abs(deltaY) + abs(deltaX)
 
                     if (totalDelta > SCROLL_THRESHOLD) {
-                        sessionManager.updateCurrentSessionScroll(totalDelta.toLong())
+                        sessionManager.updateCurrentSessionScroll(totalDelta.toLong(), isMeasured = true)
                         logAccessibilityRawEventToDb(RawAppEvent.EVENT_TYPE_ACCESSIBILITY_SCROLLED, determinedPackageName, eventClassName, actualEventTimeUTC)
                         // SessionManager's updateCurrentSessionScroll now handles draft saving
                     } else if (deltaY != 0 || deltaX != 0) {
@@ -238,6 +239,15 @@ class ScrollTrackService : AccessibilityService() {
                 if (determinedPackageName != null) {
                     Log.d(TAG, "VIEW_TEXT_CHANGED in $determinedPackageName. Class: $eventClassName")
                     logAccessibilityRawEventToDb(RawAppEvent.EVENT_TYPE_ACCESSIBILITY_TYPING, determinedPackageName, eventClassName, actualEventTimeUTC)
+                }
+            }
+
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+                if (determinedPackageName != null && determinedPackageName == sessionManager.getCurrentAppPackage()) {
+                    // This event often fires on scroll in apps that don't report scroll deltas.
+                    // We can treat it as a small, synthetic scroll event to capture activity.
+                    sessionManager.updateCurrentSessionScroll(1, isMeasured = false)
+                    logAccessibilityRawEventToDb(RawAppEvent.EVENT_TYPE_ACCESSIBILITY_SCROLLED, determinedPackageName, eventClassName, actualEventTimeUTC)
                 }
             }
         }

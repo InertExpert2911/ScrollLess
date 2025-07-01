@@ -18,7 +18,7 @@ interface ScrollSessionDao {
      * for a specific date, ordered by total scroll amount descending.
      * Returns a Flow, so the UI can observe changes.
      */
-    @Query("SELECT package_name as packageName, SUM(scroll_amount) as totalScroll FROM scroll_sessions WHERE date_string = :dateString GROUP BY package_name ORDER BY totalScroll DESC")
+    @Query("SELECT package_name as packageName, SUM(scroll_amount) as totalScroll, CASE WHEN SUM(CASE WHEN dataType = 'MEASURED' THEN 1 ELSE 0 END) > 0 THEN 'MEASURED' ELSE 'INFERRED' END as dataType FROM scroll_sessions WHERE date_string = :dateString GROUP BY package_name ORDER BY totalScroll DESC")
     fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>>
 
     /**
@@ -56,6 +56,12 @@ interface ScrollSessionDao {
 
     @Query("SELECT DISTINCT date_string FROM scroll_sessions ORDER BY date_string DESC")
     fun getAllDistinctScrollDateStrings(): Flow<List<String>>
+
+    @Query("SELECT * FROM scroll_sessions WHERE date_string = :date")
+    fun getSessionsForDate(date: String): Flow<List<ScrollSessionRecord>>
+
+    @Query("SELECT * FROM scroll_sessions WHERE date_string BETWEEN :startDate AND :endDate")
+    fun getSessionsForDateRange(startDate: String, endDate: String): Flow<List<ScrollSessionRecord>>
 }
 
 // New data class to hold scroll data along with its date, as AppScrollData only has packageName and totalScroll

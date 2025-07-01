@@ -50,12 +50,13 @@ class AppUiModelMapper @Inject constructor(
                     appName = metadata.appName,
                     icon = icon,
                     totalScroll = appData.totalScroll,
-                    packageName = appData.packageName
+                    packageName = appData.packageName,
+                    dataType = appData.dataType
                 )
             } else {
                 Log.w("AppUiModelMapper", "No metadata found for scroll item ${appData.packageName}, creating fallback UI item.")
                 val fallbackAppName = appData.packageName.substringAfterLast('.', appData.packageName)
-                AppScrollUiItem(appData.packageName, fallbackAppName, null, appData.totalScroll, appData.packageName)
+                AppScrollUiItem(appData.packageName, fallbackAppName, null, appData.totalScroll, appData.packageName, appData.dataType)
             }
         }
     }

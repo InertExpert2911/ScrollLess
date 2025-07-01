@@ -84,6 +84,12 @@ import androidx.compose.ui.tooling.preview.PreviewParameter
 import com.example.scrolltrack.ui.theme.ScrollTrackTheme
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import com.example.scrolltrack.ui.theme.AppTheme
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Rule
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Waves
+import androidx.compose.material3.CircularProgressIndicator
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

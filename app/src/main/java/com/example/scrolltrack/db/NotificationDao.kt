@@ -37,4 +37,7 @@ interface NotificationDao {
 
     @Query("DELETE FROM notification_records WHERE post_time_utc < :cutoffTimestamp")
     suspend fun deleteOldNotifications(cutoffTimestamp: Long)
+
+    @Query("UPDATE notification_records SET removal_reason = :reason WHERE package_name = :packageName AND post_time_utc = :postTime")
+    suspend fun updateRemovalReason(packageName: String, postTime: Long, reason: Int)
 } 

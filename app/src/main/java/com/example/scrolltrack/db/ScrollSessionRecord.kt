@@ -23,6 +23,9 @@ data class ScrollSessionRecord(
     @ColumnInfo(name = "scroll_amount")
     val scrollAmount: Long,
 
+    @ColumnInfo(name = "dataType")
+    val dataType: String = "MEASURED",
+
     @ColumnInfo(name = "session_start_time")
     val sessionStartTime: Long,
 

@@ -140,29 +140,28 @@ class ScrollDataRepositoryImpl @Inject constructor(
         return appOpens
     }
 
-    private suspend fun calculateDebouncedNotificationCounts(dateString: String): Map<String, Int> {
-        val notifications = notificationDao.getNotificationsForDate(dateString).first()
-        if (notifications.isEmpty()) return emptyMap()
+    private suspend fun calculateAccurateNotificationCounts(events: List<RawAppEvent>): Map<String, Int> {
+        val notificationEvents = events.filter { it.eventType == RawAppEvent.EVENT_TYPE_NOTIFICATION_POSTED || it.eventType == RawAppEvent.EVENT_TYPE_NOTIFICATION_REMOVED }
+            .sortedBy { it.eventTimestamp }
 
-        val debouncedCounts = mutableMapOf<String, Int>()
-        notifications
-            .groupBy { it.packageName }
-            .forEach { (pkg, records) ->
-                if (records.isEmpty()) return@forEach
+        val notificationCounts = mutableMapOf<String, Int>()
+        val activeNotifications = mutableMapOf<String, MutableSet<String>>() // Pkg -> Set of Notification IDs
 
-                val sortedRecords = records.sortedBy { it.postTimeUTC }
-                var count = 0
-                var lastCountedNotificationTime = 0L
+        for (event in notificationEvents) {
+            val pkg = event.packageName
+            val id = event.className ?: continue // We stored the ID in the className field for removals
 
-                sortedRecords.forEach { record ->
-                    if (count == 0 || record.postTimeUTC - lastCountedNotificationTime > AppConstants.NOTIFICATION_DEBOUNCE_WINDOW_MS) {
-                        count++
-                        lastCountedNotificationTime = record.postTimeUTC
-                    }
+            if (event.eventType == RawAppEvent.EVENT_TYPE_NOTIFICATION_POSTED) {
+                val isUpdate = activeNotifications[pkg]?.contains(id) == true
+                if (!isUpdate) {
+                    notificationCounts[pkg] = notificationCounts.getOrDefault(pkg, 0) + 1
+                    activeNotifications.getOrPut(pkg) { mutableSetOf() }.add(id)
                 }
-                debouncedCounts[pkg] = count
+            } else if (event.eventType == RawAppEvent.EVENT_TYPE_NOTIFICATION_REMOVED) {
+                activeNotifications[pkg]?.remove(id)
             }
-        return debouncedCounts
+        }
+        return notificationCounts
     }
 
     @Suppress("DEPRECATION")
@@ -249,7 +248,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
             val aggregatedData = aggregateUsage(allEventsForToday, endOfTodayUTC)
             val appOpenCounts = calculateAppOpens(allEventsForToday)
-            val notificationCounts = calculateDebouncedNotificationCounts(todayDateString)
+            val notificationCounts = calculateAccurateNotificationCounts(allEventsForToday)
             val unlockCount = calculateUnlocks(allEventsForToday)
             val totalNotificationCount = notificationCounts.values.sum()
 
@@ -525,7 +524,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
                     Log.i(TAG_REPO, "Successfully inserted ${allEventsForDay.size} combined raw events for $historicalDateString.")
 
                     val unlockCount = calculateUnlocks(allEventsForDay)
-                    val debouncedNotifications = calculateDebouncedNotificationCounts(historicalDateString)
+                    val debouncedNotifications = calculateAccurateNotificationCounts(allEventsForDay)
                     val totalNotifications = debouncedNotifications.values.sum()
 
                     val summary = DailyDeviceSummary(
