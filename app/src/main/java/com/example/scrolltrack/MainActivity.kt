@@ -11,22 +11,19 @@ import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.*
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.navigation.compose.rememberNavController
-import com.example.scrolltrack.navigation.AppNavigationHost
+import com.example.scrolltrack.ui.main.MainScreen
 import com.example.scrolltrack.ui.main.TodaySummaryViewModel
 import com.example.scrolltrack.ui.theme.*
-import com.example.scrolltrack.util.PermissionUtils
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import com.example.scrolltrack.ui.main.MainScreen
-import androidx.core.view.WindowCompat
 
 // Constants for theme variants to be used by the Switch logic
 private const val THEME_LIGHT = "light"
@@ -47,7 +44,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, false)
+        // Enable edge-to-edge display and predictive back gestures.
+        enableEdgeToEdge()
         globalPrefs = getSharedPreferences(PREFS_GLOBAL, Context.MODE_PRIVATE)
 
         // The ViewModelFactory and ViewModelProvider are no longer needed.

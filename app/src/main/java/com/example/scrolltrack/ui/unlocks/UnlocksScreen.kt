@@ -40,6 +40,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material.icons.filled.Check
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -274,12 +275,28 @@ fun PeriodSelector(
     onPeriodSelected: (UnlockPeriod) -> Unit
 ) {
     val options = UnlockPeriod.entries
+    val segmentedButtonColors = SegmentedButtonDefaults.colors(
+        activeContainerColor = MaterialTheme.colorScheme.primary,
+        activeContentColor = MaterialTheme.colorScheme.onPrimary,
+        inactiveContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+        inactiveContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+    )
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
         options.forEachIndexed { index, period ->
             SegmentedButton(
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                 onClick = { onPeriodSelected(period) },
-                selected = period == selectedPeriod
+                selected = period == selectedPeriod,
+                colors = segmentedButtonColors,
+                icon = {
+                    if (period == selectedPeriod) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Selected",
+                            modifier = Modifier.size(ButtonDefaults.IconSize)
+                        )
+                    }
+                }
             ) {
                 Text(period.name)
             }

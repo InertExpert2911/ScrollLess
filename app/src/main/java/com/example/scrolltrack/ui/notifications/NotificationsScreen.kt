@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.graphics.Color
 import coil.compose.rememberAsyncImagePainter
+import androidx.compose.material.icons.filled.Check
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -107,12 +108,28 @@ private fun PeriodSelector(
     onPeriodSelected: (NotificationPeriod) -> Unit
 ) {
     val options = NotificationPeriod.entries
+    val segmentedButtonColors = SegmentedButtonDefaults.colors(
+        activeContainerColor = MaterialTheme.colorScheme.primary,
+        activeContentColor = MaterialTheme.colorScheme.onPrimary,
+        inactiveContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+        inactiveContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+    )
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
         options.forEachIndexed { index, period ->
             SegmentedButton(
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                 onClick = { onPeriodSelected(period) },
-                selected = period == selectedPeriod
+                selected = period == selectedPeriod,
+                colors = segmentedButtonColors,
+                icon = {
+                    if (period == selectedPeriod) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Selected",
+                            modifier = Modifier.size(ButtonDefaults.IconSize)
+                        )
+                    }
+                }
             ) {
                 Text(period.name)
             }

@@ -69,6 +69,7 @@ import androidx.compose.ui.text.font.FontWeight.Companion.Bold
 import com.example.scrolltrack.ui.detail.ChartState
 import com.example.scrolltrack.ui.detail.rememberChartState
 import androidx.compose.ui.unit.toSize
+import androidx.compose.material.icons.filled.Check
 
 // Helper functions for date formatting specific to this screen
 private fun formatDateToDayOfWeek(dateString: String): String {
@@ -198,24 +199,38 @@ fun AppDetailScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Period Selector Buttons
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly, // Distribute buttons evenly
-                verticalAlignment = Alignment.CenterVertically
+            val segmentedButtonColors = SegmentedButtonDefaults.colors(
+                activeContainerColor = MaterialTheme.colorScheme.primary,
+                activeContentColor = MaterialTheme.colorScheme.onPrimary,
+                inactiveContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                inactiveContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            SingleChoiceSegmentedButtonRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                val buttonModifier = Modifier.weight(1f).padding(horizontal = 4.dp)
-
-                ChartPeriodType.entries.forEach { period -> // Iterate through all enum entries
-                    val isSelected = currentPeriodType == period
-                    FilledTonalButton(
+                ChartPeriodType.entries.forEachIndexed { index, period ->
+                    SegmentedButton(
+                        shape = SegmentedButtonDefaults.itemShape(index = index, count = ChartPeriodType.entries.size),
                         onClick = { viewModel.changeChartPeriod(period) },
-                        modifier = buttonModifier,
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        selected = currentPeriodType == period,
+                        colors = segmentedButtonColors,
+                        icon = {
+                            if (currentPeriodType == period) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    modifier = Modifier.size(ButtonDefaults.IconSize)
+                                )
+                            }
+                        }
                     ) {
-                        Text(period.name.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() })
+                        Text(period.name.replaceFirstChar {
+                            if (it.isLowerCase()) it.titlecase(
+                                Locale.getDefault()
+                            ) else it.toString()
+                        })
                     }
                 }
             }

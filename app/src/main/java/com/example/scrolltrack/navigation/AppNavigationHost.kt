@@ -35,6 +35,12 @@ import androidx.compose.ui.Alignment
 import com.example.scrolltrack.ui.settings.SettingsViewModel
 import com.example.scrolltrack.ui.settings.SettingsScreen
 import com.example.scrolltrack.ui.settings.AppVisibilityScreen
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 
 @Composable
 fun AppNavigationHost(
@@ -50,7 +56,31 @@ fun AppNavigationHost(
     NavHost(
         navController = navController,
         startDestination = DASHBOARD_GRAPH_ROUTE,
-        modifier = modifier
+        modifier = modifier,
+        enterTransition = {
+            slideInHorizontally(
+                initialOffsetX = { it },
+                animationSpec = tween(300)
+            ) + fadeIn(animationSpec = tween(300))
+        },
+        exitTransition = {
+            slideOutHorizontally(
+                targetOffsetX = { -it / 3 },
+                animationSpec = tween(300)
+            ) + fadeOut(animationSpec = tween(300))
+        },
+        popEnterTransition = {
+            slideInHorizontally(
+                initialOffsetX = { -it / 3 },
+                animationSpec = tween(300)
+            ) + fadeIn(animationSpec = tween(300))
+        },
+        popExitTransition = {
+            slideOutHorizontally(
+                targetOffsetX = { it },
+                animationSpec = tween(300)
+            ) + fadeOut(animationSpec = tween(300))
+        }
     ) {
         addDashboardGraph(
             navController = navController,

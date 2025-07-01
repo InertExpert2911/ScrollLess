@@ -1,5 +1,9 @@
 package com.example.scrolltrack.navigation
 
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -13,8 +17,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import com.airbnb.lottie.LottieProperty
 import com.airbnb.lottie.compose.*
 import com.airbnb.lottie.model.KeyPath
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffColorFilter
 
 @Composable
 fun AppNavigationBar(navController: NavController) {
@@ -31,38 +33,22 @@ fun AppNavigationBar(navController: NavController) {
         items.forEach { item ->
             val isSelected = currentDestination?.hierarchy?.any { it.route == item.route } == true
             val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(item.animResId))
-            var isPlaying by remember { mutableStateOf(false) }
 
-            // Trigger the animation and let it run once to completion.
-            val progress by animateLottieCompositionAsState(
-                composition = composition,
-                isPlaying = isPlaying,
-                iterations = 1
+            val lottieProgress by animateFloatAsState(
+                targetValue = if (isSelected) 1f else 0f,
+                animationSpec = tween(durationMillis = 400),
+                label = "NavBarIconAnimation"
             )
-
-            // When the animation is complete, reset the trigger.
-            LaunchedEffect(progress) {
-                if (progress == 1f) {
-                    isPlaying = false
-                }
-            }
 
             NavigationBarItem(
                 selected = isSelected,
                 onClick = {
-                    isPlaying = true
                     navController.navigate(item.route) {
-                        // Pop up to the start destination of the graph to
-                        // avoid building up a large stack of destinations
-                        // on the back stack as users select items.
                         popUpTo(navController.graph.findStartDestination().id) {
                             saveState = true
                         }
-                        // Avoid multiple copies of the same destination when
-                        // reselecting the same item.
                         launchSingleTop = true
-                        // Restore state when reselecting a previously selected item.
-                        restoreState = true
+                        restoreState = !isSelected
                     }
                 },
                 label = { Text(item.title) },
@@ -78,15 +64,7 @@ fun AppNavigationBar(navController: NavController) {
 
                     LottieAnimation(
                         composition = composition,
-                        // This lambda controls the exact frame of the animation.
-                        // - If isPlaying, it follows the animation's progress.
-                        // - If not playing but is selected, it stays at the end frame (1f).
-                        // - If not playing and not selected, it stays at the start frame (0f).
-                        progress = {
-                            if (isPlaying) progress
-                            else if (isSelected) 1f
-                            else 0f
-                        },
+                        progress = { lottieProgress },
                         dynamicProperties = dynamicProperties,
                         modifier = Modifier.size(28.dp)
                     )

@@ -22,6 +22,11 @@ import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.R
 import java.util.*
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,6 +35,26 @@ fun AppVisibilityScreen(
     viewModel: AppVisibilityViewModel = hiltViewModel()
 ) {
     val apps by viewModel.apps.collectAsStateWithLifecycle()
+    var showInfoDialog by remember { mutableStateOf(false) }
+
+    if (showInfoDialog) {
+        AlertDialog(
+            onDismissRequest = { showInfoDialog = false },
+            title = { Text("App Visibility States") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("• Default: The app's visibility is determined automatically by a heuristic. System apps without launcher icons are typically hidden.")
+                    Text("• Visible: Manually forces the app to always appear in usage lists, overriding the default behavior.")
+                    Text("• Hidden: Manually forces the app to be hidden from all usage lists.")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showInfoDialog = false }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -38,6 +63,11 @@ fun AppVisibilityScreen(
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showInfoDialog = true }) {
+                        Icon(Icons.Default.Info, contentDescription = "Information")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -106,12 +136,28 @@ private fun AppVisibilityRow(
             }
 
             val options = VisibilityState.entries
+            val segmentedButtonColors = SegmentedButtonDefaults.colors(
+                activeContainerColor = MaterialTheme.colorScheme.primary,
+                activeContentColor = MaterialTheme.colorScheme.onPrimary,
+                inactiveContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                inactiveContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+            )
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 options.forEachIndexed { index, state ->
                     SegmentedButton(
                         shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                         onClick = { onStateChange(state) },
-                        selected = item.visibilityState == state
+                        selected = item.visibilityState == state,
+                        colors = segmentedButtonColors,
+                        icon = {
+                            if (item.visibilityState == state) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    modifier = Modifier.size(ButtonDefaults.IconSize)
+                                )
+                            }
+                        }
                     ) {
                         Text(
                             text = state.name.lowercase(Locale.getDefault())

@@ -1,6 +1,7 @@
 package com.example.scrolltrack.data
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -155,32 +156,19 @@ class AppMetadataRepositoryImpl @Inject constructor(
             // --- Heuristic for isUserVisible ---
             val hasLaunchIntent = packageManager.getLaunchIntentForPackage(packageName) != null
 
-            val appCategory = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                appInfo.category
+            // A more robust check for a main "launcher" intent.
+            val mainIntent = Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
+            val resolveInfoList = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.queryIntentActivities(mainIntent, PackageManager.ResolveInfoFlags.of(0))
             } else {
-                -1 // ApplicationInfo.CATEGORY_UNDEFINED
+                @Suppress("DEPRECATION")
+                packageManager.queryIntentActivities(mainIntent, 0)
             }
-
-            // A set of categories for apps that are almost always user-facing.
-            val userVisibleCategories = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                setOf(
-                    ApplicationInfo.CATEGORY_GAME,
-                    ApplicationInfo.CATEGORY_SOCIAL,
-                    ApplicationInfo.CATEGORY_VIDEO,
-                    ApplicationInfo.CATEGORY_AUDIO,
-                    ApplicationInfo.CATEGORY_MAPS,
-                    ApplicationInfo.CATEGORY_NEWS,
-                    ApplicationInfo.CATEGORY_PRODUCTIVITY,
-                    ApplicationInfo.CATEGORY_IMAGE
-                )
-            } else {
-                emptySet()
-            }
+            val hasLauncherIcon = resolveInfoList.any { it.activityInfo.packageName == packageName }
 
             // An app is considered user-visible if it's NOT a system app,
-            // OR it has a launcher icon,
-            // OR it belongs to a clearly interactive category.
-            val isUserVisible = !isSystem || hasLaunchIntent || userVisibleCategories.contains(appCategory)
+            // OR if it IS a system app but it explicitly has a launcher icon.
+            val isUserVisible = !isSystem || hasLauncherIcon
             // --- End of Heuristic ---
 
             val metadata = AppMetadata(
@@ -191,7 +179,7 @@ class AppMetadataRepositoryImpl @Inject constructor(
                 isSystemApp = isSystem,
                 isInstalled = true,
                 isIconCached = iconCached,
-                appCategory = appCategory,
+                appCategory = -1, // Category is no longer needed for this heuristic
                 isUserVisible = isUserVisible,
                 userHidesOverride = existingMetadata?.userHidesOverride,
                 installTimestamp = packageInfo.firstInstallTime,
@@ -199,7 +187,7 @@ class AppMetadataRepositoryImpl @Inject constructor(
             )
 
             appMetadataDao.insertOrUpdate(metadata)
-            Log.d(TAG, "Fetched and cached new metadata for $packageName. IsUserVisible: $isUserVisible, Category: $appCategory")
+            Log.d(TAG, "Fetched and cached new metadata for $packageName. IsUserVisible: $isUserVisible")
             return metadata
         } catch (e: PackageManager.NameNotFoundException) {
             Log.w(TAG, "Could not fetch metadata for $packageName, it may have been uninstalled quickly.", e)
