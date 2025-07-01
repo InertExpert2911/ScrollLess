@@ -2,8 +2,6 @@ package com.example.scrolltrack.navigation
 
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,10 +32,11 @@ fun AppNavigationBar(navController: NavController) {
             val isSelected = currentDestination?.hierarchy?.any { it.route == item.route } == true
             val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(item.animResId))
 
-            val lottieProgress by animateFloatAsState(
-                targetValue = if (isSelected) 1f else 0f,
-                animationSpec = tween(durationMillis = 400),
-                label = "NavBarIconAnimation"
+            val progress by animateLottieCompositionAsState(
+                composition = composition,
+                isPlaying = isSelected,
+                restartOnPlay = true,
+                speed = 0.8f,
             )
 
             NavigationBarItem(
@@ -51,22 +50,26 @@ fun AppNavigationBar(navController: NavController) {
                         restoreState = !isSelected
                     }
                 },
-                label = { Text(item.title) },
                 icon = {
                     val color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     val dynamicProperties = rememberLottieDynamicProperties(
                         rememberLottieDynamicProperty(
-                            property = LottieProperty.COLOR_FILTER,
-                            value = PorterDuffColorFilter(color.toArgb(), PorterDuff.Mode.SRC_IN),
+                            property = LottieProperty.STROKE_COLOR,
+                            value = color.toArgb(),
+                            keyPath = arrayOf("**")
+                        ),
+                        rememberLottieDynamicProperty(
+                            property = LottieProperty.COLOR,
+                            value = color.toArgb(),
                             keyPath = arrayOf("**")
                         )
                     )
 
                     LottieAnimation(
                         composition = composition,
-                        progress = { lottieProgress },
+                        progress = { if (isSelected) progress else 0f },
                         dynamicProperties = dynamicProperties,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(40.dp)
                     )
                 }
             )
