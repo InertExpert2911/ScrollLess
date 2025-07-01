@@ -114,7 +114,6 @@ fun ScrollDetailScreenContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp)
         ) {
             if (scrollData.isEmpty()) {
                 Box(

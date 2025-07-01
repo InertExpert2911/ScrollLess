@@ -114,7 +114,6 @@ fun TodaySummaryScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surface)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp)
     ) {
         // Header Section
         Row(
