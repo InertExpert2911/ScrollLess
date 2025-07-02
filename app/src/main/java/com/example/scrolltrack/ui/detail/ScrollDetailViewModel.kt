@@ -9,6 +9,7 @@ import com.example.scrolltrack.data.AppScrollData
 import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.ui.mappers.AppUiModelMapper
 import com.example.scrolltrack.ui.model.AppScrollUiItem
+import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +25,7 @@ class ScrollDetailViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
     private val appMetadataRepository: AppMetadataRepository,
     private val mapper: AppUiModelMapper,
+    internal val conversionUtil: ConversionUtil,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 

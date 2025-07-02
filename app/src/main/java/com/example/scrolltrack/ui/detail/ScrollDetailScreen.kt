@@ -11,12 +11,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material.icons.filled.Waves
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -35,6 +37,9 @@ import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
 import android.text.format.DateUtils as AndroidDateUtils
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import com.example.scrolltrack.ui.main.FakeSettingsRepository
+import androidx.hilt.navigation.compose.hiltViewModel
 
 @Composable
 fun ScrollDetailScreen(
@@ -44,6 +49,7 @@ fun ScrollDetailScreen(
     val selectedDateString by viewModel.selectedDateForScrollDetail.collectAsStateWithLifecycle()
     val scrollData by viewModel.aggregatedScrollDataForSelectedDate.collectAsStateWithLifecycle()
     val selectableDatesMillis by viewModel.selectableDatesForScrollDetail.collectAsStateWithLifecycle()
+    val conversionUtil = viewModel.conversionUtil
 
     ScrollDetailScreenContent(
         navController = navController,
@@ -52,7 +58,8 @@ fun ScrollDetailScreen(
         selectableDatesMillis = selectableDatesMillis,
         onDateSelected = { dateMillis ->
             viewModel.updateSelectedDateForScrollDetail(dateMillis)
-        }
+        },
+        conversionUtil = conversionUtil
     )
 }
 
@@ -63,10 +70,12 @@ fun ScrollDetailScreenContent(
     selectedDateString: String,
     scrollData: List<AppScrollUiItem>,
     selectableDatesMillis: Set<Long>,
-    onDateSelected: (Long) -> Unit
+    onDateSelected: (Long) -> Unit,
+    conversionUtil: ConversionUtil
 ) {
     val context = LocalContext.current
     var showDatePickerDialog by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
 
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = remember(selectedDateString) {
@@ -133,9 +142,15 @@ fun ScrollDetailScreenContent(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(items = scrollData, key = { it.id }) { appItem ->
+                        var formattedDistance by remember { mutableStateOf("...") }
+                        LaunchedEffect(appItem.totalScroll, conversionUtil) {
+                            val (value, unit) = conversionUtil.formatScrollDistance(appItem.totalScroll, context)
+                            formattedDistance = "$value $unit"
+                        }
+
                         AppScrollDetailItemEntry(
                             appItem = appItem,
-                            formattedDistance = ConversionUtil.formatScrollDistance(appItem.totalScroll, context).first,
+                            formattedDistance = formattedDistance,
                             onClick = { navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(appItem.packageName)) }
                         )
                     }
@@ -198,20 +213,36 @@ fun AppScrollDetailItemEntry(
             )
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = appItem.appName,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                if (appItem.dataType == "INFERRED") {
-                    Icon(
-                        imageVector = Icons.Default.Waves,
-                        contentDescription = "Inferred Data",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                        modifier = Modifier.size(16.dp).padding(start = 8.dp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = appItem.appName,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    val (icon, description, tint) = when (appItem.dataType) {
+                        "MEASURED" -> Triple(
+                            Icons.Filled.Straighten,
+                            "Measured Data",
+                            MaterialTheme.colorScheme.secondary
+                        )
+                        "INFERRED" -> Triple(
+                            Icons.Filled.Waves,
+                            "Inferred Data",
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                        else -> Triple(null, null, Color.Unspecified)
+                    }
+                    if (icon != null) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = description,
+                            tint = tint,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
                 Text(
                     text = "${appItem.totalScroll} units",
@@ -247,7 +278,8 @@ fun ScrollDetailScreenPreview() {
             selectedDateString = "2023-10-27",
             scrollData = dummyData,
             selectableDatesMillis = emptySet(),
-            onDateSelected = {}
+            onDateSelected = {},
+            conversionUtil = ConversionUtil(FakeSettingsRepository())
         )
     }
 } 

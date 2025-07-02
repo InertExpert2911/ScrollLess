@@ -19,10 +19,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import com.example.scrolltrack.R
 import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.theme.AppTheme
 import com.example.scrolltrack.ui.theme.getThemeColors
@@ -94,6 +96,18 @@ fun SettingsScreen(
                         .size(24.dp)
                         .clip(CircleShape)
                         .background(currentThemeColors.primary)
+                )
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+            SettingRow(
+                title = "Scroll Calibration",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { navController.navigate(ScreenRoutes.CalibrationRoute.route) }
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = "Navigate to Scroll Calibration"
                 )
             }
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))

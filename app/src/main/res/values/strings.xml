@@ -18,4 +18,5 @@
     <string name="card_title_top_weekly_app">Top App</string>
     <string name="text_no_data_yet">No data yet</string>
     <string name="card_title_scroll_stats_today">Scroll Stats Today</string>
+    <string name="calibration_instructions">To calibrate, press "Begin", then scroll down exactly %1$.1fcm using a ruler against your screen. Press "Save" when done.</string>
 </resources>

@@ -23,6 +23,7 @@ class SettingsRepositoryImpl @Inject constructor(@ApplicationContext context: Co
         val DEFAULT_THEME = AppTheme.CalmLavender.name
         const val KEY_IS_DARK_MODE = "is_dark_mode"
         const val DEFAULT_IS_DARK_MODE = true // Default to dark mode
+        const val KEY_CALIBRATION_FACTOR = "calibration_factor"
     }
 
     init {
@@ -59,6 +60,28 @@ class SettingsRepositoryImpl @Inject constructor(@ApplicationContext context: Co
         awaitClose { appPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
+    override val calibrationFactor: Flow<Float?> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_CALIBRATION_FACTOR) {
+                if (appPrefs.contains(KEY_CALIBRATION_FACTOR)) {
+                    trySend(appPrefs.getFloat(KEY_CALIBRATION_FACTOR, -1f))
+                } else {
+                    trySend(null)
+                }
+            }
+        }
+        appPrefs.registerOnSharedPreferenceChangeListener(listener)
+
+        // Emit initial value
+        if (appPrefs.contains(KEY_CALIBRATION_FACTOR)) {
+            trySend(appPrefs.getFloat(KEY_CALIBRATION_FACTOR, -1f))
+        } else {
+            trySend(null)
+        }
+
+        awaitClose { appPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
     override suspend fun setSelectedTheme(theme: AppTheme) {
         appPrefs.edit {
             putString(KEY_SELECTED_THEME, theme.name)
@@ -68,6 +91,16 @@ class SettingsRepositoryImpl @Inject constructor(@ApplicationContext context: Co
     override suspend fun setIsDarkMode(isDark: Boolean) {
         appPrefs.edit {
             putBoolean(KEY_IS_DARK_MODE, isDark)
+        }
+    }
+
+    override suspend fun setCalibrationFactor(factor: Float?) {
+        appPrefs.edit {
+            if (factor != null) {
+                putFloat(KEY_CALIBRATION_FACTOR, factor)
+            } else {
+                remove(KEY_CALIBRATION_FACTOR)
+            }
         }
     }
 } 

@@ -55,6 +55,7 @@ class TodaySummaryViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val appMetadataRepository: AppMetadataRepository,
     private val mapper: AppUiModelMapper,
+    private val conversionUtil: ConversionUtil,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -187,10 +188,11 @@ class TodaySummaryViewModel @Inject constructor(
             .map { it ?: 0L }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
 
-    val scrollDistanceTodayFormatted: StateFlow<Pair<String, String>> =
-        totalScrollToday.map { scrollUnits ->
-            ConversionUtil.formatScrollDistance(scrollUnits, context)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "0 m" to "meters")
+    val scrollDistanceTodayFormatted: StateFlow<Pair<String, String>> = totalScrollToday
+        .map { scrollUnits ->
+            conversionUtil.formatScrollDistance(scrollUnits, context)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0 m" to "meters")
 
     val totalUnlocksToday: StateFlow<Int> =
         todayDeviceSummary.map { it?.totalUnlockCount ?: 0 }

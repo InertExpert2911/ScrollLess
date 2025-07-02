@@ -35,6 +35,7 @@ import androidx.compose.ui.Alignment
 import com.example.scrolltrack.ui.settings.SettingsViewModel
 import com.example.scrolltrack.ui.settings.SettingsScreen
 import com.example.scrolltrack.ui.settings.AppVisibilityScreen
+import com.example.scrolltrack.ui.settings.CalibrationScreen
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -136,7 +137,7 @@ private fun NavGraphBuilder.addDashboardGraph(
                 totalUsageTimeMillis = totalUsageTimeMillis,
                 topWeeklyApp = topWeeklyApp,
                 totalScrollUnits = totalScrollUnits,
-                scrollDistanceMeters = scrollDistance.first,
+                scrollDistanceMeters = "${scrollDistance.first} ${scrollDistance.second}",
                 totalUnlocks = totalUnlocks,
                 totalNotifications = totalNotifications,
                 onNavigateToHistoricalUsage = {
@@ -242,6 +243,9 @@ private fun NavGraphBuilder.addSettingsGraph(navController: NavHostController) {
         }
         composable(ScreenRoutes.AppVisibility.route) {
             AppVisibilityScreen(navController = navController)
+        }
+        composable(ScreenRoutes.CalibrationRoute.route) {
+            CalibrationScreen(navController = navController)
         }
         // Add other destinations for the settings tab here
     }

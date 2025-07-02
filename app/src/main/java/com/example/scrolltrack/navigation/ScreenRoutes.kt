@@ -17,6 +17,7 @@ sealed class ScreenRoutes(val route: String) {
     object HistoricalUsageRoute : ScreenRoutes("historical_usage")
     object UnlocksRoute : ScreenRoutes("unlocks_route")
     object NotificationsRoute : ScreenRoutes("notifications_route")
+    object CalibrationRoute : ScreenRoutes("calibration")
     object AppDetailRoute : ScreenRoutes("app_detail/{packageName}") {
         fun createRoute(packageName: String) = "app_detail/$packageName"
     }

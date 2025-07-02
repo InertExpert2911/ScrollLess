@@ -49,7 +49,8 @@ class ChartState(
     val colors: ChartColors,
     val styles: ChartStyles,
     private val textMeasurer: TextMeasurer,
-    private val context: Context
+    private val context: Context,
+    private val conversionUtil: ConversionUtil
 ) {
     var selectedBarIndex by mutableStateOf<Int?>(null)
         private set
@@ -91,7 +92,8 @@ class ChartState(
     fun getTooltipScrollText(index: Int): String {
         if (index < data.size) {
             val selectedData = data[index]
-            return ConversionUtil.formatScrollDistance(selectedData.scrollUnits, context).first
+            val (value, unit) = conversionUtil.formatScrollDistanceSync(selectedData.scrollUnits, context)
+            return "$value $unit"
         }
         return ""
     }
@@ -139,6 +141,7 @@ class ChartState(
 fun rememberChartState(
     data: List<AppDailyDetailData>,
     periodType: ChartPeriodType,
+    conversionUtil: ConversionUtil
 ): ChartState {
     val context = LocalContext.current
     val textMeasurer = rememberTextMeasurer()
@@ -160,8 +163,8 @@ fun rememberChartState(
         tooltipTextStyle = MaterialTheme.typography.bodySmall.copy(color = colors.tooltipTextColor)
     )
 
-    val state = remember(data, periodType, colors, styles, textMeasurer, context) {
-        ChartState(data, periodType, colors, styles, textMeasurer, context)
+    val state = remember(data, periodType, colors, styles, textMeasurer, context, conversionUtil) {
+        ChartState(data, periodType, colors, styles, textMeasurer, context, conversionUtil)
     }
 
     LaunchedEffect(periodType, data) {

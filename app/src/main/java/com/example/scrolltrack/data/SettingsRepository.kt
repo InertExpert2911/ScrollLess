@@ -9,4 +9,7 @@ interface SettingsRepository {
 
     val isDarkMode: Flow<Boolean>
     suspend fun setIsDarkMode(isDark: Boolean)
+
+    val calibrationFactor: Flow<Float?>
+    suspend fun setCalibrationFactor(factor: Float?)
 } 

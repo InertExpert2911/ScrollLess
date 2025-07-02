@@ -42,6 +42,7 @@ enum class ChartPeriodType {
 class AppDetailViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
     private val appMetadataRepository: AppMetadataRepository,
+    internal val conversionUtil: ConversionUtil,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -145,7 +146,7 @@ class AppDetailViewModel @Inject constructor(
                 _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(0L)
                 _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(0L)
                 _appDetailFocusedPeriodDisplay.value = ""
-                _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(0L, context).first
+                _appDetailFocusedScrollDisplay.value = conversionUtil.formatScrollDistance(0L, context).first
                 return@launch
             }
 
@@ -183,7 +184,8 @@ class AppDetailViewModel @Inject constructor(
                     val focusedDayData = currentCombinedData.firstOrNull { it.date == referenceDate }
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(focusedDayData?.usageTimeMillis ?: 0L)
                     _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(focusedDayData?.activeTimeMillis ?: 0L)
-                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(focusedDayData?.scrollUnits ?: 0L, context).first
+                    val (dist, unit) = conversionUtil.formatScrollDistance(focusedDayData?.scrollUnits ?: 0L, context)
+                    _appDetailFocusedScrollDisplay.value = "$dist $unit"
                     _appDetailPeriodDescriptionText.value = "Daily Summary"
                     _appDetailFocusedPeriodDisplay.value = sdfDisplay.format(calendar.time)
                     _appDetailWeekNumberDisplay.value = null
@@ -195,7 +197,8 @@ class AppDetailViewModel @Inject constructor(
                     val currentPeriodAverageActiveUsage = calculateAverageActiveUsage(currentCombinedData)
                     _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageActiveUsage)
                     val currentPeriodAverageScroll = calculateAverageScroll(currentCombinedData)
-                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(currentPeriodAverageScroll, context).first
+                    val (dist, unit) = conversionUtil.formatScrollDistance(currentPeriodAverageScroll, context)
+                    _appDetailFocusedScrollDisplay.value = "$dist $unit"
                     _appDetailPeriodDescriptionText.value = "Weekly Average"
                     val (startOfWeekStr, endOfWeekStr) = getPeriodDisplayStrings(period, referenceDate)
                     _appDetailFocusedPeriodDisplay.value = "$startOfWeekStr - $endOfWeekStr"
@@ -216,7 +219,8 @@ class AppDetailViewModel @Inject constructor(
                     val currentPeriodAverageActiveUsage = calculateAverageActiveUsage(currentCombinedData)
                     _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageActiveUsage)
                     val currentPeriodAverageScroll = calculateAverageScroll(currentCombinedData)
-                    _appDetailFocusedScrollDisplay.value = ConversionUtil.formatScrollDistance(currentPeriodAverageScroll, context).first
+                    val (dist, unit) = conversionUtil.formatScrollDistance(currentPeriodAverageScroll, context)
+                    _appDetailFocusedScrollDisplay.value = "$dist $unit"
 
                     _appDetailPeriodDescriptionText.value = "Monthly Average"
                     _appDetailFocusedPeriodDisplay.value = sdfMonth.format(calendar.time)

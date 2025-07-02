@@ -23,12 +23,19 @@ class FakeSettingsRepository : SettingsRepository {
     private val _isDarkMode = MutableStateFlow(true)
     override val isDarkMode: Flow<Boolean> = _isDarkMode
 
+    private val _calibrationFactor = MutableStateFlow<Float?>(null)
+    override val calibrationFactor: Flow<Float?> = _calibrationFactor
+
     override suspend fun setSelectedTheme(theme: AppTheme) {
         _theme.value = theme
     }
 
     override suspend fun setIsDarkMode(isDark: Boolean) {
         _isDarkMode.value = isDark
+    }
+
+    override suspend fun setCalibrationFactor(factor: Float?) {
+        _calibrationFactor.value = factor
     }
 }
 

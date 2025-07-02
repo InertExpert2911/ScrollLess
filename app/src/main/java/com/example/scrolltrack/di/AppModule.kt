@@ -1,11 +1,9 @@
 package com.example.scrolltrack.di
 
-import android.app.Application
 import android.content.Context
 import androidx.room.Room
 import com.example.scrolltrack.data.*
 import com.example.scrolltrack.db.*
-import com.example.scrolltrack.util.SessionManager
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -20,6 +18,10 @@ abstract class AppModule {
 
     @Binds
     @Singleton
+    abstract fun bindScrollDataRepository(impl: ScrollDataRepositoryImpl): ScrollDataRepository
+
+    @Binds
+    @Singleton
     abstract fun bindSettingsRepository(impl: SettingsRepositoryImpl): SettingsRepository
 
     @Binds
@@ -31,30 +33,6 @@ abstract class AppModule {
     abstract fun bindAppMetadataRepository(impl: AppMetadataRepositoryImpl): AppMetadataRepository
 
     companion object {
-        @Provides
-        @Singleton
-        fun provideScrollDataRepository(
-            appDatabase: AppDatabase,
-            appMetadataRepository: AppMetadataRepository,
-            scrollSessionDao: ScrollSessionDao,
-            dailyAppUsageDao: DailyAppUsageDao,
-            rawAppEventDao: RawAppEventDao,
-            notificationDao: NotificationDao,
-            dailyDeviceSummaryDao: DailyDeviceSummaryDao,
-            @ApplicationContext context: Context
-        ): ScrollDataRepository {
-            return ScrollDataRepositoryImpl(
-                appDatabase,
-                appMetadataRepository,
-                scrollSessionDao,
-                dailyAppUsageDao,
-                rawAppEventDao,
-                notificationDao,
-                dailyDeviceSummaryDao,
-                context
-            )
-        }
-
         @Provides
         @Singleton
         fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
@@ -89,17 +67,5 @@ abstract class AppModule {
         @Provides
         @Singleton
         fun provideAppMetadataDao(db: AppDatabase): AppMetadataDao = db.appMetadataDao()
-
-        @Provides
-        @Singleton
-        fun provideSessionManager(
-            draftRepository: DraftRepository,
-            scrollSessionDao: ScrollSessionDao
-        ): SessionManager {
-            return SessionManager(
-                draftRepository = draftRepository,
-                scrollSessionDao = scrollSessionDao
-            )
-        }
     }
 }

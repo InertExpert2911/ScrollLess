@@ -9,6 +9,7 @@ import com.example.scrolltrack.data.ScrollDataRepository // Keep for potential f
 import com.example.scrolltrack.data.SessionDraft
 import com.example.scrolltrack.db.ScrollSessionDao
 import com.example.scrolltrack.db.ScrollSessionRecord
+import com.example.scrolltrack.util.DateUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,7 +25,7 @@ import kotlinx.coroutines.delay
 class SessionManager @Inject constructor(
     // private val context: Context, // Not needed if DraftRepository handles its own context
     private val draftRepository: DraftRepository,
-    private val scrollSessionDao: ScrollSessionDao
+    private val scrollSessionAggregator: ScrollSessionAggregator
 ) {
     private val TAG = "SessionManager"
     private val sessionManagerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -43,6 +44,7 @@ class SessionManager @Inject constructor(
         const val SERVICE_INTERRUPT = "SERVICE_INTERRUPT"
         const val SERVICE_DESTROY = "SERVICE_DESTROY"
         const val RECOVERED_DRAFT = "RECOVERED_DRAFT"
+        const val SERVICE_RESTART = "SERVICE_RESTART"
     }
 
     private var draftSaveJob: Job? = null
@@ -116,8 +118,8 @@ class SessionManager @Inject constructor(
                         sessionStartTime = startTimeUTC, sessionEndTime = effectiveSessionEndTimeUTC,
                         date = startLocalDateString, sessionEndReason = reason
                     )
-                    scrollSessionDao.insertSession(record)
-                    Log.i(TAG, "Scroll session for $pkgName saved for date $startLocalDateString. Scroll: $accumulatedScroll. Duration: $totalSessionDuration ms")
+                    scrollSessionAggregator.addSession(record)
+                    Log.i(TAG, "Scroll session for $pkgName passed to aggregator.")
                 } else {
                     Log.i(TAG, "Session for $pkgName spans midnight: $startLocalDateString to $endLocalDateString. Total Scroll: $accumulatedScroll. Duration: $totalSessionDuration ms. Splitting.")
                     val endOfDayForStartDayUTC = DateUtil.getEndOfDayUtcMillis(startLocalDateString)
@@ -132,7 +134,7 @@ class SessionManager @Inject constructor(
                             sessionStartTime = startTimeUTC, sessionEndTime = effectiveEndOfStartDay,
                             date = startLocalDateString, sessionEndReason = reason
                         )
-                        scrollSessionDao.insertSession(record1)
+                        scrollSessionAggregator.addSession(record1)
                         Log.i(TAG, "Split session (part 1) for $pkgName saved for $startLocalDateString. Scroll: $scrollForStartDay. DurationPart: $durationInStartDay ms. OriginalTotalScroll: $accumulatedScroll, OriginalTotalDuration: $totalSessionDuration ms.")
                     }
 
@@ -147,7 +149,7 @@ class SessionManager @Inject constructor(
                                 sessionStartTime = effectiveStartOfEndDay, sessionEndTime = effectiveSessionEndTimeUTC,
                                 date = endLocalDateString, sessionEndReason = reason
                             )
-                            scrollSessionDao.insertSession(record2)
+                            scrollSessionAggregator.addSession(record2)
                              Log.i(TAG, "Split session (part 2) for $pkgName saved for $endLocalDateString. Scroll: ${scrollForEndDay.coerceAtLeast(0L)}. DurationPart: ${(effectiveSessionEndTimeUTC - effectiveStartOfEndDay)} ms. OriginalTotalScroll: $accumulatedScroll, OriginalTotalDuration: $totalSessionDuration ms.")
                         }
                     }
@@ -155,7 +157,18 @@ class SessionManager @Inject constructor(
                 draftRepository.clearDraft()
                 // Notification update will be handled by the service after calling this.
             } catch (e: Exception) {
-                Log.e(TAG, "Error saving session for $pkgName to DB. Scroll: $accumulatedScroll. Reason: $reason", e)
+                Log.e(TAG, "Error saving session for $pkgName to aggregator. Scroll: $accumulatedScroll. Reason: $reason", e)
+                // If adding to buffer fails, we should probably re-save the draft
+                // to avoid data loss.
+                draftRepository.saveDraft(
+                    SessionDraft(
+                        packageName = pkgName,
+                        activityName = null, // Activity name isn't critical for recovery
+                        scrollAmount = accumulatedScroll,
+                        startTime = startTimeUTC,
+                        lastUpdateTime = sessionEndTimeUTC
+                    )
+                )
             }
         }
         resetCurrentSessionState()
@@ -227,6 +240,7 @@ class SessionManager @Inject constructor(
             Log.i(TAG, "DRAFT SAVE (onStop): Immediate draft saved for ${sessionToSave.packageName}")
         }
         finalizeAndSaveCurrentSession(System.currentTimeMillis(), reason)
+        resetCurrentSessionState()
     }
 
     // Getter for current package, useful for service logic

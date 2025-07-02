@@ -1,80 +1,90 @@
-package com.example.scrolltrack.util // Updated package name
+package com.example.scrolltrack.util
 
 import android.content.Context
 import android.util.DisplayMetrics
 import android.util.Log
 import kotlin.math.roundToInt
-import java.text.NumberFormat // Added for comma separation
-import java.util.Locale // Added for Locale
+import java.text.NumberFormat
+import java.util.Locale
+import com.example.scrolltrack.data.SettingsRepository
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.first
+import javax.inject.Inject
+import javax.inject.Singleton
 
-object ConversionUtil {
-    // Constants for conversion
-    private const val INCHES_PER_METER = 39.3701
-    private const val METERS_PER_KILOMETER = 1000.0
-    private const val INCHES_PER_MILE = 63360.0
-    private const val METERS_PER_MILE = 1609.34
-
-    /**
-     * Formats a distance in meters into a string with comma separation and " m" suffix.
-     * If the distance is >= 10,000m, it formats it as kilometers (e.g., "12.34 km").
-     */
-    private fun formatMeters(meters: Double): String {
-        val numberFormat = NumberFormat.getNumberInstance(Locale.getDefault())
-        return if (meters >= METERS_PER_KILOMETER * 10) { // 10,000 meters
-            numberFormat.maximumFractionDigits = 2
-            numberFormat.format(meters / METERS_PER_KILOMETER) + " km"
-        } else {
-            numberFormat.maximumFractionDigits = 0 // No decimals for meters usually, unless very small
-            if (meters < 1 && meters > 0) {
-                 numberFormat.maximumFractionDigits = 2 // Show decimals for less than 1 meter
-            }
-            numberFormat.format(meters) + " m"
-        }
+@Singleton
+class ConversionUtil @Inject constructor(
+    private val settingsRepository: SettingsRepository
+) {
+    companion object {
+        private const val INCHES_PER_METER = 39.3701
+        private const val METERS_PER_KILOMETER = 1000.0
+        private const val INCHES_PER_MILE = 63360.0
+        private const val METERS_PER_MILE = 1609.34
     }
 
     /**
      * Converts scroll units (approximated as pixels) to estimated physical distance.
+     * This is the main suspend function that accounts for user calibration.
      * @param scrollUnits The total accumulated scroll units.
      * @param context Context to access display metrics.
-     * @return Pair<Formatted Meters String, Formatted Miles String> e.g., ("1,234 m", "0.76 miles")
+     * @return Pair<Formatted String, Unit String> e.g., ("1.23", "km")
      */
-    fun formatScrollDistance(scrollUnits: Long, context: Context): Pair<String, String> {
-        if (scrollUnits == 0L) {
-            return "0 m" to "0.00 miles"
+    suspend fun formatScrollDistance(scrollUnits: Long, context: Context): Pair<String, String> {
+        if (scrollUnits <= 0) return "0" to "m"
+
+        val customFactor = settingsRepository.calibrationFactor.first()
+        val pixelsPerInch = if (customFactor != null && customFactor > 0) {
+            // The customFactor is stored as pixels per meter. We need pixels per inch.
+            customFactor / INCHES_PER_METER.toFloat()
+        } else {
+            context.resources.displayMetrics.ydpi
         }
 
-        val ydpi = context.resources.displayMetrics.ydpi
-        if (ydpi <= 0) {
-            return "0 m" to "0.00 miles" // Avoid division by zero
-        }
-        
-        val inches = scrollUnits.toDouble() / ydpi
-        val meters = inches / INCHES_PER_METER
-        val miles = meters / METERS_PER_MILE
+        if (pixelsPerInch <= 0f) return "N/A" to "error"
+
+        return scrollUnitsToFormattedPair(scrollUnits, pixelsPerInch)
+    }
+
+    /**
+     * A synchronous version of formatScrollDistance that uses a default DPI.
+     * This is suitable for UI components like charts where context might not be available
+     * and a suspend function can't be used.
+     * @param scrollUnits The total accumulated scroll units.
+     * @param context Context to get resources.
+     * @return Pair<Formatted String, Unit String> e.g., ("1.23", "km")
+     */
+    fun formatScrollDistanceSync(scrollUnits: Long, context: Context): Pair<String, String> {
+        if (scrollUnits <= 0) return "0" to "m"
+        val pixelsPerInch = context.resources.displayMetrics.ydpi
+        if (pixelsPerInch <= 0f) return "N/A" to "error"
+        return scrollUnitsToFormattedPair(scrollUnits, pixelsPerInch)
+    }
+
+    /**
+     * Core conversion and formatting logic, shared by both sync and async functions.
+     */
+    private fun scrollUnitsToFormattedPair(scrollUnits: Long, pixelsPerInch: Float): Pair<String, String> {
+        val inchesScrolled = scrollUnits.toDouble() / pixelsPerInch
+        val metersScrolled = inchesScrolled / INCHES_PER_METER
 
         val numberFormat = NumberFormat.getNumberInstance(Locale.getDefault())
-        numberFormat.maximumFractionDigits = 2 // Apply to all initially
 
-        val metricDistance: String = if (meters >= METERS_PER_KILOMETER) {
-            numberFormat.format(meters / METERS_PER_KILOMETER) + " km"
-        } else {
-            // For meters, typically we might want fewer or no decimals unless very small
-            val meterFormat = NumberFormat.getNumberInstance(Locale.getDefault())
-            if (meters < 1.0 && meters > 0.0) {
-                meterFormat.maximumFractionDigits = 2
-            } else {
-                meterFormat.maximumFractionDigits = 0
+        return when {
+            metersScrolled >= METERS_PER_KILOMETER -> {
+                numberFormat.maximumFractionDigits = 2
+                val km = metersScrolled / METERS_PER_KILOMETER
+                numberFormat.format(km) to "km"
             }
-            meterFormat.format(meters) + " m"
+            else -> { // Less than 1 km, always show in meters
+                if (metersScrolled < 1.0 && metersScrolled > 0) {
+                    numberFormat.maximumFractionDigits = 2 // e.g., "0.75 m"
+                } else {
+                    numberFormat.maximumFractionDigits = 0 // e.g., "123 m"
+                }
+                numberFormat.format(metersScrolled) to "m"
+            }
         }
-
-        // For miles, Locale.US formatting is common, but can also use Locale.getDefault()
-        // Using Locale.getDefault() for consistency here.
-        val imperialFormat = NumberFormat.getNumberInstance(Locale.getDefault())
-        imperialFormat.maximumFractionDigits = 2
-        val imperialDistance = imperialFormat.format(miles) + " miles"
-
-        return metricDistance to imperialDistance
     }
 
     /**

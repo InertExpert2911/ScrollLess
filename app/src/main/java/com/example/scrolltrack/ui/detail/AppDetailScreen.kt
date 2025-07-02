@@ -122,7 +122,11 @@ fun AppDetailScreen(
     val focusedActiveUsageDisplay by viewModel.appDetailFocusedActiveUsageDisplay.collectAsStateWithLifecycle()
     val focusedOpenCount by viewModel.appDetailFocusedOpenCount.collectAsStateWithLifecycle()
 
-    val chartState = rememberChartState(data = chartData, periodType = currentPeriodType)
+    val chartState = rememberChartState(
+        data = chartData,
+        periodType = currentPeriodType,
+        conversionUtil = viewModel.conversionUtil
+    )
 
     val canNavigateForward by remember(currentPeriodType, currentReferenceDateStr) {
         derivedStateOf {
