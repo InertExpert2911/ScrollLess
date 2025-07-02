@@ -10,6 +10,8 @@ import com.example.scrolltrack.ui.model.AppScrollUiItem
 import kotlinx.coroutines.flow.Flow
 import com.example.scrolltrack.data.NotificationSummary
 import com.example.scrolltrack.data.NotificationCountPerApp
+import com.example.scrolltrack.db.DailyDeviceSummary
+import com.example.scrolltrack.db.RawAppEvent
 
 interface ScrollDataRepository {
 
@@ -91,4 +93,7 @@ interface ScrollDataRepository {
     fun getNotificationSummaryForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationSummary>>
 
     fun getNotificationCountPerAppForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationCountPerApp>>
+
+    // --- New function for hybrid data access ---
+    fun getDeviceSummaryForDate(dateString: String): Flow<DailyDeviceSummary?>
 }

@@ -6,15 +6,18 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(
-    tableName = "notification_records",
+    tableName = "notifications",
     indices = [
-        Index(value = ["package_name"]),
-        Index(value = ["post_time_utc"])
+        Index(value = ["notification_key"], unique = true),
+        Index(value = ["package_name", "post_time_utc"])
     ]
 )
 data class NotificationRecord(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0L,
+
+    @ColumnInfo(name = "notification_key")
+    val notificationKey: String,
 
     @ColumnInfo(name = "package_name")
     val packageName: String,

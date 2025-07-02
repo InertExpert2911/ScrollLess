@@ -38,6 +38,7 @@ class NotificationListener : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         // The lateinit var is guaranteed to be initialized here in a Hilt entry point.
         if (sbn == null) return
+        val key = sbn.key ?: return // Use the key for uniqueness. If it's null, we can't process.
 
         val packageName = sbn.packageName
         if (packageName == applicationContext.packageName) {
@@ -55,6 +56,7 @@ class NotificationListener : NotificationListenerService() {
         serviceScope.launch {
             try {
                 val record = NotificationRecord(
+                    notificationKey = key,
                     packageName = packageName,
                     postTimeUTC = postTime,
                     title = title,
@@ -62,8 +64,8 @@ class NotificationListener : NotificationListenerService() {
                     category = category,
                     dateString = DateUtil.formatUtcTimestampToLocalDateString(postTime)
                 )
-                notificationDao.insertNotification(record)
-                Log.d(TAG, "Notification from $packageName saved to database.")
+                notificationDao.insert(record)
+                Log.d(TAG, "Notification from $packageName with key $key saved to database.")
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing notification for $packageName", e)

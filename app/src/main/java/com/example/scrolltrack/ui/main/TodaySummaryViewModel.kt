@@ -46,6 +46,7 @@ import com.example.scrolltrack.data.AppMetadataRepository
 import com.example.scrolltrack.ui.mappers.AppUiModelMapper
 import com.example.scrolltrack.ui.theme.AppTheme
 import com.example.scrolltrack.util.AppConstants
+import com.example.scrolltrack.db.DailyDeviceSummary
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -155,6 +156,12 @@ class TodaySummaryViewModel @Inject constructor(
     }
 
     // --- Data for TODAY'S SUMMARY (Main Screen) ---
+
+    // This is the new, unified data source for device-level stats.
+    private val todayDeviceSummary: StateFlow<DailyDeviceSummary?> =
+        repository.getDeviceSummaryForDate(_todayDateString)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
+
     val todaysAppUsageUiList: StateFlow<List<AppUsageUiItem>> =
         repository.getDailyUsageRecordsForDate(_todayDateString)
             .map { records -> processUsageRecords(records) }
@@ -186,11 +193,11 @@ class TodaySummaryViewModel @Inject constructor(
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "0 m" to "meters")
 
     val totalUnlocksToday: StateFlow<Int> =
-        repository.getTotalUnlockCountForDate(_todayDateString)
+        todayDeviceSummary.map { it?.totalUnlockCount ?: 0 }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
 
     val totalNotificationsToday: StateFlow<Int> =
-        repository.getTotalNotificationCountForDate(_todayDateString)
+        todayDeviceSummary.map { it?.totalNotificationCount ?: 0 }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
 
     private val _totalScrollTodayFormatted = MutableStateFlow("0m")

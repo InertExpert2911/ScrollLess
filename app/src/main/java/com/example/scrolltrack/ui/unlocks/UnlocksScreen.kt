@@ -116,6 +116,14 @@ fun UnlocksScreen(
                             )
                             Spacer(modifier = Modifier.height(8.dp))
 
+                            if (state.selectedPeriod == UnlockPeriod.Daily) {
+                                StatChip(
+                                    label = "Total Unlocks",
+                                    value = state.totalUnlockCount.toString()
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
+
                             if (state.appOpens.isEmpty()) {
                                 Text(
                                     text = "No app opens recorded for this period.",
@@ -394,6 +402,32 @@ fun AppOpenRow(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+@Composable
+fun StatChip(label: String, value: String) {
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
     }

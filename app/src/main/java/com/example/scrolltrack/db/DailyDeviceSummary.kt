@@ -21,5 +21,11 @@ data class DailyDeviceSummary(
     val totalNotificationCount: Int,
 
     @ColumnInfo(name = "last_updated_timestamp")
-    val lastUpdatedTimestamp: Long = System.currentTimeMillis()
-) 
+    val lastUpdatedTimestamp: Long,
+
+    @ColumnInfo(name = "total_app_opens")
+    val totalAppOpens: Int,
+
+    @ColumnInfo(name = "first_unlock_timestamp_utc")
+    val firstUnlockTimestampUtc: Long?
+)

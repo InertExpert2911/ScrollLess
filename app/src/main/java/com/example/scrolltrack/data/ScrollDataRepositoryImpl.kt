@@ -43,6 +43,10 @@ import com.example.scrolltrack.data.AppMetadataRepository
 import android.content.Intent
 import android.content.pm.ResolveInfo
 import android.os.Build
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.collect
 
 @Singleton
 class ScrollDataRepositoryImpl @Inject constructor(
@@ -119,23 +123,24 @@ class ScrollDataRepositoryImpl @Inject constructor(
     }
 
     private suspend fun calculateAppOpens(events: List<RawAppEvent>): Map<String, Int> {
-        val appOpens = mutableMapOf<String, Int>()
-        var lastResumedPackage: String? = null
-
         val resumeEvents = events
             .filter { it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED }
             .sortedBy { it.eventTimestamp }
 
-        // We must build the filter set once to use for this calculation.
+        if (resumeEvents.isEmpty()) return emptyMap()
+
+        val appOpenTimestamps = mutableMapOf<String, Long>()
+        val appOpens = mutableMapOf<String, Int>()
         val filterSet = buildFilterSet()
 
         resumeEvents.forEach { event ->
-            if (event.packageName != lastResumedPackage) {
-                if (!isFiltered(event.packageName, filterSet)) {
-                    appOpens[event.packageName] = appOpens.getOrDefault(event.packageName, 0) + 1
-                }
+            if (isFiltered(event.packageName, filterSet)) return@forEach
+
+            val lastOpenTimestamp = appOpenTimestamps[event.packageName] ?: 0L
+            if (event.eventTimestamp - lastOpenTimestamp > AppConstants.CONTEXTUAL_APP_OPEN_DEBOUNCE_MS) {
+                appOpens[event.packageName] = appOpens.getOrDefault(event.packageName, 0) + 1
             }
-            lastResumedPackage = event.packageName
+            appOpenTimestamps[event.packageName] = event.eventTimestamp
         }
         return appOpens
     }
@@ -213,21 +218,27 @@ class ScrollDataRepositoryImpl @Inject constructor(
         )
     }
 
-    override suspend fun updateTodayAppUsageStats(): Boolean {
-        val usageStatsManager =
-            context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
-                ?: run {
-                    Log.e(TAG_REPO, "UsageStatsManager not available.")
-                    return false
-                }
-
+    /**
+     * Fetches the latest system and accessibility events for today and updates the database.
+     * This includes raw events, aggregated app usage, and the daily device summary.
+     * It ensures the data for the current day is always up-to-date.
+     *
+     * @return `true` if the update was successful, `false` otherwise.
+     */
+    override suspend fun updateTodayAppUsageStats(): Boolean = withContext(Dispatchers.IO) {
         val todayDateString = DateUtil.getCurrentLocalDateString()
-        val startOfDayUTC = DateUtil.getStartOfDayUtcMillis(todayDateString)
-        val endOfTodayUTC = System.currentTimeMillis()
+        val startOfTodayUTC = DateUtil.getStartOfDayUtcMillis(todayDateString)
+        val endOfTodayUTC = DateUtil.getEndOfDayUtcMillis(todayDateString)
 
         try {
             // Fetch all of today's events from the system
-            val usageEvents = usageStatsManager.queryEvents(startOfDayUTC, endOfTodayUTC)
+            val usageStatsManager =
+                context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+                    ?: run {
+                        Log.e(TAG_REPO, "UsageStatsManager not available.")
+                        return@withContext false
+                    }
+            val usageEvents = usageStatsManager.queryEvents(startOfTodayUTC, endOfTodayUTC)
             val systemEvents = mutableListOf<RawAppEvent>()
             val event = UsageEvents.Event()
             while (usageEvents.hasNextEvent()) {
@@ -235,34 +246,51 @@ class ScrollDataRepositoryImpl @Inject constructor(
                 mapUsageEventToRawAppEvent(event)?.let { systemEvents.add(it) }
             }
 
-            // Fetch today's accessibility events that are already in the DB
-            val accessibilityEvents = rawAppEventDao.getEventsForDate(todayDateString)
-                .filter { RawAppEvent.isAccessibilityEvent(it.eventType) }
+            // --- Safer Event Insertion ---
+            // Instead of deleting all events and re-inserting, we only insert new system events.
+            // This prevents accidental deletion of our custom events (e.g., USER_PRESENT).
+            rawAppEventDao.insertEvents(systemEvents)
+            Log.i(TAG_REPO, "Inserted ${systemEvents.size} new system events for today.")
 
-            val allEventsForToday = (systemEvents + accessibilityEvents).sortedBy { it.eventTimestamp }
-
-            // Clear and re-insert all raw events for today to ensure consistency
-            rawAppEventDao.deleteEventsForDateString(todayDateString)
-            rawAppEventDao.insertEvents(allEventsForToday)
-            Log.i(TAG_REPO, "Updated raw events for today. System: ${systemEvents.size}, Accessibility: ${accessibilityEvents.size}")
+            // Fetch ALL events for today now that they're combined.
+            val allEventsForToday = rawAppEventDao.getEventsForDate(todayDateString)
 
             val aggregatedData = aggregateUsage(allEventsForToday, endOfTodayUTC)
             val appOpenCounts = calculateAppOpens(allEventsForToday)
-            val notificationCounts = calculateAccurateNotificationCounts(allEventsForToday)
-            val unlockCount = calculateUnlocks(allEventsForToday)
-            val totalNotificationCount = notificationCounts.values.sum()
+            val totalNotificationCount = notificationDao.getNotificationCountForDateImmediate(todayDateString)
+
+            // --- Corrected Unlock Calculation ---
+            // This logic is now consistent with the historical backfill to prevent data overwrites.
+            val userPresentUnlockEvents = allEventsForToday.filter { it.eventType == RawAppEvent.EVENT_TYPE_USER_PRESENT }
+            val unlockCount: Int
+            val firstUnlockTime: Long?
+
+            if (userPresentUnlockEvents.isNotEmpty()) {
+                unlockCount = userPresentUnlockEvents.size
+                firstUnlockTime = userPresentUnlockEvents.minOfOrNull { it.eventTimestamp }
+                Log.d(TAG_REPO, "Today's Summary: Found ${userPresentUnlockEvents.size} accurate unlock events.")
+            } else {
+                // Fallback to the KEYGUARD_HIDDEN method. This is crucial for the initial state of "today"
+                // before any new USER_PRESENT events are logged, preserving the backfilled data.
+                unlockCount = calculateUnlocks(allEventsForToday)
+                firstUnlockTime = null // Not reliable from this method
+                Log.d(TAG_REPO, "Today's Summary: No accurate unlock events found. Using fallback, found $unlockCount unlocks.")
+            }
 
             // Save the device-level summary
             val summary = DailyDeviceSummary(
                 dateString = todayDateString,
                 totalUnlockCount = unlockCount,
-                totalNotificationCount = totalNotificationCount
+                totalNotificationCount = totalNotificationCount,
+                totalAppOpens = appOpenCounts.values.sum(),
+                firstUnlockTimestampUtc = firstUnlockTime,
+                lastUpdatedTimestamp = System.currentTimeMillis()
             )
-            dailyDeviceSummaryDao.insertOrUpdateSummary(summary)
+            dailyDeviceSummaryDao.insertOrUpdate(summary)
             Log.i(TAG_REPO, "Saved today's device summary: Unlocks=$unlockCount, Notifications=$totalNotificationCount")
 
             val packagesWithUsage = aggregatedData.keys.map { it.first }
-            val packagesWithNotifications = notificationCounts.keys
+            val packagesWithNotifications = notificationDao.getNotificationsForDateList(todayDateString).map { it.packageName }
             val allRelevantPackages = (packagesWithUsage + packagesWithNotifications).toSet()
 
             for (pkg in allRelevantPackages) {
@@ -270,7 +298,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
                 val usageTime = usageValues?.first ?: 0L
                 val activeTime = usageValues?.second ?: 0L
                 val openCount = appOpenCounts[pkg] ?: 0
-                val notificationCount = notificationCounts[pkg] ?: 0
+                val notificationCount = notificationDao.getNotificationCountForDateImmediate(todayDateString)
 
                 val record = DailyAppUsageRecord(
                     packageName = pkg,
@@ -285,12 +313,12 @@ class ScrollDataRepositoryImpl @Inject constructor(
             }
             Log.i(TAG_REPO, "Successfully updated usage records for ${allRelevantPackages.size} apps for today ($todayDateString).")
 
+            return@withContext true
+
         } catch (e: Exception) {
             Log.e(TAG_REPO, "Error during today's usage update for $todayDateString: ${e.message}", e)
-            return false
+            return@withContext false
         }
-        
-        return true
     }
 
     /**
@@ -477,7 +505,8 @@ class ScrollDataRepositoryImpl @Inject constructor(
         var overallSuccess = true
         var anyDataFound = false
 
-        for (i in 1..numberOfDays) {
+        // Loop from 0 to include today, then go back `numberOfDays - 1` more days.
+        for (i in 0 until numberOfDays) {
             val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
                 timeInMillis = today.timeInMillis
                 add(Calendar.DAY_OF_YEAR, -i)
@@ -497,13 +526,12 @@ class ScrollDataRepositoryImpl @Inject constructor(
                 }
                 Log.d(TAG_REPO, "Fetched ${systemRawEvents.size} system events for $historicalDateString.")
 
-                // Step 1b: Fetch stored accessibility events for the historical day
-                val storedAccessibilityEvents = rawAppEventDao.getEventsForDate(historicalDateString)
-                    .filter { RawAppEvent.isAccessibilityEvent(it.eventType) }
-                Log.d(TAG_REPO, "Fetched ${storedAccessibilityEvents.size} stored accessibility events for $historicalDateString.")
+                // Step 1b: Fetch ALL stored raw events for the historical day
+                val allStoredRawEvents = rawAppEventDao.getEventsForDate(historicalDateString)
+                Log.d(TAG_REPO, "Fetched ${allStoredRawEvents.size} stored raw events for $historicalDateString.")
 
                 // Step 1c: Combine and sort all events for the day
-                val allEventsForDay = (systemRawEvents + storedAccessibilityEvents)
+                val allEventsForDay = (systemRawEvents + allStoredRawEvents)
                     .distinctBy { Triple(it.packageName, it.eventType, it.eventTimestamp) } // Ensure uniqueness
                     .sortedBy { it.eventTimestamp }
 
@@ -516,53 +544,71 @@ class ScrollDataRepositoryImpl @Inject constructor(
                 val aggregatedData = aggregateUsage(allEventsForDay, endOfDayUTC)
                 val appOpenCounts = calculateAppOpens(allEventsForDay)
 
-                // --- Start Atomic Transaction ---
-                appDatabase.withTransaction {
-                    // Step 2: Clear old raw events for that day and insert the new combined list
-                    rawAppEventDao.deleteEventsForDateString(historicalDateString)
-                    rawAppEventDao.insertEvents(allEventsForDay)
-                    Log.i(TAG_REPO, "Successfully inserted ${allEventsForDay.size} combined raw events for $historicalDateString.")
+                // If we have events, this is the first time we are calculating this day.
+                // Aggregate and store the results.
+                if (allEventsForDay.isNotEmpty()) {
+                    Log.d(TAG_REPO, "Performing first-time aggregation for $historicalDateString")
+                    val endOfDateUTC = DateUtil.getEndOfDayUtcMillis(historicalDateString)
+                    val aggregatedUsage = aggregateUsage(allEventsForDay, endOfDateUTC)
+                    val totalAppOpens = appOpenCounts.values.sum()
+                    val notifications = notificationDao.getNotificationsForDateList(historicalDateString)
+                    val totalNotifications = notifications.size
 
-                    val unlockCount = calculateUnlocks(allEventsForDay)
-                    val debouncedNotifications = calculateAccurateNotificationCounts(allEventsForDay)
-                    val totalNotifications = debouncedNotifications.values.sum()
+                    // --- Modified Unlock Calculation ---
+                    val userPresentUnlockEvents = allEventsForDay.filter { it.eventType == RawAppEvent.EVENT_TYPE_USER_PRESENT }
+                    val unlockCount: Int
+                    val firstUnlockTime: Long?
 
+                    if (userPresentUnlockEvents.isNotEmpty()) {
+                        // Use the new, accurate USER_PRESENT events if they exist for this day.
+                        unlockCount = userPresentUnlockEvents.size
+                        firstUnlockTime = userPresentUnlockEvents.minOfOrNull { it.eventTimestamp }
+                        Log.d(TAG_REPO, "Found ${userPresentUnlockEvents.size} accurate unlock events for $historicalDateString.")
+                    } else {
+                        // Fallback to the older KEYGUARD_HIDDEN method for historical data.
+                        unlockCount = calculateUnlocks(allEventsForDay)
+                        // It's not reliable to get 'first unlock time' from this method.
+                        firstUnlockTime = null
+                        Log.d(TAG_REPO, "No accurate unlock events found for $historicalDateString. Using fallback method, found $unlockCount unlocks.")
+                    }
+
+                    // Insert the device-level summary
                     val summary = DailyDeviceSummary(
                         dateString = historicalDateString,
                         totalUnlockCount = unlockCount,
                         totalNotificationCount = totalNotifications,
+                        totalAppOpens = totalAppOpens,
+                        firstUnlockTimestampUtc = firstUnlockTime,
                         lastUpdatedTimestamp = System.currentTimeMillis()
                     )
-                    dailyDeviceSummaryDao.insertOrUpdateSummary(summary)
+                    dailyDeviceSummaryDao.insertOrUpdate(summary)
                     Log.i(TAG_REPO, "Backfilled device summary for $historicalDateString. Unlocks=$unlockCount, Notifications=$totalNotifications")
 
-                    // Step 5: Atomically update the database for the historical day
-                    dailyAppUsageDao.deleteUsageForDate(historicalDateString)
+                    // Insert the per-app records
+                    val allRelevantPackages = (aggregatedUsage.keys.map { it.first } + appOpenCounts.keys).toSet()
+                    for (pkg in allRelevantPackages) {
+                        val usageValues = aggregatedUsage[Pair(pkg, historicalDateString)]
+                        val usageTime = usageValues?.first ?: 0L
+                        val activeTime = usageValues?.second ?: 0L
+                        val openCount = appOpenCounts[pkg] ?: 0
+                        val notificationCount = notificationDao.getNotificationCountForDateImmediate(historicalDateString)
 
-                    if (aggregatedData.isNotEmpty()) {
-                        val recordsToInsert = aggregatedData.map { (key, values) ->
-                            val (pkg, date) = key
-                            val (usage, active) = values
-                            val opens = appOpenCounts[pkg] ?: 0
-
-                            DailyAppUsageRecord(
-                                packageName = pkg,
-                                dateString = date,
-                                usageTimeMillis = usage,
-                                activeTimeMillis = active,
-                                appOpenCount = opens,
-                                notificationCount = 0, // Cannot be backfilled
-                                lastUpdatedTimestamp = System.currentTimeMillis()
-                            )
-                        }
-                        dailyAppUsageDao.insertAllUsage(recordsToInsert)
-                        anyDataFound = true
-                        Log.i(TAG_REPO, "Successfully backfilled ${recordsToInsert.size} usage records for $historicalDateString.")
-                    } else {
-                        Log.d(TAG_REPO, "No relevant app usage found for $historicalDateString after aggregation. Old usage records (if any) were cleared.")
+                        val record = DailyAppUsageRecord(
+                            packageName = pkg,
+                            dateString = historicalDateString,
+                            usageTimeMillis = usageTime,
+                            activeTimeMillis = activeTime,
+                            appOpenCount = openCount,
+                            notificationCount = notificationCount,
+                            lastUpdatedTimestamp = System.currentTimeMillis()
+                        )
+                        dailyAppUsageDao.insertOrUpdateUsage(record)
                     }
+                    anyDataFound = true
+                    Log.i(TAG_REPO, "Successfully backfilled ${allRelevantPackages.size} usage records for $historicalDateString.")
+                } else {
+                    Log.d(TAG_REPO, "No relevant app usage found for $historicalDateString after aggregation. Old usage records (if any) were cleared.")
                 }
-                // --- End Atomic Transaction ---
 
             } catch (e: Exception) {
                 Log.e(TAG_REPO, "Error during backfill for $historicalDateString: ${e.message}", e)
@@ -643,5 +689,87 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
     override fun getNotificationCountPerAppForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationCountPerApp>> {
         return notificationDao.getNotificationCountPerAppForPeriod(startDateString, endDateString)
+    }
+
+    override fun getDeviceSummaryForDate(dateString: String): Flow<DailyDeviceSummary?> {
+        val todayDateString = DateUtil.getCurrentLocalDateString()
+        return if (dateString == todayDateString) {
+            // This will be implemented in the next step.
+            getLiveSummaryForToday()
+        } else {
+            // For past days, fetch pre-calculated data from the summary table.
+            dailyDeviceSummaryDao.getSummaryForDate(dateString)
+        }
+    }
+
+    // Placeholder for the live data function.
+    private fun getLiveSummaryForToday(): Flow<DailyDeviceSummary?> {
+        val today = DateUtil.getCurrentLocalDateString()
+
+        // 1. Get the persisted summary as the base. This flow will update whenever
+        //    the summary table is updated by the backfill or the periodic updater.
+        val persistedSummaryFlow: Flow<DailyDeviceSummary?> = dailyDeviceSummaryDao.getSummaryForDate(today)
+
+        // 2. Get the live event counts, same as before. These react instantly to new events.
+        val liveUnlockCountFlow: Flow<Int> = rawAppEventDao.countEventsOfTypeForDate(today, RawAppEvent.EVENT_TYPE_USER_PRESENT)
+        val liveFirstUnlockFlow: Flow<Long?> = rawAppEventDao.getFirstEventTimestampOfTypeForDate(today, RawAppEvent.EVENT_TYPE_USER_PRESENT)
+        val liveNotificationCountFlow: Flow<Int> = notificationDao.getNotificationCountForDate(today)
+
+        // This flow now uses the correct, debounced logic for calculating app opens,
+        // making it consistent with the historical calculation, while distinctUntilChanged()
+        // ensures it remains stable and doesn't cause UI refresh loops.
+        val liveAppOpenCountFlow: Flow<Int> = flow {
+            val filterSet = buildFilterSet()
+            rawAppEventDao.getEventsOfTypeForDate(today, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED)
+                .map { resumeEvents ->
+                    if (resumeEvents.isEmpty()) return@map 0
+
+                    val appOpenTimestamps = mutableMapOf<String, Long>()
+                    var openCount = 0
+                    val sortedEvents = resumeEvents.sortedBy { it.eventTimestamp }
+
+                    sortedEvents.forEach { event ->
+                        if (isFiltered(event.packageName, filterSet)) return@forEach
+
+                        val lastOpenTimestamp = appOpenTimestamps[event.packageName] ?: 0L
+                        if (event.eventTimestamp - lastOpenTimestamp > AppConstants.CONTEXTUAL_APP_OPEN_DEBOUNCE_MS) {
+                            openCount++
+                        }
+                        appOpenTimestamps[event.packageName] = event.eventTimestamp
+                    }
+                    openCount
+                }
+                .distinctUntilChanged()
+                .collect { value -> emit(value) }
+        }
+
+        // 3. Combine all sources.
+        return combine(
+            persistedSummaryFlow,
+            liveUnlockCountFlow,
+            liveFirstUnlockFlow,
+            liveNotificationCountFlow,
+            liveAppOpenCountFlow
+        ) { persistedSummary, liveUnlocks, liveFirstUnlock, liveNotifications, liveAppOpens ->
+
+            // Use the persisted summary as our starting point.
+            val baseUnlocks = persistedSummary?.totalUnlockCount ?: 0
+            val baseNotifications = persistedSummary?.totalNotificationCount ?: 0
+            val baseAppOpens = persistedSummary?.totalAppOpens ?: 0
+            val baseFirstUnlock = persistedSummary?.firstUnlockTimestampUtc
+
+            // Create the final, merged summary. For counts, we take the MAX of what's
+            // persisted and what's live. This ensures we never show a smaller number
+            // than what's been calculated by the more robust backfill/updater.
+            // For the timestamp, we prioritize the live one if it exists.
+            DailyDeviceSummary(
+                dateString = today,
+                totalUnlockCount = max(baseUnlocks, liveUnlocks),
+                firstUnlockTimestampUtc = liveFirstUnlock ?: baseFirstUnlock,
+                totalNotificationCount = max(baseNotifications, liveNotifications),
+                totalAppOpens = max(baseAppOpens, liveAppOpens),
+                lastUpdatedTimestamp = 0L // Keep constant to prevent refresh loops
+            )
+        }
     }
 } 

@@ -1,10 +1,30 @@
 package com.example.scrolltrack.util
 
+import java.util.concurrent.TimeUnit
+
 object AppConstants {
+    /**
+     * The time window in milliseconds to consider an interaction as part of the same "active" session.
+     * For example, if a user clicks and then clicks again 4 seconds later, this is considered
+     * continuous active time. A 31-second gap would result in two separate active blocks.
+     */
+    val ACTIVE_TIME_INTERACTION_WINDOW_MS = TimeUnit.SECONDS.toMillis(30)
+
+    /**
+     * The minimum duration for a foreground session to be considered significant enough to
+     * be saved in the database. Helps filter out brief flashes of apps.
+     */
+    val MINIMUM_SIGNIFICANT_SESSION_DURATION_MS = TimeUnit.SECONDS.toMillis(1)
+
+    /**
+     * The debounce window for counting app opens. If an app is resumed within this window
+     * of its last resume, it's not counted as a new "open". This helps avoid counting
+     * quick app switches (e.g., to a password manager and back) as multiple opens.
+     */
+    val CONTEXTUAL_APP_OPEN_DEBOUNCE_MS = TimeUnit.SECONDS.toMillis(15)
+
     // --- Aggregation Logic ---
-    const val MINIMUM_SIGNIFICANT_SESSION_DURATION_MS = 2000L // Ignore sessions shorter than this
     const val QUICK_SWITCH_THRESHOLD_MS = 2000L // Not currently in use, but kept for future logic refinement
-    const val ACTIVE_TIME_INTERACTION_WINDOW_MS = 2000L // Define the active time interaction window
 
     // --- Data Fetching ---
     const val EVENT_FETCH_OVERLAP_MS = 10000L // 10 seconds overlap for iterative fetching

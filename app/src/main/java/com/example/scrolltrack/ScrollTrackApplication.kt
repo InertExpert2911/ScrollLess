@@ -8,12 +8,19 @@ import android.os.Build
 import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import com.example.scrolltrack.data.AppMetadataRepository
+import com.example.scrolltrack.services.DailyDataAggregatorWorker
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -43,6 +50,7 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
         super.onCreate()
         createNotificationChannel()
         runInitialAppMetadataSync()
+        setupDailyAggregationWorker()
     }
 
     private fun runInitialAppMetadataSync() {
@@ -77,5 +85,23 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
                 getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
         }
+    }
+
+    private fun setupDailyAggregationWorker() {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .setRequiresDeviceIdle(true)
+            .setRequiresCharging(true)
+            .build()
+
+        val repeatingRequest = PeriodicWorkRequestBuilder<DailyDataAggregatorWorker>(1, TimeUnit.DAYS)
+            .setConstraints(constraints)
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            DailyDataAggregatorWorker.WORKER_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            repeatingRequest
+        )
     }
 } 

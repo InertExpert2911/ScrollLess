@@ -49,7 +49,8 @@ sealed interface UnlocksUiState {
         val appOpens: List<AppOpenUiItem>,
         val selectedPeriod: UnlockPeriod,
         val selectedDateString: String,
-        val periodTitle: String
+        val periodTitle: String,
+        val totalUnlockCount: Int
     ) : UnlocksUiState
 }
 
@@ -95,7 +96,10 @@ class UnlocksViewModel @Inject constructor(
                 }
             }
 
+            // Fetch the data once inside the flow to prevent reactive loops.
+            val summary = repository.getDeviceSummaryForDate(date).first()
             val records = repository.getUsageRecordsForDateRange(startDate, endDate).first()
+
             val appOpens = withContext(Dispatchers.Default) {
                 records
                     .groupBy { it.packageName }
@@ -114,7 +118,7 @@ class UnlocksViewModel @Inject constructor(
                     }
                     .sortedByDescending { it.openCount }
             }
-            emit(UnlocksUiState.Success(appOpens, period, date, title))
+            emit(UnlocksUiState.Success(appOpens, period, date, title, summary?.totalUnlockCount ?: 0))
         }
     }.stateIn(
         scope = viewModelScope,

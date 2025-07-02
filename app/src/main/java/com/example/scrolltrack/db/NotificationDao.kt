@@ -12,32 +12,46 @@ import kotlinx.coroutines.flow.Flow
 interface NotificationDao {
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertNotification(notification: NotificationRecord)
+    suspend fun insert(notification: NotificationRecord)
 
-    @Query("SELECT * FROM notification_records WHERE date_string = :dateString ORDER BY post_time_utc DESC")
-    fun getNotificationsForDate(dateString: String): Flow<List<NotificationRecord>>
+    @Query("SELECT * FROM notifications ORDER BY post_time_utc DESC")
+    fun getAllNotifications(): Flow<List<NotificationRecord>>
+
+    @Query("SELECT COUNT(DISTINCT id) FROM notifications WHERE date(post_time_utc / 1000, 'unixepoch', 'localtime') = :dateString")
+    fun getNotificationCountForDate(dateString: String): Flow<Int>
+
+    @Query("SELECT COUNT(DISTINCT id) FROM notifications WHERE date(post_time_utc / 1000, 'unixepoch', 'localtime') = :dateString")
+    suspend fun getNotificationCountForDateImmediate(dateString: String): Int
+
+    @Query("SELECT * FROM notifications WHERE date(post_time_utc / 1000, 'unixepoch', 'localtime') = :dateString")
+    suspend fun getNotificationsForDateList(dateString: String): List<NotificationRecord>
 
     @Query("""
         SELECT category, COUNT(*) as count
-        FROM notification_records
-        WHERE category IS NOT NULL AND date_string BETWEEN :startDateString AND :endDateString
+        FROM notifications
+        WHERE category IS NOT NULL AND date(post_time_utc / 1000, 'unixepoch', 'localtime') BETWEEN :startDateString AND :endDateString
         GROUP BY category
         ORDER BY count DESC
     """)
     fun getNotificationSummaryForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationSummary>>
 
     @Query("""
-        SELECT package_name as packageName, COUNT(*) as count
-        FROM notification_records
-        WHERE date_string BETWEEN :startDateString AND :endDateString
-        GROUP BY package_name
+        SELECT 
+            package_name as packageName, 
+            COUNT(id) as count 
+        FROM notifications 
+        WHERE date(post_time_utc / 1000, 'unixepoch', 'localtime') BETWEEN :startDateString AND :endDateString
+        GROUP BY package_name 
         ORDER BY count DESC
     """)
     fun getNotificationCountPerAppForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationCountPerApp>>
 
-    @Query("DELETE FROM notification_records WHERE post_time_utc < :cutoffTimestamp")
-    suspend fun deleteOldNotifications(cutoffTimestamp: Long)
+    @Query("SELECT * FROM notifications WHERE date(post_time_utc / 1000, 'unixepoch', 'localtime') = :dateString ORDER BY post_time_utc DESC")
+    fun getNotificationsForDate(dateString: String): Flow<List<NotificationRecord>>
 
-    @Query("UPDATE notification_records SET removal_reason = :reason WHERE package_name = :packageName AND post_time_utc = :postTime")
-    suspend fun updateRemovalReason(packageName: String, postTime: Long, reason: Int)
+    @Query("DELETE FROM notifications WHERE post_time_utc < :cutoffTimestamp")
+    suspend fun deleteNotificationsOlderThan(cutoffTimestamp: Long)
+
+    @Query("UPDATE notifications SET removal_reason = :reason WHERE package_name = :packageName AND post_time_utc = :postTimeUTC")
+    suspend fun updateRemovalReason(packageName: String, postTimeUTC: Long, reason: Int)
 } 

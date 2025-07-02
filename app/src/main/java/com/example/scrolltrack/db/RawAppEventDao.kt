@@ -47,4 +47,16 @@ interface RawAppEventDao {
 
     @Query("DELETE FROM raw_app_events WHERE event_date_string = :dateString")
     suspend fun deleteEventsForDateString(dateString: String)
+
+    @Query("SELECT COUNT(*) FROM raw_app_events WHERE event_date_string = :dateString AND event_type = :eventType")
+    fun countEventsOfTypeForDate(dateString: String, eventType: Int): Flow<Int>
+
+    @Query("SELECT MIN(event_timestamp) FROM raw_app_events WHERE event_date_string = :dateString AND event_type = :eventType")
+    fun getFirstEventTimestampOfTypeForDate(dateString: String, eventType: Int): Flow<Long?>
+
+    @Query("SELECT * FROM raw_app_events WHERE event_date_string = :dateString AND event_type = :eventType")
+    fun getEventsOfTypeForDate(dateString: String, eventType: Int): Flow<List<RawAppEvent>>
+
+    @Query("SELECT * FROM raw_app_events WHERE event_type = :eventType AND event_timestamp >= :startTimestamp AND event_timestamp < :endTimestamp")
+    suspend fun getEventsOfTypeForPeriod(eventType: Int, startTimestamp: Long, endTimestamp: Long): List<RawAppEvent>
 } 

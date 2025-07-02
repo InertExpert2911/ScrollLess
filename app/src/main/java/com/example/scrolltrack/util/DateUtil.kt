@@ -113,4 +113,10 @@ object DateUtil {
             else -> "< 1m"
         }
     }
+
+    fun getYesterdayDateString(): String {
+        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+        calendar.add(Calendar.DATE, -1)
+        return utcIsoDateFormat.format(calendar.time)
+    }
 }
