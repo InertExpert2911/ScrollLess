@@ -28,6 +28,7 @@ object AppConstants {
 
     // --- Data Fetching ---
     const val EVENT_FETCH_OVERLAP_MS = 10000L // 10 seconds overlap for iterative fetching
+    const val BACKGROUND_USAGE_FETCH_INTERVAL_MS = 60_000L
 
     // --- Event Processing ---
     const val NOTIFICATION_DEBOUNCE_WINDOW_MS = 30000L // 30 seconds

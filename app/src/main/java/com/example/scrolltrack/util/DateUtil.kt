@@ -10,6 +10,8 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.DayOfWeek
 import java.time.temporal.TemporalAdjusters
+import java.time.ZoneId
+import java.time.ZonedDateTime
 
 object DateUtil {
 
@@ -117,6 +119,18 @@ object DateUtil {
     fun getYesterdayDateString(): String {
         val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
         calendar.add(Calendar.DATE, -1)
+        return utcIsoDateFormat.format(calendar.time)
+    }
+
+    fun getMillisUntilNextMidnight(): Long {
+        val now = ZonedDateTime.now(ZoneId.systemDefault())
+        val nextMidnight = now.toLocalDate().plusDays(1).atStartOfDay(ZoneId.systemDefault())
+        return nextMidnight.toInstant().toEpochMilli() - now.toInstant().toEpochMilli()
+    }
+
+    fun getPastDateString(daysAgo: Int): String {
+        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+        calendar.add(Calendar.DATE, -daysAgo)
         return utcIsoDateFormat.format(calendar.time)
     }
 }

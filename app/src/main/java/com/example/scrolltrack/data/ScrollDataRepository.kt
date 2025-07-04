@@ -65,6 +65,13 @@ interface ScrollDataRepository {
     suspend fun updateTodayAppUsageStats(): Boolean
 
     /**
+     * Fetches only the usage events that have occurred since the last stored event
+     * and inserts them into the raw event database. This is a lightweight operation
+     * intended for frequent background execution.
+     */
+    suspend fun fetchAndStoreNewUsageEvents()
+
+    /**
      * Retrieves usage records for a specific package over a list of dates.
      */
     suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord>
@@ -96,4 +103,12 @@ interface ScrollDataRepository {
 
     // --- New function for hybrid data access ---
     fun getDeviceSummaryForDate(dateString: String): Flow<DailyDeviceSummary?>
+
+    /**
+     * Retrieves a live, automatically updating summary for a specific date.
+     * The Flow will emit new summary data whenever the underlying raw events for that day change.
+     * @param dateString The date to observe in "yyyy-MM-dd" format.
+     * @return A Flow emitting the summary data for the requested day.
+     */
+    fun getLiveSummaryForDate(dateString: String): Flow<DailyDeviceSummary>
 }

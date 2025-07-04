@@ -62,6 +62,72 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
     private val TAG_REPO = "ScrollDataRepoImpl"
 
+    override fun getLiveSummaryForDate(dateString: String): Flow<DailyDeviceSummary> {
+        val startOfDayUTC = DateUtil.getStartOfDayUtcMillis(dateString)
+        val endOfDayUTC = DateUtil.getEndOfDayUtcMillis(dateString)
+
+        // This Flow will re-execute its block whenever the underlying database table changes.
+        return rawAppEventDao.getEventsForPeriodFlow(startOfDayUTC, endOfDayUTC)
+            .distinctUntilChanged()
+            .map { events ->
+                Log.d(TAG_REPO, "Live summary triggered for $dateString. Processing ${events.size} events.")
+                // This function now handles all processing and saving. We just return its result.
+                processEventsAndGenerateSummary(events, dateString)
+            }
+    }
+
+    private suspend fun processEventsAndGenerateSummary(events: List<RawAppEvent>, dateString: String): DailyDeviceSummary {
+        // --- 1. Perform all calculations in memory ---
+        val usageAggregates = aggregateUsage(events, System.currentTimeMillis())
+        val appOpens = calculateAppOpens(events)
+        val unlocks = events.count { it.eventType == RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN }
+        val notifications = calculateAccurateNotificationCounts(events)
+        val totalNotifications = notifications.values.sum()
+        val totalAppOpens = appOpens.values.sum()
+
+        // --- 2. Update the database in a single transaction ---
+        val recordsToInsert = usageAggregates.map { (key, value) ->
+            val (pkg, date) = key
+            val (usage, active) = value
+            DailyAppUsageRecord(
+                packageName = pkg,
+                dateString = date,
+                usageTimeMillis = usage,
+                activeTimeMillis = active,
+                appOpenCount = appOpens.getOrDefault(pkg, 0),
+                notificationCount = notifications.getOrDefault(pkg, 0),
+                lastUpdatedTimestamp = System.currentTimeMillis()
+            )
+        }
+
+        appDatabase.withTransaction {
+            dailyAppUsageDao.deleteUsageForDate(dateString)
+            if (recordsToInsert.isNotEmpty()) {
+                dailyAppUsageDao.insertAllUsage(recordsToInsert)
+            }
+        }
+
+        // --- 3. Create and return the final summary object ---
+        val firstUnlockTime = events.filter { it.eventType == RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN }
+            .minOfOrNull { it.eventTimestamp }
+
+        val summary = DailyDeviceSummary(
+            dateString = dateString,
+            totalUsageTimeMillis = recordsToInsert.sumOf { it.usageTimeMillis },
+            totalActiveTimeMillis = recordsToInsert.sumOf { it.activeTimeMillis },
+            totalUnlockCount = unlocks,
+            totalNotificationCount = totalNotifications,
+            lastUpdatedTimestamp = System.currentTimeMillis(),
+            totalAppOpens = totalAppOpens,
+            firstUnlockTimestampUtc = firstUnlockTime
+        )
+
+        // Also save the summary to its own table
+        dailyDeviceSummaryDao.insertOrUpdate(summary)
+
+        return summary
+    }
+
     /**
      * Builds a comprehensive set of package names that should be ignored during usage aggregation.
      * This set is created dynamically by fetching all apps that have been pre-identified as
@@ -225,6 +291,10 @@ class ScrollDataRepositoryImpl @Inject constructor(
      *
      * @return `true` if the update was successful, `false` otherwise.
      */
+    @Deprecated(
+        "This function performs a slow, on-demand, full recalculation. Use getLiveSummaryForDate() for UI updates.",
+        ReplaceWith("getLiveSummaryForDate(DateUtil.getCurrentLocalDateString())")
+    )
     override suspend fun updateTodayAppUsageStats(): Boolean = withContext(Dispatchers.IO) {
         val todayDateString = DateUtil.getCurrentLocalDateString()
         val startOfTodayUTC = DateUtil.getStartOfDayUtcMillis(todayDateString)
@@ -318,6 +388,58 @@ class ScrollDataRepositoryImpl @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG_REPO, "Error during today's usage update for $todayDateString: ${e.message}", e)
             return@withContext false
+        }
+    }
+
+    /**
+     * Fetches only the usage events that have occurred since the last stored event
+     * and inserts them into the raw event database. This is a lightweight operation
+     * intended for frequent background execution.
+     */
+    override suspend fun fetchAndStoreNewUsageEvents() = withContext(Dispatchers.IO) {
+        val usageStatsManager =
+            context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+                ?: run {
+                    Log.e(TAG_REPO, "Cannot fetch new events, UsageStatsManager not available.")
+                    return@withContext
+                }
+
+        // 1. Determine the time window for the query.
+        val lastKnownEventTime = rawAppEventDao.getLatestEventTimestamp() ?: 0L
+        val startTime = if (lastKnownEventTime > 0) {
+            // Overlap by a small margin to ensure no events are missed.
+            lastKnownEventTime - AppConstants.EVENT_FETCH_OVERLAP_MS
+        } else {
+            // If this is the first ever fetch, get events from the start of the day.
+            DateUtil.getStartOfDayUtcMillis(DateUtil.getCurrentLocalDateString())
+        }
+        val endTime = System.currentTimeMillis()
+
+        if (startTime >= endTime) {
+            Log.d(TAG_REPO, "Skipping event fetch, start time is after end time.")
+            return@withContext
+        }
+
+        // 2. Query the system for new events.
+        Log.d(TAG_REPO, "Querying for new events from $startTime to $endTime")
+        val usageEvents = usageStatsManager.queryEvents(startTime, endTime)
+
+        // 3. Map and insert the new events into our database.
+        val newRawEvents = mutableListOf<RawAppEvent>()
+        val event = UsageEvents.Event()
+        while (usageEvents.hasNextEvent()) {
+            usageEvents.getNextEvent(event)
+            // We only care about events after our last known event time.
+            if (event.timeStamp > lastKnownEventTime) {
+                mapUsageEventToRawAppEvent(event)?.let { newRawEvents.add(it) }
+            }
+        }
+
+        if (newRawEvents.isNotEmpty()) {
+            rawAppEventDao.insertEvents(newRawEvents)
+            Log.i(TAG_REPO, "Stored ${newRawEvents.size} new raw app events in the database.")
+        } else {
+            Log.d(TAG_REPO, "No new app events found since last check.")
         }
     }
 
@@ -695,7 +817,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
         val todayDateString = DateUtil.getCurrentLocalDateString()
         return if (dateString == todayDateString) {
             // This will be implemented in the next step.
-            getLiveSummaryForToday()
+            getLiveSummaryForDate(todayDateString)
         } else {
             // For past days, fetch pre-calculated data from the summary table.
             dailyDeviceSummaryDao.getSummaryForDate(dateString)
