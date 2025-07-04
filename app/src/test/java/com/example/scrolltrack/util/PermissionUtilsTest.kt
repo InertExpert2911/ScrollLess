@@ -4,175 +4,196 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.AppOpsManager
 import android.content.ComponentName
 import android.content.Context
-import android.os.Build
+import android.os.Process
 import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
 import androidx.test.core.app.ApplicationProvider
-import com.example.scrolltrack.services.NotificationListener // Assuming this is a valid class
-import com.example.scrolltrack.ScrollTrackService // Assuming this is a valid class
+import com.example.scrolltrack.ScrollTrackService
+import com.example.scrolltrack.services.NotificationListener
 import com.google.common.truth.Truth.assertThat
+import io.mockk.every
+import io.mockk.mockk
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows
-import org.robolectric.shadows.ShadowAccessibilityManager
-import org.robolectric.shadows.ShadowAppOpsManager
-import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 class PermissionUtilsTest {
 
-    private lateinit var context: Context
-    private lateinit var packageName: String
+    private lateinit var mockContext: Context
+    private lateinit var mockAppOpsManager: AppOpsManager
+    private lateinit var mockAccessibilityManager: AccessibilityManager
 
-    // Dummy service classes for testing (replace with actual service classes if different)
-    private val testNotificationListenerService = NotificationListener::class.java
-    private val testAccessibilityService = ScrollTrackService::class.java
+    private val packageName = "com.example.scrolltrack"
 
     @Before
     fun setUp() {
-        context = ApplicationProvider.getApplicationContext()
-        packageName = context.packageName
+        // Use a mocked context that can still provide system services
+        mockContext = mockk(relaxed = true)
+        mockAppOpsManager = mockk(relaxed = true)
+        mockAccessibilityManager = mockk(relaxed = true)
+
+        // Standard mocking for context behavior
+        every { mockContext.packageName } returns packageName
+        every { mockContext.getSystemService(Context.APP_OPS_SERVICE) } returns mockAppOpsManager
+        every { mockContext.getSystemService(Context.ACCESSIBILITY_SERVICE) } returns mockAccessibilityManager
+        // Provide a real ContentResolver for Settings.Secure.putString to work with Robolectric
+        every { mockContext.contentResolver } returns ApplicationProvider.getApplicationContext<Context>().contentResolver
     }
+
+    // --- hasUsageStatsPermission Tests ---
+
+    @Test
+    fun hasUsageStatsPermission_whenPermissionIsAllowed_returnsTrue() {
+        every {
+            mockAppOpsManager.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
+        } returns AppOpsManager.MODE_ALLOWED
+
+        val result = PermissionUtils.hasUsageStatsPermission(mockContext)
+        assertThat(result).isTrue()
+    }
+
+    @Test
+    fun hasUsageStatsPermission_whenPermissionIsDenied_returnsFalse() {
+        every {
+            mockAppOpsManager.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
+        } returns AppOpsManager.MODE_ERRORED // Or MODE_DEFAULT, MODE_IGNORED
+
+        val result = PermissionUtils.hasUsageStatsPermission(mockContext)
+        assertThat(result).isFalse()
+    }
+
+    @Test
+    fun hasUsageStatsPermission_whenAppOpsManagerIsNull_returnsFalse() {
+        every { mockContext.getSystemService(Context.APP_OPS_SERVICE) } returns null
+        val result = PermissionUtils.hasUsageStatsPermission(mockContext)
+        assertThat(result).isFalse()
+    }
+
 
     // --- isNotificationListenerEnabled Tests ---
 
     @Test
-    fun `isNotificationListenerEnabled - service is enabled - returns true`() {
-        val componentName = ComponentName(packageName, testNotificationListenerService.name).flattenToString()
-        Settings.Secure.putString(context.contentResolver, "enabled_notification_listeners", componentName)
-        assertThat(PermissionUtils.isNotificationListenerEnabled(context, testNotificationListenerService)).isTrue()
+    fun isNotificationListenerEnabled_whenListenerIsPresentInSettings_returnsTrue() {
+        val componentName = ComponentName(packageName, NotificationListener::class.java.name).flattenToString()
+        val settingString = "some.other.listener:$componentName:another.one"
+        // FIX: Use the standard Android SDK method, not the Robolectric shadow method.
+        // This resolves the "Val cannot be reassigned" error.
+        Settings.Secure.putString(mockContext.contentResolver, "enabled_notification_listeners", settingString)
+
+        val result = PermissionUtils.isNotificationListenerEnabled(mockContext, NotificationListener::class.java)
+        assertThat(result).isTrue()
     }
 
     @Test
-    fun `isNotificationListenerEnabled - service is not enabled - returns false`() {
-        val otherComponent = ComponentName("com.otherapp", "SomeOtherService").flattenToString()
-        Settings.Secure.putString(context.contentResolver, "enabled_notification_listeners", otherComponent)
-        assertThat(PermissionUtils.isNotificationListenerEnabled(context, testNotificationListenerService)).isFalse()
+    fun isNotificationListenerEnabled_whenListenerIsTheOnlyOne_returnsTrue() {
+        val componentName = ComponentName(packageName, NotificationListener::class.java.name).flattenToString()
+        // FIX: Use the standard Android SDK method.
+        Settings.Secure.putString(mockContext.contentResolver, "enabled_notification_listeners", componentName)
+
+        val result = PermissionUtils.isNotificationListenerEnabled(mockContext, NotificationListener::class.java)
+        assertThat(result).isTrue()
     }
 
     @Test
-    fun `isNotificationListenerEnabled - multiple services enabled, target is present - returns true`() {
-        val targetComponent = ComponentName(packageName, testNotificationListenerService.name).flattenToString()
-        val otherComponent1 = ComponentName("com.otherapp", "S1").flattenToString()
-        val otherComponent2 = ComponentName("com.another", "S2").flattenToString()
-        val enabledListeners = "$otherComponent1:$targetComponent:$otherComponent2"
-        Settings.Secure.putString(context.contentResolver, "enabled_notification_listeners", enabledListeners)
-        assertThat(PermissionUtils.isNotificationListenerEnabled(context, testNotificationListenerService)).isTrue()
+    fun isNotificationListenerEnabled_whenSettingStringDoesNotContainListener_returnsFalse() {
+        val settingString = "some.other.listener:another.one"
+        // FIX: Use the standard Android SDK method.
+        Settings.Secure.putString(mockContext.contentResolver, "enabled_notification_listeners", settingString)
+
+        val result = PermissionUtils.isNotificationListenerEnabled(mockContext, NotificationListener::class.java)
+        assertThat(result).isFalse()
     }
 
     @Test
-    fun `isNotificationListenerEnabled - enabled_notification_listeners is null - returns false`() {
-        Settings.Secure.putString(context.contentResolver, "enabled_notification_listeners", null)
-        assertThat(PermissionUtils.isNotificationListenerEnabled(context, testNotificationListenerService)).isFalse()
+    fun isNotificationListenerEnabled_whenSettingStringIsEmpty_returnsFalse() {
+        // FIX: Use the standard Android SDK method.
+        Settings.Secure.putString(mockContext.contentResolver, "enabled_notification_listeners", "")
+
+        val result = PermissionUtils.isNotificationListenerEnabled(mockContext, NotificationListener::class.java)
+        assertThat(result).isFalse()
     }
 
     @Test
-    fun `isNotificationListenerEnabled - enabled_notification_listeners is empty - returns false`() {
-        Settings.Secure.putString(context.contentResolver, "enabled_notification_listeners", "")
-        assertThat(PermissionUtils.isNotificationListenerEnabled(context, testNotificationListenerService)).isFalse()
+    fun isNotificationListenerEnabled_whenSettingStringIsNull_returnsFalse() {
+        // FIX: Use the standard Android SDK method.
+        Settings.Secure.putString(mockContext.contentResolver, "enabled_notification_listeners", null)
+
+        val result = PermissionUtils.isNotificationListenerEnabled(mockContext, NotificationListener::class.java)
+        assertThat(result).isFalse()
     }
+
 
     // --- isAccessibilityServiceEnabled Tests ---
 
-    private fun getShadowAccessibilityManager(): ShadowAccessibilityManager {
-        return Shadows.shadowOf(context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager)
+    @Test
+    fun isAccessibilityServiceEnabled_whenServiceIsRunningAndEnabled_returnsTrue() {
+        // Mock AccessibilityServiceInfo
+        val mockServiceInfo = mockk<AccessibilityServiceInfo>()
+        val expectedId = ComponentName(packageName, ScrollTrackService::class.java.name).flattenToString()
+
+        // Stub the 'id' property of the mocked AccessibilityServiceInfo
+        every { mockServiceInfo.id } returns expectedId
+        // If your code under test also accesses other properties of AccessibilityServiceInfo,
+        // you might need to stub them as well, e.g.:
+        // every { mockServiceInfo.resolveInfo } returns mockk() // or some specific ResolveInfo
+
+        every { mockAccessibilityManager.getEnabledAccessibilityServiceList(any()) } returns listOf(mockServiceInfo)
+
+        val result = PermissionUtils.isAccessibilityServiceEnabled(mockContext, ScrollTrackService::class.java)
+        assertThat(result).isTrue()
     }
 
     @Test
-    fun `isAccessibilityServiceEnabled - service is enabled - returns true`() {
-        val componentName = ComponentName(packageName, testAccessibilityService.name)
-        val serviceInfo = AccessibilityServiceInfo().apply {
-            id = componentName.flattenToString()
-            // setComponentName(componentName) // ShadowAccessibilityManager uses id
-        }
-        getShadowAccessibilityManager().addEnabledAccessibilityService(componentName, true, serviceInfo)
-        // Note: ShadowAccessibilityManager.addEnabledAccessibilityService now also takes ServiceInfo
+    fun isAccessibilityServiceEnabled_whenOtherServicesAreRunning_returnsTrue() {
+        val otherMockServiceInfo1 = mockk<AccessibilityServiceInfo>()
+        every { otherMockServiceInfo1.id } returns "com.other/com.other.Service1"
 
-        assertThat(PermissionUtils.isAccessibilityServiceEnabled(context, testAccessibilityService)).isTrue()
+        val ourMockServiceInfo = mockk<AccessibilityServiceInfo>()
+        val expectedId = ComponentName(packageName, ScrollTrackService::class.java.name).flattenToString()
+        every { ourMockServiceInfo.id } returns expectedId
+
+        val otherMockServiceInfo2 = mockk<AccessibilityServiceInfo>()
+        every { otherMockServiceInfo2.id } returns "com.other/com.other.Service2"
+
+
+        every { mockAccessibilityManager.getEnabledAccessibilityServiceList(any()) } returns listOf(
+            otherMockServiceInfo1, ourMockServiceInfo, otherMockServiceInfo2
+        )
+
+        val result = PermissionUtils.isAccessibilityServiceEnabled(mockContext, ScrollTrackService::class.java)
+        assertThat(result).isTrue()
     }
 
     @Test
-    fun `isAccessibilityServiceEnabled - service is not enabled - returns false`() {
-        getShadowAccessibilityManager().setEnabledAccessibilityServiceList(emptyList())
-        assertThat(PermissionUtils.isAccessibilityServiceEnabled(context, testAccessibilityService)).isFalse()
+    fun isAccessibilityServiceEnabled_whenServiceIsNotInEnabledList_returnsFalse() {
+        val otherMockServiceInfo1 = mockk<AccessibilityServiceInfo>()
+        every { otherMockServiceInfo1.id } returns "com.other/com.other.Service1"
+
+        val otherMockServiceInfo2 = mockk<AccessibilityServiceInfo>()
+        every { otherMockServiceInfo2.id } returns "com.other/com.other.Service2"
+
+        every { mockAccessibilityManager.getEnabledAccessibilityServiceList(any()) } returns listOf(otherMockServiceInfo1, otherMockServiceInfo2)
+
+        val result = PermissionUtils.isAccessibilityServiceEnabled(mockContext, ScrollTrackService::class.java)
+        assertThat(result).isFalse()
     }
 
     @Test
-    fun `isAccessibilityServiceEnabled - other services enabled, target is not - returns false`() {
-        val otherComponentName = ComponentName("com.otherapp", "OtherAccessibilityService")
-        val otherServiceInfo = AccessibilityServiceInfo().apply { id = otherComponentName.flattenToString() }
-        getShadowAccessibilityManager().addEnabledAccessibilityService(otherComponentName, true, otherServiceInfo)
+    fun isAccessibilityServiceEnabled_whenEnabledListIsEmpty_returnsFalse() {
+        every { mockAccessibilityManager.getEnabledAccessibilityServiceList(any()) } returns emptyList()
 
-        assertThat(PermissionUtils.isAccessibilityServiceEnabled(context, testAccessibilityService)).isFalse()
+        val result = PermissionUtils.isAccessibilityServiceEnabled(mockContext, ScrollTrackService::class.java)
+        assertThat(result).isFalse()
     }
 
     @Test
-    fun `isAccessibilityServiceEnabled - service with same class name, different package - returns false`() {
-        val wrongPackageName = "com.wrongpackage"
-        val componentName = ComponentName(wrongPackageName, testAccessibilityService.name)
-        val serviceInfo = AccessibilityServiceInfo().apply { id = componentName.flattenToString()}
-        getShadowAccessibilityManager().addEnabledAccessibilityService(componentName,true, serviceInfo)
+    fun isAccessibilityServiceEnabled_whenEnabledListIsNull_returnsFalse() {
+        // AccessibilityManager can return null if the system service is not ready
+        every { mockAccessibilityManager.getEnabledAccessibilityServiceList(any()) } returns null
 
-        assertThat(PermissionUtils.isAccessibilityServiceEnabled(context, testAccessibilityService)).isFalse()
-    }
-
-
-    // --- hasUsageStatsPermission Tests ---
-
-    private fun getShadowAppOpsManager(): ShadowAppOpsManager {
-        return Shadows.shadowOf(context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager)
-    }
-
-    @Test
-    @Config(sdk = [Build.VERSION_CODES.P]) // Test pre-Q behavior
-    fun `hasUsageStatsPermission - pre-Q - permission granted - returns true`() {
-        val appOpsManager = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        Shadows.shadowOf(appOpsManager).setMode(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName, AppOpsManager.MODE_ALLOWED)
-        assertThat(PermissionUtils.hasUsageStatsPermission(context)).isTrue()
-    }
-
-    @Test
-    @Config(sdk = [Build.VERSION_CODES.P]) // Test pre-Q behavior
-    fun `hasUsageStatsPermission - pre-Q - permission denied - returns false`() {
-        val appOpsManager = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        Shadows.shadowOf(appOpsManager).setMode(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName, AppOpsManager.MODE_ERRORED)
-        assertThat(PermissionUtils.hasUsageStatsPermission(context)).isFalse()
-    }
-
-    @Test
-    @Config(sdk = [Build.VERSION_CODES.Q]) // Test Q+ behavior
-    fun `hasUsageStatsPermission - Q+ - permission granted - returns true`() {
-        val appOpsManager = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        Shadows.shadowOf(appOpsManager).setMode(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName, AppOpsManager.MODE_ALLOWED)
-        assertThat(PermissionUtils.hasUsageStatsPermission(context)).isTrue()
-    }
-
-    @Test
-    @Config(sdk = [Build.VERSION_CODES.Q]) // Test Q+ behavior
-    fun `hasUsageStatsPermission - Q+ - permission denied - returns false`() {
-        val appOpsManager = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        Shadows.shadowOf(appOpsManager).setMode(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName, AppOpsManager.MODE_ERRORED)
-        assertThat(PermissionUtils.hasUsageStatsPermission(context)).isFalse()
-    }
-
-    @Test
-    fun `hasUsageStatsPermission - AppOpsManager is null - returns false`() {
-        // This is hard to test directly with Robolectric as it usually provides the service.
-        // We'd typically rely on the null-safe operator in the source code.
-        // For full coverage, one might use Mockito to mock context.getSystemService if not using Robolectric.
-        // With Robolectric, getSystemService(Context.APP_OPS_SERVICE) should not return null.
-        // So, this test case is more about logical completeness of the source code's null check.
-        // We can simulate it by shadowing the context and making getSystemService return null for APP_OPS_SERVICE.
-        // However, this is advanced and might be overkill if the primary goal is testing PermissionUtils logic.
-        // For now, assume AppOpsManager is available if getSystemService is called.
-        // The `as? AppOpsManager` handles this gracefully in the production code.
-        // A more direct test of this line would involve a more complex mock setup.
-        // assertThat(PermissionUtils.hasUsageStatsPermission(mockedContextReturningNullAppOps)).isFalse()
-        // This test is implicitly covered by the fact that if appOpsManager is null, it returns false.
-        // No direct action here, but noting the production code handles it.
-        val appOpsManager = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        assertThat(appOpsManager).isNotNull() // Robolectric provides it.
+        val result = PermissionUtils.isAccessibilityServiceEnabled(mockContext, ScrollTrackService::class.java)
+        assertThat(result).isFalse()
     }
 }

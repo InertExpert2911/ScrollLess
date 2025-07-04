@@ -1,549 +1,330 @@
 package com.example.scrolltrack.data
 
-import android.app.Application
-import com.example.scrolltrack.db.RawAppEvent
-import com.example.scrolltrack.db.RawAppEventDao
-import com.example.scrolltrack.util.DateUtil
-import com.google.common.truth.Truth.assertThat
-import io.mockk.mockk
-import org.junit.Before
-import org.junit.Test
-import org.junit.runner.RunWith
-import com.example.scrolltrack.db.DailyAppUsageDao
-import com.example.scrolltrack.db.ScrollSessionDao
-import java.lang.reflect.Method
-import io.mockk.coEvery
-import io.mockk.coVerify
-import io.mockk.every
+import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
-import com.example.scrolltrack.db.DailyAppUsageRecord
-import io.mockk.slot
-import kotlinx.coroutines.test.runTest
+import androidx.room.withTransaction
+import androidx.test.core.app.ApplicationProvider
+import com.example.scrolltrack.db.*
+import com.example.scrolltrack.util.AppConstants
+import com.example.scrolltrack.util.DateUtil
+import com.google.common.truth.Truth.assertThat
+import io.mockk.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.*
+import org.junit.After
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TestWatcher
+import org.junit.runner.Description
+import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
-import android.os.Build
-import android.app.usage.UsageEvents
+import org.robolectric.Shadows
+import org.robolectric.shadows.ShadowUsageStatsManager
+import java.util.*
+import java.util.concurrent.TimeUnit
 
-// Helper function to create a simple RawAppEvent
-private fun createEvent(pkg: String, type: Int, time: Long): RawAppEvent {
-    return RawAppEvent(
-        packageName = pkg,
-        className = "$pkg.MainActivity",
-        eventType = type,
-        eventTimestamp = time,
-        eventDateString = DateUtil.formatUtcTimestampToLocalDateString(time)
-    )
-}
-
+@ExperimentalCoroutinesApi
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [Build.VERSION_CODES.P])
 class ScrollDataRepositoryImplTest {
 
-    private lateinit var repository: ScrollDataRepositoryImpl
+    class MainCoroutineRule(
+        val testDispatcher: TestDispatcher = UnconfinedTestDispatcher()
+    ) : TestWatcher() {
+        override fun starting(description: Description) {
+            super.starting(description)
+            Dispatchers.setMain(testDispatcher)
+        }
+
+        override fun finished(description: Description) {
+            super.finished(description)
+            Dispatchers.resetMain()
+        }
+    }
+
+    @get:Rule
+    var mainCoroutineRule = MainCoroutineRule()
+
+    private lateinit var context: Context
+    private lateinit var mockAppDb: AppDatabase
+    private lateinit var shadowUsageStatsManager: ShadowUsageStatsManager
+    private lateinit var mockAppMetadataRepository: AppMetadataRepository
+    private lateinit var mockScrollSessionDao: ScrollSessionDao
     private lateinit var mockDailyAppUsageDao: DailyAppUsageDao
     private lateinit var mockRawAppEventDao: RawAppEventDao
-    private lateinit var mockUsageStatsManager: UsageStatsManager
-    private lateinit var mockApplication: Application
-
-    private val inMemoryRawEvents = mutableListOf<RawAppEvent>()
+    private lateinit var mockNotificationDao: NotificationDao
+    private lateinit var mockDailyDeviceSummaryDao: DailyDeviceSummaryDao
+    private lateinit var repository: ScrollDataRepositoryImpl
 
     @Before
     fun setUp() {
-        inMemoryRawEvents.clear()
-        val mockScrollSessionDao = mockk<ScrollSessionDao>(relaxed = true)
-        mockDailyAppUsageDao = mockk(relaxed = true)
-        mockRawAppEventDao = mockk(relaxed = true)
-        mockApplication = mockk<Application>(relaxed = true)
-        mockUsageStatsManager = mockk(relaxed = true)
+        context = ApplicationProvider.getApplicationContext()
+        mockAppDb = mockk()
+        mockAppMetadataRepository = mockk()
+        mockScrollSessionDao = mockk()
+        mockDailyAppUsageDao = mockk()
+        mockRawAppEventDao = mockk(relaxUnitFun = true)
+        mockNotificationDao = mockk()
+        mockDailyDeviceSummaryDao = mockk(relaxUnitFun = true)
 
-        every { mockApplication.getSystemService(Context.USAGE_STATS_SERVICE) } returns mockUsageStatsManager
-        every { mockApplication.packageName } returns "com.example.scrolltrack"
+        val usageStatsService = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
+        shadowUsageStatsManager = Shadows.shadowOf(usageStatsService)
 
-        // Make the mock RawAppEventDao stateful
-        coEvery { mockRawAppEventDao.insertEvents(any()) } coAnswers { inMemoryRawEvents.addAll(arg(0)) }
-        coEvery { mockRawAppEventDao.getEventsForPeriod(any(), any()) } coAnswers {
-            val start = arg<Long>(0)
-            val end = arg<Long>(1)
-            inMemoryRawEvents.filter { it.eventTimestamp in start..end }
+        coEvery { mockAppDb.withTransaction<Unit>(any()) } coAnswers {
+            val block = arg<suspend () -> Unit>(0)
+            block()
         }
 
+        coEvery { mockAppMetadataRepository.getAllMetadata() } returns emptyList()
+        every { context.packageName } returns "com.example.scrolltrack"
+
         repository = ScrollDataRepositoryImpl(
+            appDatabase = mockAppDb,
+            appMetadataRepository = mockAppMetadataRepository,
             scrollSessionDao = mockScrollSessionDao,
             dailyAppUsageDao = mockDailyAppUsageDao,
             rawAppEventDao = mockRawAppEventDao,
-            application = mockApplication
+            notificationDao = mockNotificationDao,
+            dailyDeviceSummaryDao = mockDailyDeviceSummaryDao,
+            context = context,
+            ioDispatcher = mainCoroutineRule.testDispatcher
         )
     }
 
-    // --- Tests for updateTodayAppUsageStats ---
-
-    @Test
-    fun `updateTodayAppUsageStats - initial fetch - queries correct time window`() = runTest {
-        val today = DateUtil.getCurrentLocalDateString()
-        val startOfDay = DateUtil.getStartOfDayUtcMillis(today)
-
-        // ARRANGE: No previous events for today
-        coEvery { mockRawAppEventDao.getLatestEventTimestampForDate(today) } returns null
-
-        // ACT
-        repository.updateTodayAppUsageStats()
-
-        // ASSERT: Verify queryEvents is called with a window starting from the beginning of the day.
-        val startTimeSlot = slot<Long>()
-        coVerify { mockUsageStatsManager.queryEvents(capture(startTimeSlot), any()) }
-
-        // The query should start at the beginning of the day since there's no previous data.
-        assertThat(startTimeSlot.captured).isEqualTo(startOfDay)
+    @After
+    fun tearDown() {
+        unmockkAll()
     }
 
-    @Test
-    fun `updateTodayAppUsageStats - incremental fetch - queries correct time window`() = runTest {
-        val today = DateUtil.getCurrentLocalDateString()
-        val startOfDay = DateUtil.getStartOfDayUtcMillis(today)
-        val lastEventTime = startOfDay + 1000 * 60 * 60 // 1 hour into the day
-
-        // ARRANGE: A previous event exists for today
-        coEvery { mockRawAppEventDao.getLatestEventTimestampForDate(today) } returns lastEventTime
-
-        // ACT
-        repository.updateTodayAppUsageStats()
-
-        // ASSERT: Verify queryEvents is called with a window starting from the last event time minus overlap.
-        val startTimeSlot = slot<Long>()
-        val overlap = 10000L // from ScrollDataRepositoryImpl.EVENT_FETCH_OVERLAP_MS
-        coVerify { mockUsageStatsManager.queryEvents(capture(startTimeSlot), any()) }
-
-        assertThat(startTimeSlot.captured).isEqualTo(lastEventTime - overlap)
+    private fun createRawEvent(pkg: String, type: Int, timestamp: Long, className: String? = null): RawAppEvent {
+        return RawAppEvent(0, pkg, className, type, timestamp, DateUtil.formatUtcTimestampToLocalDateString(timestamp))
     }
 
-    @Test
-    fun `updateTodayAppUsageStats - always deletes old data and inserts new`() = runTest {
-        val today = DateUtil.getCurrentLocalDateString()
-
-        // ARRANGE: Mock DAO to return some raw events to trigger aggregation
-        val startOfDay = DateUtil.getStartOfDayUtcMillis(today)
-        val events = listOf(
-            createEvent("com.app.test", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 1000),
-            createEvent("com.app.test", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startOfDay + 6000) // Make session 5s long
-        )
-        coEvery { mockRawAppEventDao.getEventsForPeriod(any(), any()) } returns events
-
-        // ACT
-        repository.updateTodayAppUsageStats()
-
-        // ASSERT
-        // Verify that old data is deleted for the current day
-        coVerify { mockDailyAppUsageDao.deleteUsageForDate(today) }
-        // Verify that new aggregated data is inserted
-        coVerify { mockDailyAppUsageDao.insertAllUsage(any()) }
-    }
-
-    @Test
-    fun `aggregateUsage - passive reading scenario - high usage time, low active time`() {
-        // ARRANGE: A 60-second session with one click at the beginning.
-        val startTime = 1000000L
-        val testEvents = listOf(
-            createEvent("com.example.news", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime),
-            createEvent("com.example.news", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, startTime + 1000L), // Interaction at 1s
-            createEvent("com.example.news", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startTime + 60000L) // Session ends at 60s
-        )
-        val periodEndDate = startTime + 70000L // End of test period
-
-        // ACT: Run the aggregation directly
-        val result = repository.aggregateUsage(testEvents, periodEndDate)
-
-        // ASSERT: Verify the results
-        val dateString = DateUtil.formatUtcTimestampToLocalDateString(startTime)
-        val key = Pair("com.example.news", dateString)
-
-        assertThat(result).containsKey(key)
-
-        val usage = result[key]
-        assertThat(usage).isNotNull()
-
-        val usageTime = usage!!.first
-        val activeTime = usage.second
-
-        // Note: The session is from RESUME to PAUSE, so its duration is (startTime + 60000) - startTime = 60000ms
-        assertThat(usageTime).isEqualTo(60000L)
-        // Active time is only the 2-second window from the single click
-        assertThat(activeTime).isEqualTo(2000L)
-    }
-
-    @Test
-    fun `aggregateUsage - fully active scenario - usage and active time are equal`() {
-        // ARRANGE: A 30-second session with constant interaction.
-        val startTime = 2000000L
-        val interactions = (1..20).map { i ->
-            // Create an interaction event every 1.5 seconds (1500ms)
-            createEvent("com.example.game", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, startTime + (i * 1500L))
-        }
-        val testEvents = mutableListOf(
-            createEvent("com.example.game", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime)
-        )
-        testEvents.addAll(interactions)
-        testEvents.add(createEvent("com.example.game", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startTime + 31000L)) // Session ends at 31s
-
-        val periodEndDate = startTime + 40000L
-
-        // ACT
-        val result = repository.aggregateUsage(testEvents, periodEndDate)
-
-        // ASSERT
-        val dateString = DateUtil.formatUtcTimestampToLocalDateString(startTime)
-        val key = Pair("com.example.game", dateString)
-
-        assertThat(result).containsKey(key)
-
-        val usage = result[key]!!
-        val usageTime = usage.first
-        val activeTime = usage.second
-
-        // Total session time is 31 seconds
-        assertThat(usageTime).isEqualTo(31000L)
-
-        // The merged active time window runs from 1500ms to 32000ms. With the fix, this is
-        // clipped by the session end at 31000ms. The new interval is [1500, 31000].
-        // Duration = 29500ms.
-        assertThat(activeTime).isEqualTo(29500L)
-    }
-
-    @Test
-    fun `aggregateUsage - multi-app switching - ends previous session correctly`() {
-        // ARRANGE: User is in App A, then switches directly to App B.
-        val startTime = 3000000L
-        val testEvents = listOf(
-            createEvent("com.app.a", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime),
-            // User stays in App A for 20 seconds
-            createEvent("com.app.b", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime + 20000L),
-            // User stays in App B for 15 seconds
-            createEvent("com.app.b", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startTime + 35000L)
-        )
-        val periodEndDate = startTime + 40000L
-
-        // ACT
-        val result = repository.aggregateUsage(testEvents, periodEndDate)
-
-        // ASSERT
-        val dateString = DateUtil.formatUtcTimestampToLocalDateString(startTime)
-        val keyA = Pair("com.app.a", dateString)
-        val keyB = Pair("com.app.b", dateString)
-
-        assertThat(result).hasSize(2)
-        assertThat(result).containsKey(keyA)
-        assertThat(result).containsKey(keyB)
-
-        // App A's session should be from startTime to just before App B starts.
-        val usageA = result[keyA]!!
-        assertThat(usageA.first).isEqualTo(19999L) // 20000 - 1ms
-        assertThat(usageA.second).isEqualTo(0L) // No interaction
-
-        // App B's session is from its resume to its pause.
-        val usageB = result[keyB]!!
-        assertThat(usageB.first).isEqualTo(15000L) // 35000 - 20000
-        assertThat(usageB.second).isEqualTo(0L) // No interaction
-    }
-
-    @Test
-    fun `aggregateUsage - passive quick switch - session is ignored`() {
-        // ARRANGE: A session that is too short and has no interaction.
-        val startTime = 4000000L
-        val testEvents = listOf(
-            createEvent("com.app.ignored", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime),
-            createEvent("com.app.ignored", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startTime + 1000L) // Only 1s long
-        )
-        val periodEndDate = startTime + 10000L
-
-        // ACT
-        val result = repository.aggregateUsage(testEvents, periodEndDate)
-
-        // ASSERT
-        assertThat(result).isEmpty()
-    }
-
-    @Test
-    fun `aggregateUsage - active quick switch - session is ignored`() {
-        // ARRANGE: A session that is too short, even though it has interaction.
-        val startTime = 5000000L
-        val testEvents = listOf(
-            createEvent("com.app.ignored.active", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime),
-            createEvent("com.app.ignored.active", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, startTime + 500L),
-            createEvent("com.app.ignored.active", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startTime + 1000L) // Only 1s long
-        )
-        val periodEndDate = startTime + 10000L
-
-        // ACT
-        val result = repository.aggregateUsage(testEvents, periodEndDate)
-
-        // ASSERT
-        // Our current logic checks for significant duration *before* checking for activity.
-        // Therefore, this session should also be ignored.
-        assertThat(result).isEmpty()
-    }
-
-    @Test
-    fun `aggregateUsage - active time is correctly capped by session end`() {
-        // ARRANGE: A session where an interaction happens right before the session ends.
-        // The 2-second active time window for this interaction should be cut off by the PAUSE event.
-        val startTime = 6000000L
-        val testEvents = listOf(
-            createEvent("com.app.capping", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime),
-            // Interaction happens 500ms before the session ends.
-            createEvent("com.app.capping", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, startTime + 9500L),
-            // Session is exactly 10 seconds long.
-            createEvent("com.app.capping", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startTime + 10000L)
-        )
-        val periodEndDate = startTime + 20000L
-
-        // ACT
-        val result = repository.aggregateUsage(testEvents, periodEndDate)
-
-        // ASSERT
-        val dateString = DateUtil.formatUtcTimestampToLocalDateString(startTime)
-        val key = Pair("com.app.capping", dateString)
-
-        assertThat(result).containsKey(key)
-        val usage = result[key]!!
-        val usageTime = usage.first
-        val activeTime = usage.second
-
-        // The usage time is exactly 10 seconds.
-        assertThat(usageTime).isEqualTo(10000L)
-
-        // The interaction at 9500ms creates a window [9500ms, 11500ms].
-        // This should be capped by the session end at 10000ms.
-        // The active portion is from 9500ms to 10000ms, which is 500ms.
-        assertThat(activeTime).isEqualTo(500L)
-    }
-
-    @Test
-    fun `aggregateUsage - midnight crossing - splits session and active time correctly`() {
-        // ARRANGE: A session that starts before midnight and ends after, with continuous interaction.
-        val midnight = DateUtil.getStartOfDayUtcMillis("2024-01-02") // Exact midnight timestamp
-        val startTime = midnight - 15000L // Starts 15 seconds before midnight
-        val endTime = midnight + 15000L   // Ends 15 seconds after midnight
-
-        val testEvents = listOf(
-            createEvent("com.app.nightowl", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime),
-            // Interaction every 5 seconds across midnight
-            createEvent("com.app.nightowl", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, startTime + 5000L),
-            createEvent("com.app.nightowl", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, startTime + 10000L),
-            createEvent("com.app.nightowl", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, startTime + 15000L), // Exactly at midnight
-            createEvent("com.app.nightowl", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, startTime + 20000L),
-            createEvent("com.app.nightowl", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, startTime + 25000L),
-            createEvent("com.app.nightowl", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, endTime)
-        )
-        val periodEndDate = endTime + 10000L
-
-        // ACT
-        val result = repository.aggregateUsage(testEvents, periodEndDate)
-
-        // ASSERT
-        // Our current test-facing aggregateUsage function does not split sessions across midnight.
-        // It attributes the entire session to the day on which it started.
-        // This test verifies that behavior. A more sophisticated version would split the session.
-        assertThat(result).hasSize(1)
-
-        val dateString = "2024-01-01"
-        val key = Pair("com.app.nightowl", dateString)
-        assertThat(result).containsKey(key)
-
-        val usage = result[key]!!
-        // The entire session duration is 30 seconds.
-        assertThat(usage.first).isEqualTo(30000L)
-        // Each of the 5 clicks creates a 2-second window, and they are too far apart to merge.
-        // Total active time is 5 * 2000ms = 10000ms.
-        assertThat(usage.second).isEqualTo(10000L)
-    }
-
-    @Test
-    fun `aggregateUsage - screen off terminates session`() {
-        // ARRANGE: A session that is terminated by the screen turning off, not a PAUSE event.
-        val startTime = 7000000L
-        val screenOffTime = startTime + 25000L
-        val testEvents = listOf(
-            createEvent("com.app.sleeper", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime),
-            createEvent("com.app.sleeper", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, startTime + 5000L),
-            createEvent("com.app.sleeper", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, screenOffTime)
-        )
-        // Note: There is no PAUSE event. The period ends long after.
-        val periodEndDate = screenOffTime + 10000L
-
-        // ACT
-        val result = repository.aggregateUsage(testEvents, periodEndDate)
-
-        // ASSERT
-        assertThat(result).hasSize(1)
-
-        val dateString = DateUtil.formatUtcTimestampToLocalDateString(startTime)
-        val key = Pair("com.app.sleeper", dateString)
-        assertThat(result).containsKey(key)
-
-        val usage = result[key]!!
-        // Usage time should be from RESUME until the screen turned off.
-        assertThat(usage.first).isEqualTo(25000L)
-        // Active time is just the 2-second window from the single click.
-        assertThat(usage.second).isEqualTo(2000L)
-    }
-
-    @Test
-    fun `aggregateUsage - purely passive session - active time is zero`() {
-        // ARRANGE: A long session with no user interaction events at all.
-        val startTime = 8000000L
-        val endTime = startTime + 90000L // A 90-second session
-        val testEvents = listOf(
-            createEvent("com.app.reader", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startTime),
-            createEvent("com.app.reader", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, endTime)
-        )
-        val periodEndDate = endTime + 10000L
-
-        // ACT
-        val result = repository.aggregateUsage(testEvents, periodEndDate)
-
-        // ASSERT
-        assertThat(result).hasSize(1)
-
-        val dateString = DateUtil.formatUtcTimestampToLocalDateString(startTime)
-        val key = Pair("com.app.reader", dateString)
-        assertThat(result).containsKey(key)
-
-        val usage = result[key]!!
-        // Usage time should be the full 90-second duration.
-        assertThat(usage.first).isEqualTo(90000L)
-        // Active time should be zero as there were no interactions.
-        assertThat(usage.second).isEqualTo(0L)
-    }
-
-    // --- Tests for backfillHistoricalAppUsageData ---
-    @Test
-    fun `backfillHistoricalAppUsageData - skips days with existing data`() = runTest {
-        val daysToBackfill = 3
-
-        // ARRANGE: Mock DAO to indicate that data EXISTS for all checked days
-        coEvery { mockDailyAppUsageDao.getUsageCountForDateString(any()) } returns 1
-
-        // ACT
-        repository.backfillHistoricalAppUsageData(daysToBackfill)
-
-        // ASSERT
-        // Verify we checked each of the 3 days
-        coVerify(exactly = daysToBackfill) { mockDailyAppUsageDao.getUsageCountForDateString(any()) }
-        // Verify that because data existed, we NEVER tried to query events or insert new data.
-        coVerify(exactly = 0) { mockUsageStatsManager.queryEvents(any(), any()) }
-        coVerify(exactly = 0) { mockDailyAppUsageDao.insertAllUsage(any()) }
-    }
-
-    @Test
-    fun `backfillHistoricalAppUsageData - processes and inserts for empty days`() = runTest {
-        val daysToBackfill = 2
-
-        // ARRANGE: Mock DAO to indicate NO data exists
-        coEvery { mockDailyAppUsageDao.getUsageCountForDateString(any()) } returns 0
-
-        // ARRANGE: Mock UsageStatsManager to return events appropriate for the queried time window
-        every { mockUsageStatsManager.queryEvents(any(), any()) } answers {
-            val startTime = it.invocation.args[0] as Long
-            val eventsToReturn = listOf(
-                // A significant session for a test app
-                createUsageEventForTest("com.app.backfill", UsageEvents.Event.ACTIVITY_RESUMED, startTime + 1000),
-                createUsageEventForTest("com.app.backfill", UsageEvents.Event.ACTIVITY_PAUSED, startTime + 6000),
-                // A session for a launcher, which should be filtered out
-                createUsageEventForTest("com.some.launcher", UsageEvents.Event.ACTIVITY_RESUMED, startTime + 7000),
-                createUsageEventForTest("com.some.launcher", UsageEvents.Event.ACTIVITY_PAUSED, startTime + 8000)
-            )
-            createMockUsageEvents(eventsToReturn)
-        }
-
-        // ACT
-        repository.backfillHistoricalAppUsageData(daysToBackfill)
-
-        // ASSERT
-        // Verify we checked each of the 2 days for existing data
-        coVerify(exactly = daysToBackfill) { mockDailyAppUsageDao.getUsageCountForDateString(any()) }
-
-        // Verify we queried the system for events for each of the 2 empty days
-        coVerify(exactly = daysToBackfill) { mockUsageStatsManager.queryEvents(any(), any()) }
-
-        // Verify we inserted the aggregated results for each of the 2 empty days
-        val capturedLists = mutableListOf<List<DailyAppUsageRecord>>()
-        coVerify(exactly = daysToBackfill) { mockDailyAppUsageDao.insertAllUsage(capture(capturedLists)) }
-
-        // Optional: More detailed assertion on what was captured
-        // We expect two captures, one for each day.
-        assertThat(capturedLists).hasSize(daysToBackfill)
-        for (capturedRecords in capturedLists) {
-            assertThat(capturedRecords).hasSize(1) // Only com.app.backfill should be aggregated
-            assertThat(capturedRecords.first().packageName).isEqualTo("com.app.backfill")
-        }
-    }
-
-    /**
-     * Helper for making the private `aggregateUsage` method accessible for testing.
-     */
-    private fun ScrollDataRepositoryImpl.aggregateUsage(
-        events: List<RawAppEvent>,
-        periodEndDate: Long
-    ): Map<Pair<String, String>, Pair<Long, Long>> {
-        val method: Method = ScrollDataRepositoryImpl::class.java.getDeclaredMethod(
-            "aggregateUsage",
-            List::class.java,
-            Long::class.java
-        ).apply { isAccessible = true }
-
-        @Suppress("UNCHECKED_CAST")
-        return method.invoke(this, events, periodEndDate) as Map<Pair<String, String>, Pair<Long, Long>>
-    }
-
-    /**
-     * Creates a mock UsageEvents object that will iterate over a given list of events.
-     */
-    private fun createMockUsageEvents(events: List<UsageEvents.Event>): UsageEvents {
-        val mockUsageEvents = mockk<UsageEvents>()
-        val eventIterator = events.iterator()
-
-        every { mockUsageEvents.hasNextEvent() } answers { eventIterator.hasNext() }
-        every { mockUsageEvents.getNextEvent(any()) } answers {
-            val eventToReturn = eventIterator.next()
-            val outEvent = it.invocation.args[0] as UsageEvents.Event
-            copyEvent(eventToReturn, outEvent)
-            true
-        }
-        return mockUsageEvents
-    }
-
-    /**
-     * Factory function to create UsageEvents.Event instances for testing using reflection.
-     */
-    private fun createUsageEventForTest(pkg: String, type: Int, time: Long): UsageEvents.Event {
-        val event = UsageEvents.Event()
-        setEventField(event, "mPackage", pkg)
-        setEventField(event, "mClass", "$pkg.TestActivity")
-        setEventField(event, "mTimeStamp", time)
-        setEventField(event, "mEventType", type)
+    private fun createUsageStatsEvent(pkg: String, className: String?, eventType: Int, timestamp: Long): UsageEvents.Event {
+        val event = mockk<UsageEvents.Event>()
+        every { event.packageName } returns pkg
+        every { event.className } returns className
+        every { event.eventType } returns eventType
+        every { event.timeStamp } returns timestamp
         return event
     }
 
-    /**
-     * Uses reflection to copy data from one UsageEvents.Event to another.
-     */
-    private fun copyEvent(from: UsageEvents.Event, to: UsageEvents.Event) {
-        setEventField(to, "mPackage", from.packageName)
-        setEventField(to, "mClass", from.className)
-        setEventField(to, "mTimeStamp", from.timeStamp)
-        setEventField(to, "mEventType", from.eventType)
+    private fun createAppMeta(packageName: String, isUserVisible: Boolean = true, userHidesOverride: Boolean? = null) : AppMetadata {
+        return AppMetadata(packageName, "App $packageName", "1.0", 1L, false, true, false, 0, isUserVisible, userHidesOverride, 0L,0L )
     }
 
-    /**
-     * Sets a field on a UsageEvents.Event object using reflection.
-     */
-    private fun setEventField(event: UsageEvents.Event, fieldName: String, value: Any) {
-        try {
-            val field = UsageEvents.Event::class.java.getDeclaredField(fieldName)
-            field.isAccessible = true
-            field.set(event, value)
-        } catch (e: Exception) {
-            throw RuntimeException("Failed to set field '$fieldName' on UsageEvents.Event", e)
-        }
+    @Test
+    fun `getAggregatedScrollDataForDate - calls DAO and returns its flow`() = runTest {
+        val dateString = "2023-01-01"
+        val expectedData = listOf(AppScrollData("pkg1", 100L, "m"), AppScrollData("pkg2", 200L, "m"))
+        every { mockScrollSessionDao.getAggregatedScrollDataForDate(dateString) } returns flowOf(expectedData)
+
+        val resultFlow = repository.getAggregatedScrollDataForDate(dateString)
+        assertThat(resultFlow.first()).isEqualTo(expectedData)
+        verify { mockScrollSessionDao.getAggregatedScrollDataForDate(dateString) }
     }
-} 
+
+    @Test
+    fun `insertScrollSession - calls DAO`() = runTest {
+        val session = ScrollSessionRecord(packageName = "test", scrollAmount = 10, dataType = "m", sessionStartTime = 0, sessionEndTime = 1, date = "d", sessionEndReason = "r")
+        coEvery { mockScrollSessionDao.insertSession(session) } just Runs
+        repository.insertScrollSession(session)
+        coVerify { mockScrollSessionDao.insertSession(session) }
+    }
+
+    @Test
+    fun `updateTodayAppUsageStats - fetches system events, aggregates, and saves`() = runTest {
+        val today = DateUtil.getCurrentLocalDateString()
+        val startOfToday = DateUtil.getStartOfDayUtcMillis(today)
+
+        val systemEvent1 = createUsageStatsEvent("app1", "ActivityA", UsageEvents.Event.ACTIVITY_RESUMED, startOfToday + 1000)
+        val systemEvent2 = createUsageStatsEvent("app1", "ActivityA", UsageEvents.Event.ACTIVITY_PAUSED, startOfToday + 5000) // 4s usage
+        shadowUsageStatsManager.addEvent(systemEvent1)
+        shadowUsageStatsManager.addEvent(systemEvent2)
+
+        val customEvent1 = createRawEvent("app1", RawAppEvent.EVENT_TYPE_USER_PRESENT, startOfToday + 500)
+        val mappedSystemEvent1 = repository.mapUsageEventToRawAppEvent(systemEvent1)!!
+        val mappedSystemEvent2 = repository.mapUsageEventToRawAppEvent(systemEvent2)!!
+        coEvery { mockRawAppEventDao.getEventsForDate(today) } returns listOf(customEvent1, mappedSystemEvent1, mappedSystemEvent2)
+
+
+        coEvery { mockDailyAppUsageDao.insertOrUpdateUsage(any()) } just Runs
+        coEvery { mockNotificationDao.getNotificationCountForDateImmediate(today) } returns 5
+        coEvery { mockNotificationDao.getNotificationsForDateList(today) } returns emptyList()
+
+
+        val success = repository.updateTodayAppUsageStats()
+        assertThat(success).isTrue()
+
+        val capturedSystemEventsToInsert = slot<List<RawAppEvent>>()
+        coVerify { mockRawAppEventDao.insertEvents(capture(capturedSystemEventsToInsert)) }
+        assertThat(capturedSystemEventsToInsert.captured.size).isEqualTo(2)
+
+        coVerify { mockDailyDeviceSummaryDao.insertOrUpdate(match { it.dateString == today && it.totalUnlockCount == 1}) }
+        coVerify { mockDailyAppUsageDao.insertOrUpdateUsage(match { it.packageName == "app1" && it.dateString == today && it.usageTimeMillis == 4000L }) }
+    }
+
+    @Test
+    fun `aggregateUsage - app-to-app switch - calculates usage correctly`() = runTest {
+        val time1 = 1000L
+        val time2 = 2000L
+        val time3 = 3000L
+        val periodEnd = 4000L
+        val date = DateUtil.formatUtcTimestampToLocalDateString(time1)
+
+        val events = listOf(
+            createRawEvent("app1", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, time1),
+            createRawEvent("app1", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, time2),
+            createRawEvent("app2", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, time2),
+            createRawEvent("app2", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, time3)
+        )
+        coEvery { mockAppMetadataRepository.getAllMetadata() } returns emptyList()
+
+        val result = repository.aggregateUsage(events, periodEnd)
+
+        val app1Usage = result[Pair("app1", date)]?.first
+        assertThat(app1Usage).isEqualTo(1000L)
+
+        val app2Usage = result[Pair("app2", date)]?.first
+        assertThat(app2Usage).isEqualTo(1000L)
+    }
+
+    @Test
+    fun `aggregateUsage - app filtered out - usage is zero`() = runTest {
+        val time1 = 1000L
+        val time2 = 2000L
+        val periodEnd = 3000L
+        val date = DateUtil.formatUtcTimestampToLocalDateString(time1)
+        val filteredAppPkg = "com.filtered.app"
+
+        val events = listOf(
+            createRawEvent(filteredAppPkg, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, time1),
+            createRawEvent(filteredAppPkg, RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, time2)
+        )
+        coEvery { mockAppMetadataRepository.getAllMetadata() } returns listOf(createAppMeta(filteredAppPkg, isUserVisible = false))
+
+        val result = repository.aggregateUsage(events, periodEnd)
+        assertThat(result[Pair(filteredAppPkg, date)]).isNull()
+    }
+
+
+    @Test
+    fun `aggregateUsage - active time calculation with interactions`() = runTest {
+        val sessionStart = 1000L
+        val interaction1 = sessionStart + 100L
+        val interaction2 = interaction1 + (AppConstants.ACTIVE_TIME_INTERACTION_WINDOW_MS / 2)
+        val interactionFar = interaction2 + AppConstants.ACTIVE_TIME_INTERACTION_WINDOW_MS + 500L
+        val sessionEnd = interactionFar + AppConstants.ACTIVE_TIME_INTERACTION_WINDOW_MS + 100L
+        val periodEnd = sessionEnd + 1000L
+        val date = DateUtil.formatUtcTimestampToLocalDateString(sessionStart)
+
+        val events = mutableListOf(
+            createRawEvent("app1", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, sessionStart),
+            createRawEvent("app1", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, interaction1),
+            createRawEvent("app1", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_TYPING, interaction2),
+            createRawEvent("app1", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_FOCUSED, interactionFar),
+            createRawEvent("app1", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, sessionEnd)
+        )
+        coEvery { mockAppMetadataRepository.getAllMetadata() } returns emptyList()
+
+        val result = repository.aggregateUsage(events, periodEnd)
+        val (totalUsage, activeUsage) = result[Pair("app1", date)] ?: (0L to 0L)
+
+        assertThat(totalUsage).isEqualTo(sessionEnd - sessionStart)
+
+        val expectedActiveBlock1Duration = (interaction2 + AppConstants.ACTIVE_TIME_INTERACTION_WINDOW_MS) - interaction1
+        val expectedActiveBlock2Duration = AppConstants.ACTIVE_TIME_INTERACTION_WINDOW_MS
+        val expectedTotalActiveUsage = expectedActiveBlock1Duration + expectedActiveBlock2Duration
+
+        assertThat(activeUsage).isEqualTo(expectedTotalActiveUsage)
+    }
+
+    @Test
+    fun `getDeviceSummaryForDate for today - combines persisted and live data correctly`() = runTest {
+        val today = DateUtil.getCurrentLocalDateString()
+        val persistedSummary = DailyDeviceSummary(today, 5, 10, System.currentTimeMillis(), 20, 1000L)
+        val liveUnlocks = 7
+        val liveFirstUnlock = 2000L
+        val liveNotifications = 12
+        val expectedLiveAppOpens = 3
+
+        every { mockDailyDeviceSummaryDao.getSummaryForDate(today) } returns flowOf(persistedSummary)
+        every { mockRawAppEventDao.countEventsOfTypeForDate(today, RawAppEvent.EVENT_TYPE_USER_PRESENT) } returns flowOf(liveUnlocks)
+        every { mockRawAppEventDao.getFirstEventTimestampOfTypeForDate(today, RawAppEvent.EVENT_TYPE_USER_PRESENT) } returns flowOf(liveFirstUnlock)
+        every { mockNotificationDao.getNotificationCountForDate(today) } returns flowOf(liveNotifications)
+
+        val resumeEventsForAppOpenCalc = listOf(
+            createRawEvent("appA", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 1000L),
+            createRawEvent("appA", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 1000L + AppConstants.CONTEXTUAL_APP_OPEN_DEBOUNCE_MS - 100),
+            createRawEvent("appA", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 1000L + AppConstants.CONTEXTUAL_APP_OPEN_DEBOUNCE_MS + 1),
+            createRawEvent("appB", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 2000L + AppConstants.CONTEXTUAL_APP_OPEN_DEBOUNCE_MS * 2)
+        )
+        every { mockRawAppEventDao.getEventsOfTypeForDate(today, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED) } returns flowOf(resumeEventsForAppOpenCalc)
+        coEvery { mockAppMetadataRepository.getAllMetadata() } returns emptyList()
+
+        val resultFlow = repository.getDeviceSummaryForDate(today)
+        val result = resultFlow.first()
+
+        assertThat(result).isNotNull()
+        assertThat(result!!.dateString).isEqualTo(today)
+        assertThat(result.totalUnlockCount).isEqualTo(liveUnlocks)
+        assertThat(result.firstUnlockTimestampUtc).isEqualTo(liveFirstUnlock)
+        assertThat(result.totalNotificationCount).isEqualTo(liveNotifications)
+        assertThat(result.totalAppOpens).isEqualTo(expectedLiveAppOpens)
+    }
+
+    @Test
+    fun `getDeviceSummaryForDate for past day - returns from DAO`() = runTest {
+        val pastDate = "2023-01-01"
+        val expectedSummary = DailyDeviceSummary(pastDate, 3, 8, 123L, 15, 12345L)
+        every { mockDailyDeviceSummaryDao.getSummaryForDate(pastDate) } returns flowOf(expectedSummary)
+
+        val result = repository.getDeviceSummaryForDate(pastDate).first()
+        assertThat(result).isEqualTo(expectedSummary)
+        verify { mockDailyDeviceSummaryDao.getSummaryForDate(pastDate) }
+        verify(exactly = 0) { mockRawAppEventDao.countEventsOfTypeForDate(any(), any()) }
+    }
+
+    @Test
+    fun `backfillHistoricalAppUsageData - processes days and saves data`() = runTest {
+        val numDays = 2
+        val todayCal = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+        val day1Cal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { add(Calendar.DAY_OF_YEAR, -1) }
+
+        val day1DateStr = DateUtil.formatDateToYyyyMmDdString(day1Cal.time)
+        val day2DateStr = DateUtil.formatDateToYyyyMmDdString(todayCal.time)
+
+        val startOfDay1 = DateUtil.getStartOfDayUtcMillis(day1DateStr)
+        val startOfDay2 = DateUtil.getStartOfDayUtcMillis(day2DateStr)
+
+        val day1SysEvent1 = createUsageStatsEvent("app1", "Act1", UsageEvents.Event.ACTIVITY_RESUMED, startOfDay1 + 100)
+        val day1SysEvent2 = createUsageStatsEvent("app1", "Act1", UsageEvents.Event.ACTIVITY_PAUSED, startOfDay1 + 200) // 100ms usage
+        shadowUsageStatsManager.addEvent(day1SysEvent1)
+        shadowUsageStatsManager.addEvent(day1SysEvent2)
+
+        val day2SysEvent1 = createUsageStatsEvent("app2", "Act2", UsageEvents.Event.ACTIVITY_RESUMED, startOfDay2 + 300)
+        val day2SysEvent2 = createUsageStatsEvent("app2", "Act2", UsageEvents.Event.ACTIVITY_PAUSED, startOfDay2 + 500) // 200ms usage
+        shadowUsageStatsManager.addEvent(day2SysEvent1)
+        shadowUsageStatsManager.addEvent(day2SysEvent2)
+
+        coEvery { mockRawAppEventDao.getEventsForDate(day1DateStr) } returns emptyList()
+        coEvery { mockRawAppEventDao.getEventsForDate(day2DateStr) } returns emptyList()
+
+        coEvery { mockNotificationDao.getNotificationsForDateList(any()) } returns emptyList()
+        coEvery { mockNotificationDao.getNotificationCountForDateImmediate(any()) } returns 0
+
+
+        val success = repository.backfillHistoricalAppUsageData(numDays)
+        assertThat(success).isTrue()
+
+        coVerify { mockDailyDeviceSummaryDao.insertOrUpdate(match { it.dateString == day1DateStr }) }
+        coVerify { mockDailyAppUsageDao.insertOrUpdateUsage(match { it.packageName == "app1" && it.dateString == day1DateStr && it.usageTimeMillis == 100L }) }
+
+        coVerify { mockDailyDeviceSummaryDao.insertOrUpdate(match { it.dateString == day2DateStr }) }
+        coVerify { mockDailyAppUsageDao.insertOrUpdateUsage(match { it.packageName == "app2" && it.dateString == day2DateStr && it.usageTimeMillis == 200L }) }
+    }
+}

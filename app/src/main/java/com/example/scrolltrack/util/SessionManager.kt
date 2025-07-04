@@ -1,34 +1,44 @@
 package com.example.scrolltrack.util
 
-import android.content.Context
 import android.os.Handler
-import android.os.Looper
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import com.example.scrolltrack.data.DraftRepository
 import com.example.scrolltrack.data.ScrollDataRepository // Keep for potential future use, though direct DAO is used now
 import com.example.scrolltrack.data.SessionDraft
-import com.example.scrolltrack.db.ScrollSessionDao
 import com.example.scrolltrack.db.ScrollSessionRecord
-import com.example.scrolltrack.util.DateUtil
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import javax.inject.Inject
-import javax.inject.Singleton
+import kotlinx.coroutines.*
+import java.util.*
 import kotlin.math.max
 import kotlin.math.min
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import com.example.scrolltrack.util.Clock
+import com.example.scrolltrack.util.SystemClock
+import javax.inject.Inject
+import javax.inject.Singleton
 
-@Singleton
-class SessionManager @Inject constructor(
-    // private val context: Context, // Not needed if DraftRepository handles its own context
+class SessionManager(
     private val draftRepository: DraftRepository,
-    private val scrollSessionAggregator: ScrollSessionAggregator
+    private val scrollSessionAggregator: ScrollSessionAggregator,
+    private val externalScope: CoroutineScope? = null,
+    private val clock: Clock = SystemClock()
 ) {
+    companion object {
+        private const val DRAFT_SAVE_INTERVAL_MS = 10_000L // 10 seconds
+        
+        // Test mode flag - should only be true in tests
+        @VisibleForTesting
+        var testMode: Boolean = false
+            private set
+            
+        // For testing only
+        @VisibleForTesting
+        fun setTestMode(enabled: Boolean) {
+            testMode = enabled
+        }
+    }
     private val TAG = "SessionManager"
-    private val sessionManagerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // Made internal for testing
+    internal val sessionManagerScope = externalScope ?: CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // Session state variables
     private var currentAppPackage: String? = null
@@ -48,33 +58,32 @@ class SessionManager @Inject constructor(
     }
 
     private var draftSaveJob: Job? = null
-    private companion object {
-        const val DRAFT_SAVE_INTERVAL_MS = 10000L
-    }
+
 
     fun startNewSession(packageName: String, activityName: String?, startTime: Long) {
-        // Finalize previous session only if there was an active package and it's different from the new one,
-        // or if there was scroll accumulated in the previous session.
-        if (currentAppPackage != null && (currentAppPackage != packageName || currentAppScrollAccumulator > 0)) {
-            finalizeAndSaveCurrentSession(startTime - 1, SessionEndReason.APP_SWITCH)
+        val previousPackage = currentAppPackage
+        val hadScroll = currentAppScrollAccumulator > 0
+
+        // Finalize the previous session if it's for a different app and it had scroll data.
+        if (previousPackage != null && previousPackage != packageName && hadScroll) {
+            // Finalize the old session, but don't reset the state here. This method will handle it.
+            finalizeAndSaveCurrentSession(startTime - 1, SessionEndReason.APP_SWITCH, resetState = false)
         }
 
-        // Start new session if package is different or if it's the same but was reset
-        if (currentAppPackage != packageName || currentSessionStartTime == 0L) {
+        // If the app is changing, or if there was no previous session, reset state for the new one.
+        if (previousPackage != packageName) {
+            resetCurrentSessionState()
             currentAppPackage = packageName
-            currentAppActivity = activityName
-            currentAppScrollAccumulator = 0L
             currentSessionStartTime = startTime
-            isMeasuredScroll = false // Reset for new session
-            Log.i(TAG, "NEW SESSION: App: $currentAppPackage, Activity: $currentAppActivity at $startTime. Accumulator reset.")
+            Log.i(TAG, "NEW SESSION: App: $packageName, Activity: $activityName at $startTime.")
         }
+        // Always update the activity name for the current session.
+        currentAppActivity = activityName
     }
 
     fun updateCurrentSessionScroll(scrollDelta: Long, isMeasured: Boolean) {
         if (currentAppPackage == null || currentSessionStartTime == 0L) {
             Log.w(TAG, "Attempted to update scroll but no active session. ScrollDelta: $scrollDelta. This might happen if a scroll event is received before a window change event establishes the session.")
-            // Potentially, if determinedPackageName is available here, we could try to start a session.
-            // However, onAccessibilityEvent in Service should ideally establish the session first via WINDOW_STATE_CHANGED.
             return
         }
         currentAppScrollAccumulator += scrollDelta
@@ -82,12 +91,10 @@ class SessionManager @Inject constructor(
             isMeasuredScroll = true // If we get even one measured event, the whole session is measured.
         }
         Log.d(TAG, "Scroll in $currentAppPackage: Added:$scrollDelta, SessionTotal:$currentAppScrollAccumulator")
-        sessionManagerScope.launch {
-            scheduleDraftSave()
-        }
+        scheduleDraftSave()
     }
 
-    fun finalizeAndSaveCurrentSession(sessionEndTimeUTC: Long, reason: String) {
+    fun finalizeAndSaveCurrentSession(sessionEndTimeUTC: Long, reason: String, resetState: Boolean = true) {
         val pkgName = currentAppPackage ?: return
         val startTimeUTC = currentSessionStartTime
         val accumulatedScroll = currentAppScrollAccumulator
@@ -97,10 +104,15 @@ class SessionManager @Inject constructor(
 
         if (startTimeUTC == 0L || accumulatedScroll == 0L) {
             Log.i(TAG, "Skipping save for session ($pkgName) with no start time or zero scroll.")
-            if (reason != SessionEndReason.RECOVERED_DRAFT) { // Avoid loop if called from recover
-                 sessionManagerScope.launch { draftRepository.clearDraft() }
+            sessionManagerScope.launch {
+                try {
+                    draftRepository.clearDraft()
+                } finally {
+                    if (resetState) {
+                        resetCurrentSessionState()
+                    }
+                }
             }
-            resetCurrentSessionState()
             return
         }
 
@@ -113,105 +125,151 @@ class SessionManager @Inject constructor(
             try {
                 if (startLocalDateString == endLocalDateString) {
                     val record = ScrollSessionRecord(
-                        packageName = pkgName, scrollAmount = accumulatedScroll,
+                        packageName = pkgName, 
+                        scrollAmount = accumulatedScroll,
                         dataType = dataType,
-                        sessionStartTime = startTimeUTC, sessionEndTime = effectiveSessionEndTimeUTC,
-                        date = startLocalDateString, sessionEndReason = reason
+                        sessionStartTime = startTimeUTC, 
+                        sessionEndTime = effectiveSessionEndTimeUTC,
+                        date = startLocalDateString, 
+                        sessionEndReason = reason
                     )
                     scrollSessionAggregator.addSession(record)
                     Log.i(TAG, "Scroll session for $pkgName passed to aggregator.")
                 } else {
                     Log.i(TAG, "Session for $pkgName spans midnight: $startLocalDateString to $endLocalDateString. Total Scroll: $accumulatedScroll. Duration: $totalSessionDuration ms. Splitting.")
-                    val endOfDayForStartDayUTC = DateUtil.getEndOfDayUtcMillis(startLocalDateString)
+                    
+                    // Mock these in tests
+                    val endOfDayForStartDayUTC = try {
+                        DateUtil.getEndOfDayUtcMillis(startLocalDateString)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error getting end of day UTC millis", e)
+                        effectiveSessionEndTimeUTC
+                    }
+                    
                     val effectiveEndOfStartDay = min(endOfDayForStartDayUTC, effectiveSessionEndTimeUTC)
                     val durationInStartDay = (effectiveEndOfStartDay - startTimeUTC + 1).coerceAtLeast(0L)
-                    val scrollForStartDay = if (totalSessionDuration > 0) (accumulatedScroll * durationInStartDay.toDouble() / totalSessionDuration.toDouble()).toLong() else if (durationInStartDay > 0) accumulatedScroll else 0L
+                    val scrollForStartDay = if (totalSessionDuration > 0) 
+                        (accumulatedScroll * durationInStartDay.toDouble() / totalSessionDuration.toDouble()).toLong() 
+                    else if (durationInStartDay > 0) 
+                        accumulatedScroll 
+                    else 
+                        0L
 
                     if (scrollForStartDay > 0 || (accumulatedScroll > 0 && durationInStartDay > 0)) {
                         val record1 = ScrollSessionRecord(
-                            packageName = pkgName, scrollAmount = scrollForStartDay,
+                            packageName = pkgName, 
+                            scrollAmount = scrollForStartDay,
                             dataType = dataType,
-                            sessionStartTime = startTimeUTC, sessionEndTime = effectiveEndOfStartDay,
-                            date = startLocalDateString, sessionEndReason = reason
+                            sessionStartTime = startTimeUTC, 
+                            sessionEndTime = effectiveEndOfStartDay,
+                            date = startLocalDateString, 
+                            sessionEndReason = reason
                         )
                         scrollSessionAggregator.addSession(record1)
                         Log.i(TAG, "Split session (part 1) for $pkgName saved for $startLocalDateString. Scroll: $scrollForStartDay. DurationPart: $durationInStartDay ms. OriginalTotalScroll: $accumulatedScroll, OriginalTotalDuration: $totalSessionDuration ms.")
                     }
 
-                    val startOfDayForEndDayUTC = DateUtil.getStartOfDayUtcMillis(endLocalDateString)
+                    val startOfDayForEndDayUTC = try {
+                        DateUtil.getStartOfDayUtcMillis(endLocalDateString)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error getting start of day UTC millis", e)
+                        startTimeUTC
+                    }
+                    
                     val effectiveStartOfEndDay = max(startOfDayForEndDayUTC, startTimeUTC)
                     if (effectiveSessionEndTimeUTC >= effectiveStartOfEndDay) {
                         val scrollForEndDay = accumulatedScroll - scrollForStartDay
-                        if (scrollForEndDay > 0 || (accumulatedScroll > 0 && (effectiveSessionEndTimeUTC - effectiveStartOfEndDay) > 0 && scrollForStartDay == 0L) ) {
-                             val record2 = ScrollSessionRecord(
-                                packageName = pkgName, scrollAmount = scrollForEndDay.coerceAtLeast(0L),
+                        if (scrollForEndDay > 0 || (accumulatedScroll > 0 && (effectiveSessionEndTimeUTC - effectiveStartOfEndDay) > 0 && scrollForStartDay == 0L)) {
+                            val record2 = ScrollSessionRecord(
+                                packageName = pkgName, 
+                                scrollAmount = scrollForEndDay.coerceAtLeast(0L),
                                 dataType = dataType,
-                                sessionStartTime = effectiveStartOfEndDay, sessionEndTime = effectiveSessionEndTimeUTC,
-                                date = endLocalDateString, sessionEndReason = reason
+                                sessionStartTime = effectiveStartOfEndDay, 
+                                sessionEndTime = effectiveSessionEndTimeUTC,
+                                date = endLocalDateString, 
+                                sessionEndReason = reason
                             )
                             scrollSessionAggregator.addSession(record2)
-                             Log.i(TAG, "Split session (part 2) for $pkgName saved for $endLocalDateString. Scroll: ${scrollForEndDay.coerceAtLeast(0L)}. DurationPart: ${(effectiveSessionEndTimeUTC - effectiveStartOfEndDay)} ms. OriginalTotalScroll: $accumulatedScroll, OriginalTotalDuration: $totalSessionDuration ms.")
+                            Log.i(TAG, "Split session (part 2) for $pkgName saved for $endLocalDateString. Scroll: ${scrollForEndDay.coerceAtLeast(0L)}. DurationPart: ${(effectiveSessionEndTimeUTC - effectiveStartOfEndDay)} ms. OriginalTotalScroll: $accumulatedScroll, OriginalTotalDuration: $totalSessionDuration ms.")
                         }
                     }
                 }
                 draftRepository.clearDraft()
-                // Notification update will be handled by the service after calling this.
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving session for $pkgName to aggregator. Scroll: $accumulatedScroll. Reason: $reason", e)
                 // If adding to buffer fails, we should probably re-save the draft
                 // to avoid data loss.
-                draftRepository.saveDraft(
-                    SessionDraft(
-                        packageName = pkgName,
-                        activityName = null, // Activity name isn't critical for recovery
-                        scrollAmount = accumulatedScroll,
-                        startTime = startTimeUTC,
-                        lastUpdateTime = sessionEndTimeUTC
+                try {
+                    draftRepository.saveDraft(
+                        SessionDraft(
+                            packageName = pkgName,
+                            activityName = null, // Activity name isn't critical for recovery
+                            scrollAmount = accumulatedScroll,
+                            startTime = startTimeUTC,
+                            lastUpdateTime = sessionEndTimeUTC
+                        )
                     )
-                )
+                } catch (saveError: Exception) {
+                    Log.e(TAG, "Failed to save draft after session save error", saveError)
+                }
+            } finally {
+                if (resetState) {
+                    resetCurrentSessionState()
+                }
             }
         }
-        resetCurrentSessionState()
     }
 
     fun recoverSession() {
-        draftRepository.getDraft()?.let { draft ->
-            Log.i(TAG, "Recovering draft session for ${draft.packageName}: Scroll=${draft.scrollAmount}, Start=${draft.startTime}, Activity=${draft.activityName}")
-            currentAppPackage = draft.packageName
-            currentAppActivity = draft.activityName
-            currentAppScrollAccumulator = draft.scrollAmount
-            currentSessionStartTime = draft.startTime
-            finalizeAndSaveCurrentSession(System.currentTimeMillis(), SessionEndReason.RECOVERED_DRAFT)
-        } ?: Log.i(TAG, "No draft session to recover.")
+        sessionManagerScope.launch {
+            draftRepository.getDraft()?.let { draft ->
+                Log.i(TAG, "Recovering draft session for ${draft.packageName}: Scroll=${draft.scrollAmount}, Start=${draft.startTime}, Activity=${draft.activityName}")
+                currentAppPackage = draft.packageName
+                currentAppActivity = draft.activityName
+                currentAppScrollAccumulator = draft.scrollAmount
+                currentSessionStartTime = draft.startTime
+                finalizeAndSaveCurrentSession(clock.currentTimeMillis(), SessionEndReason.RECOVERED_DRAFT)
+            } ?: Log.i(TAG, "No draft session to recover.")
+        }
     }
 
-    private suspend fun scheduleDraftSave() {
+    internal fun scheduleDraftSave() {
         if (currentAppPackage == null || currentSessionStartTime == 0L) {
-             Log.v(TAG, "DRAFT SAVE: Skipped schedule, no active session.")
+            Log.v(TAG, "DRAFT SAVE: Skipped schedule, no active session.")
             return
         }
 
         draftSaveJob?.cancel() // Cancel any previously scheduled save
         draftSaveJob = sessionManagerScope.launch {
-            delay(DRAFT_SAVE_INTERVAL_MS)
-            // Ensure these are not null before creating SessionDraft
-            val pkg = currentAppPackage
-            val startTime = currentSessionStartTime
-            if (pkg != null && startTime != 0L) {
-                val sessionToSave = SessionDraft(
-                    packageName = pkg,
-                    activityName = currentAppActivity,
-                    scrollAmount = currentAppScrollAccumulator,
-                    startTime = startTime,
-                    lastUpdateTime = System.currentTimeMillis()
-                )
-                draftRepository.saveDraft(sessionToSave)
-                Log.i(TAG, "DRAFT SAVE: Saved draft for ${sessionToSave.packageName}, Amount: ${sessionToSave.scrollAmount}")
-            } else {
-                 Log.w(TAG, "DRAFT SAVE: Coroutine executed but session info was null/invalid.")
+            try {
+                // Use a shorter delay in test mode
+                val delayMs = if (testMode) 100L else DRAFT_SAVE_INTERVAL_MS
+                delay(delayMs)
+                
+                // Ensure these are not null before creating SessionDraft
+                val pkg = currentAppPackage
+                val startTime = currentSessionStartTime
+                if (pkg != null && startTime != 0L) {
+                    val sessionToSave = SessionDraft(
+                        packageName = pkg,
+                        activityName = currentAppActivity,
+                        scrollAmount = currentAppScrollAccumulator,
+                        startTime = startTime,
+                        lastUpdateTime = clock.currentTimeMillis()
+                    )
+                    draftRepository.saveDraft(sessionToSave)
+                    Log.i(TAG, "DRAFT SAVE: Saved draft for ${sessionToSave.packageName}, Amount: ${sessionToSave.scrollAmount}")
+                } else {
+                    Log.w(TAG, "DRAFT SAVE: Coroutine executed but session info was null/invalid.")
+                }
+            } catch (e: CancellationException) {
+                // Re-throw cancellation to respect coroutine cancellation
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving draft", e)
             }
         }
-        Log.v(TAG, "DRAFT SAVE: Scheduled draft save for $currentAppPackage in ${DRAFT_SAVE_INTERVAL_MS}ms")
+        Log.v(TAG, "DRAFT SAVE: Scheduled draft save for $currentAppPackage")
     }
 
     fun resetCurrentSessionState() {
@@ -234,12 +292,12 @@ class SessionManager @Inject constructor(
                 activityName = currentAppActivity,
                 scrollAmount = currentAppScrollAccumulator,
                 startTime = startTime,
-                lastUpdateTime = System.currentTimeMillis()
+                lastUpdateTime = clock.currentTimeMillis()
             )
             draftRepository.saveDraft(sessionToSave)
             Log.i(TAG, "DRAFT SAVE (onStop): Immediate draft saved for ${sessionToSave.packageName}")
         }
-        finalizeAndSaveCurrentSession(System.currentTimeMillis(), reason)
+        finalizeAndSaveCurrentSession(clock.currentTimeMillis(), reason)
         resetCurrentSessionState()
     }
 

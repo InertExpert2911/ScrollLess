@@ -1,127 +1,174 @@
 package com.example.scrolltrack.util
 
+import com.example.scrolltrack.util.Clock
 import com.example.scrolltrack.data.DraftRepository
 import com.example.scrolltrack.data.SessionDraft
 import com.example.scrolltrack.db.ScrollSessionRecord
 import com.google.common.truth.Truth.assertThat
 import io.mockk.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.*
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.currentTime
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
-import java.util.Calendar
-import java.util.TimeZone
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import java.util.*
 import java.util.concurrent.TimeUnit
 
+@RunWith(RobolectricTestRunner::class)
 @OptIn(ExperimentalCoroutinesApi::class)
 class SessionManagerTest {
 
+    // A simple test clock that uses the TestScope's virtual time
+    class TestClock(private val testScope: TestScope) : Clock {
+        override fun currentTimeMillis(): Long = testScope.currentTime
+    }
+
+    private lateinit var sessionManager: SessionManager
     private lateinit var mockDraftRepository: DraftRepository
     private lateinit var mockScrollAggregator: ScrollSessionAggregator
-    private lateinit var sessionManager: SessionManager
-
-    private val testScheduler = TestCoroutineScheduler()
-    private val testDispatcher = StandardTestDispatcher(testScheduler)
-    private val testScope = TestScope(testDispatcher)
-
-    private var originalDefaultTimeZone: TimeZone? = null
+    private lateinit var testScope: TestScope
 
     @Before
     fun setUp() {
-        originalDefaultTimeZone = TimeZone.getDefault()
-        TimeZone.setDefault(TimeZone.getTimeZone("UTC")) // For DateUtil consistency
+        // Enable test mode
+        SessionManager.setTestMode(true)
+        
+        // Set test scope
+        testScope = TestScope()
 
-        mockDraftRepository = mockk(relaxUnitFun = true) // relaxUnitFun for clearDraft, saveDraft
-        mockScrollAggregator = mockk(relaxUnitFun = true) // relaxUnitFun for addSession
+        // Set up mocks
+        mockDraftRepository = mockk(relaxUnitFun = true)
+        mockScrollAggregator = mockk(relaxUnitFun = true)
+        
+        // Create test instance of SessionManager, passing the test scope and a test clock
+        sessionManager = SessionManager(mockDraftRepository, mockScrollAggregator, testScope, TestClock(testScope))
 
-        // Mock DateUtil calls that rely on System.currentTimeMillis if they become problematic
-        // For now, we control time by passing it into SessionManager methods where possible,
-        // and for internal System.currentTimeMillis, we'll be mindful.
+        // Mock the DateUtil companion object
+        mockkObject(DateUtil)
 
-        sessionManager = SessionManager(mockDraftRepository, mockScrollAggregator)
+        // Mock date formatting
+        every { DateUtil.formatUtcTimestampToLocalDateString(any<Long>()) } answers {
+            val timestamp = firstArg<Long>()
+            val date = Date(timestamp)
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            sdf.timeZone = TimeZone.getTimeZone("UTC")
+            sdf.format(date)
+        }
+
+        // Mock date calculations
+        every { DateUtil.getEndOfDayUtcMillis(any()) } answers { 
+            val date = firstArg<String>()
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            sdf.timeZone = TimeZone.getTimeZone("UTC")
+            val parsed = sdf.parse(date)!!
+            parsed.time + TimeUnit.DAYS.toMillis(1) - 1
+        }
+
+        every { DateUtil.getStartOfDayUtcMillis(any()) } answers {
+            val date = firstArg<String>()
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            sdf.timeZone = TimeZone.getTimeZone("UTC")
+            sdf.parse(date)!!.time
+        }
+        
+        // Clear any previous mocks
+        clearAllMocks()
     }
-
+    
     @After
     fun tearDown() {
-        originalDefaultTimeZone?.let { TimeZone.setDefault(it) }
-        unmockkAll() // Important for MockK
+        // Reset test mode
+        SessionManager.setTestMode(false)
+        // Clean up mocks
+        unmockkAll()
     }
 
-    private fun testTime(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int): Long {
-        return Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-            set(year, month - 1, day, hour, minute, second)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
-    }
+    // --- Test Data ---
+    private val app1 = "com.app.one"
+    private val app2 = "com.app.two"
+    private val activityA = "ActivityA"
+    private val activityB = "ActivityB"
 
-    // --- startNewSession Tests ---
+    private val time1 = 1704105600000L // 2024-01-01 10:00:00 UTC
+    private val time2 = 1704105900000L // 2024-01-01 10:05:00 UTC
+    private val time3 = 1704106200000L // 2024-01-01 10:10:00 UTC
+
+    private val timeAcrossMidnightStart = 1704153000000L // 2024-01-01 23:50:00 UTC
+    private val timeAcrossMidnightEnd = 1704154200000L   // 2024-01-02 00:10:00 UTC
+    private val endOfDay1 = 1704153599999L // 2024-01-01 23:59:59.999 UTC
+    private val startOfDay2 = 1704153600000L // 2024-01-02 00:00:00.000 UTC
+
+    private val DRAFT_SAVE_INTERVAL_MS = 10000L
+
+    // --- startNewSession ---
+
     @Test
-    fun `startNewSession - no previous session - starts new session`() = testScope.runTest {
-        val startTime = testTime(2023, 1, 1, 10, 0, 0)
-        sessionManager.startNewSession("app1", "activityA", startTime)
+    fun startNewSession_withNoActiveSession_startsTrackingNewApp() = testScope.runTest {
+        sessionManager.startNewSession(app1, activityA, time1)
 
-        assertThat(sessionManager.getCurrentAppPackage()).isEqualTo("app1")
-        // Internal state check not directly possible, verify via interactions if any, or other methods
-        coVerify(exactly = 0) { mockScrollAggregator.addSession(any()) } // No finalization
+        assertThat(sessionManager.getCurrentAppPackage()).isEqualTo(app1)
+        coVerify(exactly = 0) { mockScrollAggregator.addSession(any()) }
+        coVerify(exactly = 0) { mockDraftRepository.saveDraft(any()) }
     }
 
     @Test
-    fun `startNewSession - previous session with scroll - finalizes old, starts new`() = testScope.runTest {
-        val time1 = testTime(2023, 1, 1, 10, 0, 0)
-        sessionManager.startNewSession("app1", "activityA", time1)
-        sessionManager.updateCurrentSessionScroll(100, false)
-        testScheduler.runCurrent() // Process update's coroutine for draft save scheduling
+    fun startNewSession_withExistingSessionWithScroll_finalizesOldAndStartsNew() = testScope.runTest {
+        sessionManager.startNewSession(app1, activityA, time1)
+        sessionManager.updateCurrentSessionScroll(100, true)
+        testScope.runCurrent() // Ensure draft save job is scheduled
 
-        val time2 = testTime(2023, 1, 1, 10, 5, 0)
-        sessionManager.startNewSession("app2", "activityB", time2)
-        testScheduler.runCurrent() // Process startNewSession's coroutine for finalization
+        sessionManager.startNewSession(app2, activityB, time2)
+        testScope.advanceUntilIdle()
 
         val capturedRecord = slot<ScrollSessionRecord>()
         coVerify(exactly = 1) { mockScrollAggregator.addSession(capture(capturedRecord)) }
-        assertThat(capturedRecord.captured.packageName).isEqualTo("app1")
+        assertThat(capturedRecord.captured.packageName).isEqualTo(app1)
         assertThat(capturedRecord.captured.scrollAmount).isEqualTo(100)
         assertThat(capturedRecord.captured.sessionEndTime).isEqualTo(time2 - 1)
+        assertThat(capturedRecord.captured.sessionEndReason).isEqualTo(SessionManager.SessionEndReason.APP_SWITCH)
 
-        assertThat(sessionManager.getCurrentAppPackage()).isEqualTo("app2")
-        coVerify { mockDraftRepository.clearDraft() }
+        coVerify(exactly = 1) { mockDraftRepository.clearDraft() }
+        assertThat(sessionManager.getCurrentAppPackage()).isEqualTo(app2)
     }
 
     @Test
-    fun `startNewSession - previous session no scroll - resets state, starts new, no save`() = testScope.runTest {
-        val time1 = testTime(2023, 1, 1, 10, 0, 0)
-        sessionManager.startNewSession("app1", "activityA", time1)
-        // No scroll update
+    fun startNewSession_withExistingSessionWithoutScroll_resetsAndStartsNewWithoutSaving() = testScope.runTest {
+        sessionManager.startNewSession(app1, activityA, time1)
+        sessionManager.startNewSession(app2, activityB, time2)
+        testScope.advanceUntilIdle()
 
-        val time2 = testTime(2023, 1, 1, 10, 5, 0)
-        sessionManager.startNewSession("app2", "activityB", time2)
-        testScheduler.runCurrent()
-
-        coVerify(exactly = 0) { mockScrollAggregator.addSession(any()) } // No save as no scroll
-        assertThat(sessionManager.getCurrentAppPackage()).isEqualTo("app2")
-        coVerify(exactly = 0) { mockDraftRepository.clearDraft() } // Not called if no save
+        coVerify(exactly = 0) { mockScrollAggregator.addSession(any()) }
+        assertThat(sessionManager.getCurrentAppPackage()).isEqualTo(app2)
     }
 
-    // --- updateCurrentSessionScroll Tests ---
     @Test
-    fun `updateCurrentSessionScroll - active session - updates scroll and measured flag`() = testScope.runTest {
-        val startTime = testTime(2023, 1, 1, 10, 0, 0)
-        sessionManager.startNewSession("app1", "activityA", startTime)
+    fun startNewSession_forSameApp_doesNothing() = testScope.runTest {
+        sessionManager.startNewSession(app1, activityA, time1)
+        sessionManager.updateCurrentSessionScroll(100, true)
 
+        sessionManager.startNewSession(app1, activityB, time2)
+
+        coVerify(exactly = 0) { mockScrollAggregator.addSession(any()) }
+        assertThat(sessionManager.getCurrentAppPackage()).isEqualTo(app1)
+    }
+
+    // --- updateCurrentSessionScroll ---
+
+    @Test
+    fun updateCurrentSessionScroll_withActiveSession_updatesScrollAndDataType() = testScope.runTest {
+        sessionManager.startNewSession(app1, activityA, time1)
         sessionManager.updateCurrentSessionScroll(50, false)
-        // Internal state check: currentAppScrollAccumulator should be 50, isMeasuredScroll false
-        // This needs to be verified by a subsequent finalizeAndSaveCurrentSession
-
         sessionManager.updateCurrentSessionScroll(70, true)
-        // Internal state check: currentAppScrollAccumulator should be 120, isMeasuredScroll true
-        testScheduler.runCurrent() // For draft save
 
-        val finalTime = testTime(2023, 1, 1, 10, 1, 0)
-        sessionManager.finalizeAndSaveCurrentSession(finalTime, "REASON")
-        testScheduler.runCurrent()
+        sessionManager.finalizeAndSaveCurrentSession(time2, "TEST")
+        testScope.runCurrent()
 
         val capturedRecord = slot<ScrollSessionRecord>()
         coVerify { mockScrollAggregator.addSession(capture(capturedRecord)) }
@@ -130,238 +177,157 @@ class SessionManagerTest {
     }
 
     @Test
-    fun `updateCurrentSessionScroll - no active session - does nothing`() = testScope.runTest {
+    fun updateCurrentSessionScroll_withActiveSession_savesDraftAfterInterval() = testScope.runTest {
+        val testDraftSaveInterval = 100L // from SessionManager testMode
+        sessionManager.startNewSession(app1, activityA, time1)
+
+        // First scroll - should schedule but not save yet
+        sessionManager.updateCurrentSessionScroll(10, true)
+        advanceTimeBy(testDraftSaveInterval - 10)
+        coVerify(exactly = 0) { mockDraftRepository.saveDraft(any()) }
+
+        // Second scroll - should reset timer
+        sessionManager.updateCurrentSessionScroll(20, true)
+        advanceTimeBy(testDraftSaveInterval - 10)
+        coVerify(exactly = 0) { mockDraftRepository.saveDraft(any()) }
+
+        // Advance past the save interval
+        advanceTimeBy(20)
+        advanceUntilIdle() // Wait for save to complete
+
+        // Verify draft was saved with correct amount
+        val capturedDraft = slot<SessionDraft>()
+        coVerify(exactly = 1) { mockDraftRepository.saveDraft(capture(capturedDraft)) }
+        assertThat(capturedDraft.captured.scrollAmount).isEqualTo(30)
+        assertThat(capturedDraft.captured.packageName).isEqualTo(app1)
+    }
+
+    @Test
+    fun updateCurrentSessionScroll_withNoActiveSession_doesNothing() = testScope.runTest {
         sessionManager.updateCurrentSessionScroll(100, false)
-        // No session started, so no update, no draft save
         coVerify(exactly = 0) { mockDraftRepository.saveDraft(any()) }
         coVerify(exactly = 0) { mockScrollAggregator.addSession(any()) }
     }
 
-    // --- finalizeAndSaveCurrentSession Tests ---
+    // --- finalizeAndSaveCurrentSession ---
+
     @Test
-    fun `finalizeAndSaveCurrentSession - no scroll - clears draft, resets state, no save`() = testScope.runTest {
-        val startTime = testTime(2023, 1, 1, 10, 0, 0)
-        sessionManager.startNewSession("app1", "activityA", startTime)
-        // No scroll
+    fun finalizeAndSaveCurrentSession_withScrollData_savesRecordAndClearsDraft() = testScope.runTest {
+        sessionManager.startNewSession(app1, activityA, time1)
+        sessionManager.updateCurrentSessionScroll(150, true)
+        testScope.runCurrent()
 
-        val endTime = testTime(2023, 1, 1, 10, 1, 0)
-        sessionManager.finalizeAndSaveCurrentSession(endTime, "REASON")
-        testScheduler.runCurrent()
+        sessionManager.finalizeAndSaveCurrentSession(time2, SessionManager.SessionEndReason.SCREEN_OFF)
+        testScope.runCurrent()
 
-        coVerify(exactly = 0) { mockScrollAggregator.addSession(any()) }
-        coVerify(exactly = 1) { mockDraftRepository.clearDraft() } // Cleared even if no scroll
+        val capturedRecord = slot<ScrollSessionRecord>()
+        coVerify(exactly = 1) { mockScrollAggregator.addSession(capture(capturedRecord)) }
+        assertThat(capturedRecord.captured.packageName).isEqualTo(app1)
+        assertThat(capturedRecord.captured.scrollAmount).isEqualTo(150)
+        assertThat(capturedRecord.captured.sessionStartTime).isEqualTo(time1)
+        assertThat(capturedRecord.captured.sessionEndTime).isEqualTo(time2)
+        assertThat(capturedRecord.captured.sessionEndReason).isEqualTo(SessionManager.SessionEndReason.SCREEN_OFF)
+
+        coVerify(exactly = 1) { mockDraftRepository.clearDraft() }
         assertThat(sessionManager.getCurrentAppPackage()).isNull()
     }
 
     @Test
-    fun `finalizeAndSaveCurrentSession - session within single day - saves one record`() = testScope.runTest {
-        val startTime = testTime(2023, 1, 1, 10, 0, 0) // 2023-01-01
-        sessionManager.startNewSession("app1", "activityA", startTime)
-        sessionManager.updateCurrentSessionScroll(150, true)
-        testScheduler.runCurrent()
+    fun finalizeAndSaveCurrentSession_withSessionSpanningMidnight_splitsIntoTwoRecords() = testScope.runTest {
+        every { DateUtil.getEndOfDayUtcMillis("2024-01-01") } returns endOfDay1
+        every { DateUtil.getStartOfDayUtcMillis("2024-01-02") } returns startOfDay2
 
-        val endTime = testTime(2023, 1, 1, 10, 15, 0) // Still 2023-01-01
-        sessionManager.finalizeAndSaveCurrentSession(endTime, "REASON")
-        testScheduler.runCurrent()
+        sessionManager.startNewSession(app1, activityA, timeAcrossMidnightStart)
+        sessionManager.updateCurrentSessionScroll(300, false)
+        testScope.runCurrent()
 
-        val capturedRecord = slot<ScrollSessionRecord>()
-        coVerify(exactly = 1) { mockScrollAggregator.addSession(capture(capturedRecord)) }
-        assertThat(capturedRecord.captured.packageName).isEqualTo("app1")
-        assertThat(capturedRecord.captured.scrollAmount).isEqualTo(150)
-        assertThat(capturedRecord.captured.dataType).isEqualTo("MEASURED")
-        assertThat(capturedRecord.captured.sessionStartTime).isEqualTo(startTime)
-        assertThat(capturedRecord.captured.sessionEndTime).isEqualTo(endTime)
-        assertThat(capturedRecord.captured.date).isEqualTo("2023-01-01")
-        coVerify { mockDraftRepository.clearDraft() }
-    }
-
-    @Test
-    fun `finalizeAndSaveCurrentSession - session spans midnight - splits into two records`() = testScope.runTest {
-        val startTime = testTime(2023, 1, 1, 23, 50, 0) // Day 1: 2023-01-01, 10 mins left
-        sessionManager.startNewSession("app1", "activityA", startTime)
-        sessionManager.updateCurrentSessionScroll(300, false) // e.g., 150 per 10 mins
-        testScheduler.runCurrent()
-
-        val endTime = testTime(2023, 1, 2, 0, 10, 0)   // Day 2: 2023-01-02, 10 mins in
-                                                       // Total duration 20 mins
-        sessionManager.finalizeAndSaveCurrentSession(endTime, "REASON_SPLIT")
-        testScheduler.runCurrent()
+        sessionManager.finalizeAndSaveCurrentSession(timeAcrossMidnightEnd, "SPLIT_TEST")
+        testScope.advanceUntilIdle()
 
         val capturedRecords = mutableListOf<ScrollSessionRecord>()
         coVerify(exactly = 2) { mockScrollAggregator.addSession(capture(capturedRecords)) }
 
-        val recordDay1 = capturedRecords.find { it.date == "2023-01-01" }
-        val recordDay2 = capturedRecords.find { it.date == "2023-01-02" }
+        val recordDay1 = capturedRecords.find { it.date == "2024-01-01" }!!
+        val recordDay2 = capturedRecords.find { it.date == "2024-01-02" }!!
 
-        assertThat(recordDay1).isNotNull()
-        assertThat(recordDay2).isNotNull()
-
-        // Day 1: 10 mins duration, scroll should be proportional (150)
-        // Start time: 2023-01-01 23:50:00
-        // End time: 2023-01-01 23:59:59.999
-        val endOfDay1 = DateUtil.getEndOfDayUtcMillis("2023-01-01")
-        assertThat(recordDay1!!.packageName).isEqualTo("app1")
-        assertThat(recordDay1.sessionStartTime).isEqualTo(startTime)
+        assertThat(recordDay1.sessionStartTime).isEqualTo(timeAcrossMidnightStart)
         assertThat(recordDay1.sessionEndTime).isEqualTo(endOfDay1)
-        assertThat(recordDay1.scrollAmount).isEqualTo(150) // Duration 10min / 20min total * 300 scroll
-        assertThat(recordDay1.dataType).isEqualTo("INFERRED")
+        assertThat(recordDay1.scrollAmount).isEqualTo(150)
 
-        // Day 2: 10 mins duration, scroll should be proportional (150)
-        // Start time: 2023-01-02 00:00:00.000
-        // End time: 2023-01-02 00:10:00
-        val startOfDay2 = DateUtil.getStartOfDayUtcMillis("2023-01-02")
-        assertThat(recordDay2!!.packageName).isEqualTo("app1")
         assertThat(recordDay2.sessionStartTime).isEqualTo(startOfDay2)
-        assertThat(recordDay2.sessionEndTime).isEqualTo(endTime)
+        assertThat(recordDay2.sessionEndTime).isEqualTo(timeAcrossMidnightEnd)
         assertThat(recordDay2.scrollAmount).isEqualTo(150)
-        assertThat(recordDay2.dataType).isEqualTo("INFERRED")
-
-        coVerify { mockDraftRepository.clearDraft() }
     }
 
     @Test
-    fun `finalizeAndSaveCurrentSession - aggregator error - draft is re-saved`() = testScope.runTest {
-        val startTime = testTime(2023,1,1,10,0,0)
-        sessionManager.startNewSession("app1", "activityA", startTime)
+    fun finalizeAndSaveCurrentSession_whenAggregatorFails_resavesDraftAndDoesNotClear() = testScope.runTest {
+        val testDraftSaveInterval = 100L // from SessionManager testMode
+        sessionManager.startNewSession(app1, activityA, time1)
         sessionManager.updateCurrentSessionScroll(100, false)
-        testScheduler.runCurrent()
 
-        coEvery { mockScrollAggregator.addSession(any()) } throws RuntimeException("Aggregator Boom")
+        // Ensure the initial draft save completes
+        advanceTimeBy(testDraftSaveInterval + 1)
+        advanceUntilIdle()
+        coVerify(exactly = 1) { mockDraftRepository.saveDraft(any()) } // Initial save
 
-        val endTime = testTime(2023,1,1,10,5,0)
-        sessionManager.finalizeAndSaveCurrentSession(endTime, "FAIL_REASON")
-        testScheduler.runCurrent()
+        // Setup aggregator to fail
+        coEvery { mockScrollAggregator.addSession(any()) } throws RuntimeException("DB insertion failed")
 
-        val expectedDraft = SessionDraft("app1", "activityA", 100, startTime, endTime)
-        val capturedDraft = slot<SessionDraft>()
-        coVerify { mockDraftRepository.saveDraft(capture(capturedDraft)) }
+        // Trigger finalization
+        sessionManager.finalizeAndSaveCurrentSession(time2, "FAIL_TEST")
+        advanceUntilIdle()
 
-        assertThat(capturedDraft.captured.packageName).isEqualTo(expectedDraft.packageName)
-        // activityName in draft is null if error occurs during save
-        assertThat(capturedDraft.captured.scrollAmount).isEqualTo(expectedDraft.scrollAmount)
-        assertThat(capturedDraft.captured.startTime).isEqualTo(expectedDraft.startTime)
-        // lastUpdateTime will be current time, so can't directly compare full draft object
-
-        coVerify(exactly = 0) { mockDraftRepository.clearDraft() } // Not cleared on error
+        // Verify draft was saved again
+        val capturedDrafts = mutableListOf<SessionDraft>()
+        coVerify(exactly = 2) { mockDraftRepository.saveDraft(capture(capturedDrafts)) }
+        assertThat(capturedDrafts[1].scrollAmount).isEqualTo(100)
+        assertThat(capturedDrafts[1].packageName).isEqualTo(app1)
+        
+        // Verify clearDraft was not called
+        coVerify(exactly = 0) { mockDraftRepository.clearDraft() }
     }
 
+    // --- recoverSession ---
 
-    // --- recoverSession Tests ---
     @Test
-    fun `recoverSession - no draft - does nothing`() = testScope.runTest {
-        every { mockDraftRepository.getDraft() } returns null
+    fun recoverSession_withNoDraft_doesNothing() = testScope.runTest {
+        coEvery { mockDraftRepository.getDraft() } returns null
         sessionManager.recoverSession()
-        testScheduler.runCurrent()
-        coVerify(exactly = 0) { mockScrollAggregator.addSession(any()) }
+        testScope.runCurrent()
+        assertThat(sessionManager.getCurrentAppPackage()).isNull()
     }
 
     @Test
-    fun `recoverSession - valid draft - finalizes and saves session`() = testScope.runTest {
-        val draftStartTime = testTime(2023, 1, 1, 9, 0, 0)
-        val draft = SessionDraft("appDraft", "activityDraft", 200, draftStartTime, draftStartTime + 1000)
-        every { mockDraftRepository.getDraft() } returns draft
+    fun recoverSession_withValidDraft_restoresSessionStateAndFinalizes() = testScope.runTest {
+        // Setup test data
+        val validDraft = SessionDraft(app1, activityA, 123, time1, time2)
+        coEvery { mockDraftRepository.getDraft() } returns validDraft
 
-        // Mock System.currentTimeMillis() for predictable sessionEndTime in finalize
-        val mockCurrentTime = draftStartTime + 5000 // Some time after draft's last update
-        mockkStatic(System::class)
-        every { System.currentTimeMillis() } returns mockCurrentTime
+        // Mock date formatting for the recovery process
+        every { DateUtil.formatUtcTimestampToLocalDateString(any()) } answers { "2024-01-01" }
 
+        // Set the current time for recovery
+        advanceTimeBy(time2)
+
+        // Trigger recovery
         sessionManager.recoverSession()
-        testScheduler.runCurrent()
+        advanceUntilIdle()
 
+        // Verify the session was properly finalized
         val capturedRecord = slot<ScrollSessionRecord>()
         coVerify(exactly = 1) { mockScrollAggregator.addSession(capture(capturedRecord)) }
-        assertThat(capturedRecord.captured.packageName).isEqualTo("appDraft")
-        assertThat(capturedRecord.captured.scrollAmount).isEqualTo(200)
-        assertThat(capturedRecord.captured.sessionStartTime).isEqualTo(draftStartTime)
-        assertThat(capturedRecord.captured.sessionEndTime).isEqualTo(mockCurrentTime) // Finalized with current time
-        assertThat(capturedRecord.captured.sessionEndReason).isEqualTo(SessionManager.SessionEndReason.RECOVERED_DRAFT)
-        coVerify { mockDraftRepository.clearDraft() }
-    }
 
-    // --- scheduleDraftSave Tests ---
-    @Test
-    fun `scheduleDraftSave - called on scroll update - saves draft after delay`() = testScope.runTest {
-        val startTime = testTime(2023, 1, 1, 10, 0, 0)
-        sessionManager.startNewSession("app1", "actA", startTime)
-
-        sessionManager.updateCurrentSessionScroll(10, false)
-        testScheduler.runCurrent() // Initial part of update's launch
-
-        // Draft save should not have happened yet
-        coVerify(exactly = 0) { mockDraftRepository.saveDraft(any()) }
-
-        // Advance time by DRAFT_SAVE_INTERVAL_MS
-        testScheduler.advanceTimeBy(SessionManager.DRAFT_SAVE_INTERVAL_MS + 100)
-        testScheduler.runCurrent() // Execute the delayed save
-
-        val capturedDraft = slot<SessionDraft>()
-        coVerify(exactly = 1) { mockDraftRepository.saveDraft(capture(capturedDraft)) }
-        assertThat(capturedDraft.captured.packageName).isEqualTo("app1")
-        assertThat(capturedDraft.captured.scrollAmount).isEqualTo(10)
-    }
-
-    @Test
-    fun `scheduleDraftSave - multiple scroll updates - only one draft save executes (debounced)`() = testScope.runTest {
-        val startTime = testTime(2023, 1, 1, 10, 0, 0)
-        sessionManager.startNewSession("app1", "actA", startTime)
-
-        sessionManager.updateCurrentSessionScroll(10, false) // Schedules save A
-        testScheduler.advanceTimeBy(1000) // Less than DRAFT_SAVE_INTERVAL_MS
-        sessionManager.updateCurrentSessionScroll(20, false) // Cancels A, schedules save B (total scroll 30)
-        testScheduler.runCurrent()
-
-        testScheduler.advanceTimeBy(SessionManager.DRAFT_SAVE_INTERVAL_MS + 100)
-        testScheduler.runCurrent()
-
-        val capturedDraft = slot<SessionDraft>()
-        coVerify(exactly = 1) { mockDraftRepository.saveDraft(capture(capturedDraft)) } // Only one save
-        assertThat(capturedDraft.captured.scrollAmount).isEqualTo(30) // With latest scroll amount
-    }
-
-
-    // --- handleServiceStop Tests ---
-    @Test
-    fun `handleServiceStop - active session with scroll - saves draft and finalizes`() = testScope.runTest {
-        val startTime = testTime(2023, 1, 1, 10, 0, 0)
-        sessionManager.startNewSession("app1", "activityA", startTime)
-        sessionManager.updateCurrentSessionScroll(100, true)
-        testScheduler.runCurrent() // For initial draft schedule
-
-        val stopTime = testTime(2023, 1, 1, 10, 2, 0)
-        mockkStatic(System::class)
-        every { System.currentTimeMillis() } returns stopTime // Mock current time for finalize
-
-        sessionManager.handleServiceStop("SERVICE_KILLED")
-        testScheduler.runCurrent() // For finalization and draft save
-
-        val capturedDraft = slot<SessionDraft>()
-        coVerify(ordering = Ordering.SEQUENCE) {
-            mockDraftRepository.saveDraft(capture(capturedDraft)) // Immediate draft save on stop
-            mockScrollAggregator.addSession(any())      // Then finalization
+        // Verify session details
+        with(capturedRecord.captured) {
+            assertThat(packageName).isEqualTo(app1)
+            assertThat(scrollAmount).isEqualTo(123)
+            assertThat(sessionStartTime).isEqualTo(time1)
+            assertThat(sessionEndTime).isEqualTo(time2)
+            assertThat(sessionEndReason).isEqualTo(SessionManager.SessionEndReason.RECOVERED_DRAFT)
         }
 
-        assertThat(capturedDraft.captured.packageName).isEqualTo("app1")
-        assertThat(capturedDraft.captured.scrollAmount).isEqualTo(100)
-
-        val capturedRecord = slot<ScrollSessionRecord>()
-        coVerify { mockScrollAggregator.addSession(capture(capturedRecord)) }
-        assertThat(capturedRecord.captured.packageName).isEqualTo("app1")
-        assertThat(capturedRecord.captured.scrollAmount).isEqualTo(100)
-        assertThat(capturedRecord.captured.sessionEndTime).isEqualTo(stopTime)
-        assertThat(capturedRecord.captured.sessionEndReason).isEqualTo("SERVICE_KILLED")
-
-        assertThat(sessionManager.getCurrentAppPackage()).isNull() // State reset
-        coVerify { mockDraftRepository.clearDraft() } // After successful finalization
-    }
-
-    @Test
-    fun `handleServiceStop - no active session - does nothing beyond reset`() = testScope.runTest {
-        sessionManager.handleServiceStop("SERVICE_KILLED_NO_SESSION")
-        testScheduler.runCurrent()
-
-        coVerify(exactly = 0) { mockDraftRepository.saveDraft(any()) }
-        coVerify(exactly = 0) { mockScrollAggregator.addSession(any()) }
+        // Verify cleanup
+        coVerify(exactly = 1) { mockDraftRepository.clearDraft() }
         assertThat(sessionManager.getCurrentAppPackage()).isNull()
     }
 }

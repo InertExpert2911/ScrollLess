@@ -9,31 +9,33 @@ import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import java.util.concurrent.ConcurrentLinkedQueue
 
 @Singleton
 class ScrollSessionAggregator @Inject constructor(
-    private val scrollSessionDao: ScrollSessionDao
+    private val scrollSessionDao: ScrollSessionDao,
+    private val coroutineDispatcher: CoroutineDispatcher
 ) {
-    private val TAG = "SessionAggregator"
-    private val buffer = mutableListOf<ScrollSessionRecord>()
+    private val TAG = "ScrollAggregator"
+    private val buffer = ConcurrentLinkedQueue<ScrollSessionRecord>()
     private val mutex = Mutex()
     private var aggregatorJob: Job? = null
 
-    private companion object {
+    internal companion object {
         val FLUSH_INTERVAL_MINUTES = 2L
-        val SESSION_MERGE_GAP_SECONDS = 60L
+        val SESSION_MERGE_GAP_SECONDS = 30L
     }
 
     fun start(scope: CoroutineScope) {
         if (aggregatorJob?.isActive == true) {
-            Log.d(TAG, "Aggregator already running.")
+            Log.w(TAG, "Aggregator already running.")
             return
         }
-        aggregatorJob = scope.launch(Dispatchers.IO) {
-            Log.i(TAG, "ScrollSessionAggregator started.")
+        Log.i(TAG, "Starting periodic scroll session aggregator.")
+        aggregatorJob = scope.launch(coroutineDispatcher) {
             while (isActive) {
                 delay(TimeUnit.MINUTES.toMillis(FLUSH_INTERVAL_MINUTES))
-                Log.d(TAG, "Periodic flush triggered by timer.")
+                Log.d(TAG, "Periodic flush triggered.")
                 flushBuffer()
             }
         }

@@ -6,108 +6,54 @@ import java.util.Calendar
 
 class GreetingUtilTest {
 
-    // Test cases for getGreetingForHour, covering boundary conditions
-
-    @Test
-    fun `getGreetingForHour - morning hours (5-11)`() {
-        assertThat(GreetingUtil.getGreetingForHour(5)).isEqualTo("Good Morning! ☀️")
-        assertThat(GreetingUtil.getGreetingForHour(8)).isEqualTo("Good Morning! ☀️")
-        assertThat(GreetingUtil.getGreetingForHour(11)).isEqualTo("Good Morning! ☀️")
+    private fun getCalendarForHour(hour: Int): Calendar {
+        return Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, hour) }
     }
 
     @Test
-    fun `getGreetingForHour - afternoon hours (12-17)`() {
-        assertThat(GreetingUtil.getGreetingForHour(12)).isEqualTo("Good Afternoon! 🌤️")
-        assertThat(GreetingUtil.getGreetingForHour(15)).isEqualTo("Good Afternoon! 🌤️")
-        assertThat(GreetingUtil.getGreetingForHour(17)).isEqualTo("Good Afternoon! 🌤️")
+    fun getGreeting_forMorningHours_returnsGoodMorning() {
+        // Test boundaries and a value within the range (5 AM to 11 AM)
+        assertThat(GreetingUtil.getGreeting(getCalendarForHour(5))).isEqualTo("Good Morning! ☀️")
+        assertThat(GreetingUtil.getGreeting(getCalendarForHour(8))).isEqualTo("Good Morning! ☀️")
+        assertThat(GreetingUtil.getGreeting(getCalendarForHour(11))).isEqualTo("Good Morning! ☀️")
     }
 
     @Test
-    fun `getGreetingForHour - evening hours (18-21)`() {
-        assertThat(GreetingUtil.getGreetingForHour(18)).isEqualTo("Good Evening! 🌙")
-        assertThat(GreetingUtil.getGreetingForHour(20)).isEqualTo("Good Evening! 🌙")
-        assertThat(GreetingUtil.getGreetingForHour(21)).isEqualTo("Good Evening! 🌙")
+    fun getGreeting_forAfternoonHours_returnsGoodAfternoon() {
+        // Test boundaries and a value within the range (12 PM to 5 PM)
+        assertThat(GreetingUtil.getGreeting(getCalendarForHour(12))).isEqualTo("Good Afternoon! 🌤️")
+        assertThat(GreetingUtil.getGreeting(getCalendarForHour(15))).isEqualTo("Good Afternoon! 🌤️")
+        assertThat(GreetingUtil.getGreeting(getCalendarForHour(17))).isEqualTo("Good Afternoon! 🌤️")
     }
 
     @Test
-    fun `getGreetingForHour - night hours (22-4)`() {
-        // Range includes 22, 23, 0, 1, 2, 3, 4
-        assertThat(GreetingUtil.getGreetingForHour(22)).isEqualTo("Good Night! 😴")
-        assertThat(GreetingUtil.getGreetingForHour(23)).isEqualTo("Good Night! 😴")
-        assertThat(GreetingUtil.getGreetingForHour(0)).isEqualTo("Good Night! 😴")
-        assertThat(GreetingUtil.getGreetingForHour(1)).isEqualTo("Good Night! 😴")
-        assertThat(GreetingUtil.getGreetingForHour(4)).isEqualTo("Good Night! 😴")
+    fun getGreeting_forEveningHours_returnsGoodEvening() {
+        // Test boundaries and a value within the range (6 PM to 9 PM)
+        assertThat(GreetingUtil.getGreeting(getCalendarForHour(18))).isEqualTo("Good Evening! 🌙")
+        assertThat(GreetingUtil.getGreeting(getCalendarForHour(20))).isEqualTo("Good Evening! 🌙")
+        assertThat(GreetingUtil.getGreeting(getCalendarForHour(21))).isEqualTo("Good Evening! 🌙")
     }
 
     @Test
-    fun `getGreetingForHour - edge case hour 0`() {
-        assertThat(GreetingUtil.getGreetingForHour(0)).isEqualTo("Good Night! 😴")
+    fun getGreeting_forNightHours_returnsGoodNight() {
+        // Test boundaries and values within the range (10 PM to 4 AM)
+        assertThat(GreetingUtil.getGreeting(getCalendarForHour(22))).isEqualTo("Good Night! 😴")
+        assertThat(GreetingUtil.getGreeting(getCalendarForHour(23))).isEqualTo("Good Night! 😴")
+        assertThat(GreetingUtil.getGreeting(getCalendarForHour(0))).isEqualTo("Good Night! 😴")
+        assertThat(GreetingUtil.getGreeting(getCalendarForHour(1))).isEqualTo("Good Night! 😴")
+        assertThat(GreetingUtil.getGreeting(getCalendarForHour(4))).isEqualTo("Good Night! 😴")
     }
 
     @Test
-    fun `getGreetingForHour - edge case hour 4`() {
-        assertThat(GreetingUtil.getGreetingForHour(4)).isEqualTo("Good Night! 😴")
+    fun internalGetGreetingForHour_coversAllHours_andReturnsCorrectly() {
+        for (hour in 0..23) {
+            val expected = when (hour) {
+                in 5..11 -> "Good Morning! ☀️"
+                in 12..17 -> "Good Afternoon! 🌤️"
+                in 18..21 -> "Good Evening! 🌙"
+                else -> "Good Night! 😴"
+            }
+            assertThat(GreetingUtil.getGreetingForHour(hour)).isEqualTo(expected)
+        }
     }
-
-    @Test
-    fun `getGreetingForHour - edge case hour 5`() {
-        assertThat(GreetingUtil.getGreetingForHour(5)).isEqualTo("Good Morning! ☀️")
-    }
-
-    @Test
-    fun `getGreetingForHour - edge case hour 11`() {
-        assertThat(GreetingUtil.getGreetingForHour(11)).isEqualTo("Good Morning! ☀️")
-    }
-
-    @Test
-    fun `getGreetingForHour - edge case hour 12`() {
-        assertThat(GreetingUtil.getGreetingForHour(12)).isEqualTo("Good Afternoon! 🌤️")
-    }
-
-    @Test
-    fun `getGreetingForHour - edge case hour 17`() {
-        assertThat(GreetingUtil.getGreetingForHour(17)).isEqualTo("Good Afternoon! 🌤️")
-    }
-
-    @Test
-    fun `getGreetingForHour - edge case hour 18`() {
-        assertThat(GreetingUtil.getGreetingForHour(18)).isEqualTo("Good Evening! 🌙")
-    }
-
-    @Test
-    fun `getGreetingForHour - edge case hour 21`() {
-        assertThat(GreetingUtil.getGreetingForHour(21)).isEqualTo("Good Evening! 🌙")
-    }
-
-    @Test
-    fun `getGreetingForHour - edge case hour 22`() {
-        assertThat(GreetingUtil.getGreetingForHour(22)).isEqualTo("Good Night! 😴")
-    }
-
-
-    // Test for getGreeting()
-    // This test is more of an integration test for GreetingUtil,
-    // as it relies on the correctness of getGreetingForHour and Calendar.getInstance().
-    // To truly unit test getGreeting(), Calendar.getInstance() would need to be mocked.
-    // However, we can verify that it returns one of the expected greetings.
-    @Test
-    fun `getGreeting - returns a valid greeting string`() {
-        val greeting = GreetingUtil.getGreeting()
-        val possibleGreetings = listOf(
-            "Good Morning! ☀️",
-            "Good Afternoon! 🌤️",
-            "Good Evening! 🌙",
-            "Good Night! 😴"
-        )
-        assertThat(greeting).isIn(possibleGreetings)
-    }
-
-    @Test
-    fun `getGreeting - output consistency with getGreetingForHour`() {
-        // This test checks that getGreeting's output is consistent with getGreetingForHour
-        // for the current hour of the day.
-        val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        val expectedGreetingForCurrentHour = GreetingUtil.getGreetingForHour(currentHour)
-        assertThat(GreetingUtil.getGreeting()).isEqualTo(expectedGreetingForCurrentHour)
-    }
-} 
+}

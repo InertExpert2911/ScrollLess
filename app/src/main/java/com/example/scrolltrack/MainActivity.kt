@@ -136,6 +136,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @Deprecated("Deprecated in Java")
     @Suppress("DEPRECATION")
     override fun onRequestPermissionsResult(
         requestCode: Int,

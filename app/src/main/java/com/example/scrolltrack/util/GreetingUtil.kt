@@ -27,12 +27,12 @@ object GreetingUtil {
      * Generates a time-of-day appropriate greeting with a random emoji.
      * @return A greeting string like "Good Morning 👋".
      */
-    fun getGreeting(): String {
-        val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        return getGreetingForHour(currentHour)
+    fun getGreeting(calendar: Calendar = Calendar.getInstance()): String {
+        val hour = calendar.get(Calendar.HOUR_OF_DAY)
+        return getGreetingForHour(hour)
     }
 
-    fun getGreetingForHour(hour: Int): String {
+    internal fun getGreetingForHour(hour: Int): String {
         return when (hour) {
             in 5..11 -> "Good Morning! ☀️"
             in 12..17 -> "Good Afternoon! 🌤️"
