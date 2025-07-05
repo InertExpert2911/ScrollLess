@@ -18,7 +18,7 @@ import javax.inject.Inject
 @HiltViewModel
 class AppVisibilityViewModel @Inject constructor(
     private val appMetadataRepository: AppMetadataRepository,
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _apps = MutableStateFlow<List<AppVisibilityItem>>(emptyList())
@@ -84,4 +84,4 @@ class AppVisibilityViewModel @Inject constructor(
             }
         }
     }
-} 
+}

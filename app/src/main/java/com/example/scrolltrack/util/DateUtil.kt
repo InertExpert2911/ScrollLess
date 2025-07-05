@@ -1,22 +1,25 @@
 package com.example.scrolltrack.util
 
 import java.text.SimpleDateFormat
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
+import java.time.temporal.TemporalAdjusters
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
-import java.time.LocalDate
-import java.time.ZoneOffset
-import java.time.DayOfWeek
-import java.time.temporal.TemporalAdjusters
-import java.time.ZoneId
-import java.time.ZonedDateTime
+
 
 object DateUtil {
 
+    // Using a single, well-defined date formatter for consistency.
     private val utcIsoDateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
         timeZone = TimeZone.getTimeZone("UTC")
+        // Setting isLenient to false is a good practice to prevent parsing of invalid dates.
         isLenient = false
     }
 
@@ -62,25 +65,17 @@ object DateUtil {
 
     /**
      * Gets the UTC timestamp for the start of the day (00:00:00.000) for a given date string.
-     * The date string is interpreted as being in UTC.
      */
     fun getStartOfDayUtcMillis(dateString: String): Long {
-        val date = parseLocalDateString(dateString) ?: return 0L
-        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
-        calendar.time = date
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
-        return calendar.timeInMillis
+        return parseLocalDateString(dateString)?.time ?: 0L
     }
 
     /**
      * Gets the UTC timestamp for the end of the day (23:59:59.999) for a given date string.
-     * The date string is interpreted as being in UTC.
      */
     fun getEndOfDayUtcMillis(dateString: String): Long {
-        return getStartOfDayUtcMillis(dateString) + TimeUnit.DAYS.toMillis(1) - 1
+        val startMillis = getStartOfDayUtcMillis(dateString)
+        return startMillis + TimeUnit.DAYS.toMillis(1) - 1
     }
 
     fun getStartOfWeek(date: LocalDate): LocalDate {
@@ -98,28 +93,30 @@ object DateUtil {
     fun getEndOfMonth(date: LocalDate): LocalDate {
         return date.with(TemporalAdjusters.lastDayOfMonth())
     }
-    
+
     /**
      * Formats a duration in milliseconds into a human-readable string (e.g., "2h 30m", "45m", "< 1m").
      */
     fun formatDuration(millis: Long): String {
         if (millis < 0) return "N/A"
-        if (millis < TimeUnit.MINUTES.toMillis(1)) return "< 1m"
 
-        val hours = TimeUnit.MILLISECONDS.toHours(millis)
-        val minutes = TimeUnit.MILLISECONDS.toMinutes(millis) % TimeUnit.HOURS.toMinutes(1)
+        val totalMinutes = TimeUnit.MILLISECONDS.toMinutes(millis)
+
+        if (totalMinutes < 1) return "< 1m"
+
+        val hours = totalMinutes / 60
+        val minutes = totalMinutes % 60
 
         return when {
-            hours > 0 -> String.format(Locale.getDefault(), "%dh %02dm", hours, minutes)
-            minutes > 0 -> String.format(Locale.getDefault(), "%dm", minutes)
-            else -> "< 1m"
+            hours > 0 -> String.format("%dh %02dm", hours, minutes)
+            else -> "${totalMinutes}m"
         }
     }
 
     fun getYesterdayDateString(): String {
-        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
-        calendar.add(Calendar.DATE, -1)
-        return utcIsoDateFormat.format(calendar.time)
+        // Using java.time for a clearer and more robust implementation.
+        val yesterday = LocalDate.now(ZoneOffset.UTC).minusDays(1)
+        return utcIsoDateFormat.format(Date.from(yesterday.atStartOfDay().toInstant(ZoneOffset.UTC)))
     }
 
     fun getMillisUntilNextMidnight(): Long {

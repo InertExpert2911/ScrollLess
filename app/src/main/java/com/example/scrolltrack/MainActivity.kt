@@ -153,4 +153,5 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    // --- End Notification Permission Handling ---
 }

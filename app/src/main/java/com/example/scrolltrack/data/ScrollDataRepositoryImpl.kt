@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.first // Added import for .first() on Flow
 import kotlin.math.max // Added for maxOf
 import kotlin.math.min // Added for minOf
 import kotlinx.coroutines.withContext // Ensure this is imported
+import com.example.scrolltrack.di.IoDispatcher
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers // Ensure this is imported
 import android.annotation.SuppressLint
 import androidx.room.withTransaction
@@ -57,7 +59,8 @@ class ScrollDataRepositoryImpl @Inject constructor(
     private val rawAppEventDao: RawAppEventDao, // Added RawAppEventDao
     private val notificationDao: NotificationDao,
     private val dailyDeviceSummaryDao: DailyDeviceSummaryDao,
-    @param:ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ScrollDataRepository {
 
     private val TAG_REPO = "ScrollDataRepoImpl"
@@ -448,14 +451,14 @@ class ScrollDataRepositoryImpl @Inject constructor(
      * @param dateString The date to calculate active time for.
      * @return A map of package name to its total active time in milliseconds.
      */
-    private suspend fun calculateActiveTimesForDay(dateString: String): Map<String, Long> {
+    private suspend fun calculateActiveTimesForDay(dateString: String): Map<String, Long> = withContext(ioDispatcher) {
         val startOfDayUTC = DateUtil.getStartOfDayUtcMillis(dateString)
         val endOfDayUTC = DateUtil.getEndOfDayUtcMillis(dateString)
 
         val interactionEvents = rawAppEventDao.getEventsForPeriod(startOfDayUTC, endOfDayUTC)
             .filter { RawAppEvent.isAccessibilityEvent(it.eventType) }
 
-        if (interactionEvents.isEmpty()) return emptyMap()
+        if (interactionEvents.isEmpty()) return@withContext emptyMap()
 
         val eventsByPackage = interactionEvents.groupBy { it.packageName }
         val activeTimeByPackage = mutableMapOf<String, Long>()
@@ -464,7 +467,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
             val interactionTimestamps = events.map { it.eventTimestamp }.sorted()
             activeTimeByPackage[pkg] = calculateActiveTimeFromInteractions(interactionTimestamps, startOfDayUTC, endOfDayUTC)
         }
-        return activeTimeByPackage
+        return@withContext activeTimeByPackage
     }
 
     private fun calculateActiveTimeFromInteractions(interactionTimestamps: List<Long>, sessionStartTime: Long, sessionEndTime: Long): Long {
@@ -618,10 +621,10 @@ class ScrollDataRepositoryImpl @Inject constructor(
         return dailyAppUsageDao.getTotalUsageTimeMillisForDate(dateString)
     }
 
-    override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean {
+    override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean = withContext(ioDispatcher) {
         val usageStatsManager =
             context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
-                ?: return false
+                ?: return@withContext false
 
         val today = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
         var overallSuccess = true
@@ -737,7 +740,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
                 overallSuccess = false
             }
         }
-        return overallSuccess && anyDataFound
+        overallSuccess && anyDataFound
     }
 
     @SuppressLint("PackageManagerGetSignatures")

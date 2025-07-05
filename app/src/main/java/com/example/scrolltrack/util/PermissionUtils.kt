@@ -24,6 +24,7 @@ object PermissionUtils {
     fun isAccessibilityServiceEnabled(context: Context, serviceClass: Class<*>): Boolean {
         val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
         val runningServices = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+            ?: return false
 
         val serviceClassName = serviceClass.name
         Log.d("PermissionUtils", "Checking for running service class: $serviceClassName")

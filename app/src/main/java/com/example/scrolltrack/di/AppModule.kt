@@ -10,15 +10,13 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class AppModule {
-
-    @Binds
-    @Singleton
-    abstract fun bindScrollDataRepository(impl: ScrollDataRepositoryImpl): ScrollDataRepository
 
     @Binds
     @Singleton
@@ -40,7 +38,7 @@ abstract class AppModule {
                 context,
                 AppDatabase::class.java,
                 "scroll_track_database"
-            ).fallbackToDestructiveMigration()
+            ).fallbackToDestructiveMigration(true)
                 .build()
         }
 
@@ -67,5 +65,35 @@ abstract class AppModule {
         @Provides
         @Singleton
         fun provideAppMetadataDao(db: AppDatabase): AppMetadataDao = db.appMetadataDao()
+
+        @Provides
+        @IoDispatcher
+        fun provideIoDispatcher(): CoroutineDispatcher = Dispatchers.IO
+
+        @Provides
+        @Singleton
+        fun provideScrollDataRepository(
+            appDatabase: AppDatabase,
+            appMetadataRepository: AppMetadataRepository,
+            scrollSessionDao: ScrollSessionDao,
+            dailyAppUsageDao: DailyAppUsageDao,
+            rawAppEventDao: RawAppEventDao,
+            notificationDao: NotificationDao,
+            dailyDeviceSummaryDao: DailyDeviceSummaryDao,
+            @ApplicationContext context: Context,
+            @IoDispatcher ioDispatcher: CoroutineDispatcher
+        ): ScrollDataRepository {
+            return ScrollDataRepositoryImpl(
+                appDatabase,
+                appMetadataRepository,
+                scrollSessionDao,
+                dailyAppUsageDao,
+                rawAppEventDao,
+                notificationDao,
+                dailyDeviceSummaryDao,
+                context,
+                ioDispatcher
+            )
+        }
     }
 }

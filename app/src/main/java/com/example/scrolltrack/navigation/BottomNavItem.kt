@@ -6,7 +6,7 @@ import com.example.scrolltrack.R
 sealed class BottomNavItem(
     val route: String,
     val title: String,
-    @RawRes val animResId: Int
+    @param:RawRes val animResId: Int
 ) {
     object Dashboard : BottomNavItem(
         route = DASHBOARD_GRAPH_ROUTE,
@@ -25,4 +25,4 @@ sealed class BottomNavItem(
         title = "Settings",
         animResId = R.raw.settings_nav_bar_anim_icon
     )
-} 
+}
