@@ -3,13 +3,16 @@ package com.example.scrolltrack.util
 import java.text.SimpleDateFormat
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.ZoneOffset
+import java.time.ZonedDateTime
 import java.time.temporal.TemporalAdjusters
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
+
 
 object DateUtil {
 
@@ -114,5 +117,17 @@ object DateUtil {
         // Using java.time for a clearer and more robust implementation.
         val yesterday = LocalDate.now(ZoneOffset.UTC).minusDays(1)
         return utcIsoDateFormat.format(Date.from(yesterday.atStartOfDay().toInstant(ZoneOffset.UTC)))
+    }
+
+    fun getMillisUntilNextMidnight(): Long {
+        val now = ZonedDateTime.now(ZoneId.systemDefault())
+        val nextMidnight = now.toLocalDate().plusDays(1).atStartOfDay(ZoneId.systemDefault())
+        return nextMidnight.toInstant().toEpochMilli() - now.toInstant().toEpochMilli()
+    }
+
+    fun getPastDateString(daysAgo: Int): String {
+        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+        calendar.add(Calendar.DATE, -daysAgo)
+        return utcIsoDateFormat.format(calendar.time)
     }
 }

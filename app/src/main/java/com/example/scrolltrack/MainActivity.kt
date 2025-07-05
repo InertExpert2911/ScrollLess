@@ -24,6 +24,7 @@ import com.example.scrolltrack.ui.theme.*
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import androidx.activity.result.contract.ActivityResultContracts
 
 // Constants for theme variants to be used by the Switch logic
 private const val THEME_LIGHT = "light"
@@ -38,9 +39,14 @@ class MainActivity : ComponentActivity() {
     private val viewModel: TodaySummaryViewModel by viewModels()
     private lateinit var globalPrefs: SharedPreferences
 
-    private companion object {
-        const val NOTIFICATION_PERMISSION_REQUEST_CODE = 123
-    }
+    private val requestPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+            if (isGranted) {
+                Log.i(TAG, "Notification permission granted by user.")
+            } else {
+                Log.w(TAG, "Notification permission denied by user.")
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -118,45 +124,33 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Always check permissions on resume and refresh data if needed
-        viewModel.checkAllPermissions()
-        viewModel.refreshDataForToday()
+        // This new function handles re-checking permissions and triggering a data refresh if needed.
+        viewModel.onAppResumed()
     }
 
     // --- Notification Permission Handling (Android 13+) ---
     private fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                // Permission is not granted, request it.
-                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST_CODE)
-            } else {
-                // Permission has already been granted
-                Log.i(TAG, "Notification permission already granted.")
-            }
-        }
-    }
-
-    @Deprecated("Deprecated in Java")
-    @Suppress("DEPRECATION")
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        when (requestCode) {
-            NOTIFICATION_PERMISSION_REQUEST_CODE -> {
-                if ((grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED)) {
-                    // Notification Permission Granted
-                    Log.i(TAG, "Notification permission granted by user.")
-                } else {
-                    // Notification Permission Denied
-                    Log.w(TAG, "Notification permission denied by user.")
-                    // Optionally, show a rationale or guide the user to settings
+            when {
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED -> {
+                    Log.i(TAG, "Notification permission already granted.")
                 }
-                return
+                ActivityCompat.shouldShowRequestPermissionRationale(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) -> {
+                    // In a real app, you might show a custom dialog explaining why the permission is needed
+                    Log.w(TAG, "Showing rationale for notification permission.")
+                    requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+                else -> {
+                    Log.i(TAG, "Requesting notification permission.")
+                    requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
             }
-            // Handle other permission requests if any
         }
     }
     // --- End Notification Permission Handling ---

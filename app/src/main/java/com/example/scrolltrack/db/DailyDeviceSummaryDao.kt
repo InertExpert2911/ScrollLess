@@ -21,4 +21,6 @@ interface DailyDeviceSummaryDao {
     @Query("SELECT * FROM daily_device_summary ORDER BY date_string ASC")
     fun getAllSummaries(): Flow<List<DailyDeviceSummary>>
 
+    @Query("DELETE FROM daily_device_summary")
+    suspend fun clearAll()
 } 

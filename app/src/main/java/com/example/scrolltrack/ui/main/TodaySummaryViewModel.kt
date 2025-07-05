@@ -47,6 +47,7 @@ import com.example.scrolltrack.ui.mappers.AppUiModelMapper
 import com.example.scrolltrack.ui.theme.AppTheme
 import com.example.scrolltrack.util.AppConstants
 import com.example.scrolltrack.db.DailyDeviceSummary
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -76,16 +77,13 @@ class TodaySummaryViewModel @Inject constructor(
     private val _isDarkMode = MutableStateFlow(true)
     val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
 
-    // Ensure _todayDateString is initialized before _selectedDateForHistory
-    private val _todayDateString = DateUtil.getCurrentLocalDateString()
+    private val _selectedDate = MutableStateFlow(DateUtil.getCurrentLocalDateString())
+    val selectedDate: StateFlow<String> = _selectedDate.asStateFlow()
 
     init {
-        // The flow from the repo will provide the initial value.
-        Log.d("TodaySummaryViewModel", "ViewModel created, theme will be provided by repository flow.")
-        // Check initial permission state
+        Log.d("TodaySummaryViewModel", "ViewModel created. Initializing flows.")
         checkAllPermissions()
-        // Initial data refresh
-        refreshDataForToday()
+        
         viewModelScope.launch {
             settingsRepository.selectedTheme.collect { theme ->
                 _selectedThemePalette.value = theme
@@ -94,6 +92,36 @@ class TodaySummaryViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.isDarkMode.collect { isDark ->
                 _isDarkMode.value = isDark
+            }
+        }
+
+        // Launch the date ticker
+        viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                val millisToMidnight = DateUtil.getMillisUntilNextMidnight()
+                Log.d("TodaySummaryViewModel", "Waiting ${millisToMidnight / 1000}s until next date check.")
+                delay(millisToMidnight + 1000) // Add a slight buffer
+                val newDate = DateUtil.getCurrentLocalDateString()
+                if (newDate != _selectedDate.value) {
+                    Log.i("TodaySummaryViewModel", "Midnight passed. Updating selected date to $newDate.")
+                    _selectedDate.value = newDate
+                }
+            }
+        }
+    }
+
+    /**
+     * This should be called from the Activity's onResume() to ensure permissions are checked
+     * whenever the user returns to the app.
+     */
+    fun onAppResumed() {
+        Log.d("TodaySummaryViewModel", "onAppResumed called, re-checking permissions.")
+        checkAllPermissions()
+        // After checking permissions, if usage stats are now granted,
+        // we should trigger a fetch of the latest data.
+        viewModelScope.launch {
+            if (isUsagePermissionGranted.value) {
+                repository.fetchAndStoreNewUsageEvents()
             }
         }
     }
@@ -110,10 +138,6 @@ class TodaySummaryViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Checks the status of all required permissions and updates the public StateFlows.
-     * This should be called from the Activity's onResume.
-     */
     fun checkAllPermissions() {
         val accessibilityStatus = PermissionUtils.isAccessibilityServiceEnabled(context, ScrollTrackService::class.java)
         val usageStatus = isUsageStatsPermissionGrantedByAppOps()
@@ -135,11 +159,9 @@ class TodaySummaryViewModel @Inject constructor(
         }
     }
 
-    // --- Greeting ---
     val greeting: StateFlow<String> = flow { emit(GreetingUtil.getGreeting()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, "Hello! 👋")
 
-    // --- Helper function to filter and map DailyAppUsageRecords to AppUsageUiItems ---
     private suspend fun processUsageRecords(records: List<DailyAppUsageRecord>): List<AppUsageUiItem> {
         return withContext(Dispatchers.IO) {
             records.map { mapper.mapToAppUsageUiItem(it) }
@@ -147,142 +169,130 @@ class TodaySummaryViewModel @Inject constructor(
         }
     }
 
-    private fun formatTotalUsageTime(totalMillis: Long?): String {
-        return when {
-            totalMillis == null -> "N/A"
-            totalMillis <= 0L && isUsageStatsPermissionGrantedByAppOps() -> "0m"
-            totalMillis <= 0L -> "N/A"
-            else -> DateUtil.formatDuration(totalMillis)
-        }
+    private fun formatTotalUsageTime(totalMillis: Long): String {
+        return if (totalMillis <= 0L && isUsageStatsPermissionGrantedByAppOps()) "0m"
+        else if (totalMillis <= 0L) "N/A"
+        else DateUtil.formatDuration(totalMillis)
     }
 
-    // --- Data for TODAY'S SUMMARY (Main Screen) ---
+    // --- NEW: Live Data Source for Today's Summary ---
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val liveSummary: Flow<DailyDeviceSummary> = selectedDate.flatMapLatest { date ->
+        repository.getLiveSummaryForDate(date)
+    }
 
-    // This is the new, unified data source for device-level stats.
-    private val todayDeviceSummary: StateFlow<DailyDeviceSummary?> =
-        repository.getDeviceSummaryForDate(_todayDateString)
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
+    val totalPhoneUsageTodayFormatted: StateFlow<String> =
+        liveSummary.map { formatTotalUsageTime(it.totalUsageTimeMillis) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "Loading...")
 
+    val totalUnlocksToday: StateFlow<Int> =
+        liveSummary.map { it.totalUnlockCount }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
+
+    val totalNotificationsToday: StateFlow<Int> =
+        liveSummary.map { it.totalNotificationCount }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
+
+    val totalPhoneUsageTodayMillis: StateFlow<Long> =
+        liveSummary.map { it.totalUsageTimeMillis }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
+
+    // --- Flows for data that is independent of the live summary ---
+    @OptIn(ExperimentalCoroutinesApi::class)
     val todaysAppUsageUiList: StateFlow<List<AppUsageUiItem>> =
-        repository.getDailyUsageRecordsForDate(_todayDateString)
+        selectedDate.flatMapLatest { date ->
+            repository.getDailyUsageRecordsForDate(date)
+        }
             .map { records -> processUsageRecords(records) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
-    val totalPhoneUsageTodayMillis: StateFlow<Long> =
-        repository.getTotalUsageTimeMillisForDate(_todayDateString)
-            .map { it ?: 0L }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
-
-    val totalPhoneUsageTodayFormatted: StateFlow<String> =
-        totalPhoneUsageTodayMillis.map {
-            formatTotalUsageTime(it)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "Loading...")
-
+    @OptIn(ExperimentalCoroutinesApi::class)
     val aggregatedScrollDataToday: StateFlow<List<AppScrollUiItem>> =
-        repository.getAggregatedScrollDataForDate(_todayDateString)
+        selectedDate.flatMapLatest { date ->
+            repository.getAggregatedScrollDataForDate(date)
+        }
             .map { appScrollDataList -> appScrollDataList.map { mapper.mapToAppScrollUiItem(it) } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     val totalScrollToday: StateFlow<Long> =
-        repository.getTotalScrollForDate(_todayDateString)
-            .map { it ?: 0L }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
-
-    val scrollDistanceTodayFormatted: StateFlow<Pair<String, String>> = totalScrollToday
-        .map { scrollUnits ->
-            conversionUtil.formatScrollDistance(scrollUnits, context)
+        selectedDate.flatMapLatest { date ->
+            repository.getTotalScrollForDate(date)
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0 m" to "meters")
+        .map { it ?: 0L }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
 
-    val totalUnlocksToday: StateFlow<Int> =
-        todayDeviceSummary.map { it?.totalUnlockCount ?: 0 }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
+    val scrollDistanceTodayFormatted: StateFlow<Pair<String, String>> =
+        totalScrollToday.map { scrollUnits -> conversionUtil.formatScrollDistance(scrollUnits, context) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0 m" to "0.0 miles")
 
-    val totalNotificationsToday: StateFlow<Int> =
-        todayDeviceSummary.map { it?.totalNotificationCount ?: 0 }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
+    val topWeeklyApp: StateFlow<AppUsageUiItem?> = flow {
+        val today = DateUtil.getCurrentLocalDateString()
+        val sevenDaysAgo = DateUtil.getPastDateString(6)
 
-    private val _totalScrollTodayFormatted = MutableStateFlow("0m")
-    val totalScrollTodayFormatted: StateFlow<String> = _totalScrollTodayFormatted
+        val weeklyUsageRecords = repository.getUsageRecordsForDateRange(sevenDaysAgo, today).first()
 
+        if (weeklyUsageRecords.isEmpty()) {
+            emit(null)
+            return@flow
+        }
 
-    // --- Top Used App in Last 7 Days ---
-    val topUsedAppLast7Days: StateFlow<AppUsageUiItem?> = flow {
-        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
-        val endDateString = DateUtil.formatDateToYyyyMmDdString(calendar.time)
-        calendar.add(Calendar.DAY_OF_YEAR, -6)
-        val startDateString = DateUtil.formatDateToYyyyMmDdString(calendar.time)
+        val topAppRecord = weeklyUsageRecords
+            .groupBy { it.packageName }
+            .mapValues { (_, records) -> records.sumOf { it.usageTimeMillis } }
+            .maxByOrNull { it.value }
+            ?.let { (packageName, totalUsage) ->
+                // To get the app name and icon, we need to map it.
+                // We'll create a temporary full record for the mapper.
+                // The other values aren't as important as they aren't displayed for the weekly top app.
+                val representativeRecord = weeklyUsageRecords.first { it.packageName == packageName }
+                DailyAppUsageRecord(
+                    id = representativeRecord.id,
+                    packageName = packageName,
+                    dateString = today, // Not critical which date we use here
+                    usageTimeMillis = totalUsage,
+                    activeTimeMillis = weeklyUsageRecords.filter { it.packageName == packageName }.sumOf { it.activeTimeMillis },
+                    lastUpdatedTimestamp = System.currentTimeMillis()
+                )
+            }
 
-        repository.getUsageRecordsForDateRange(startDateString, endDateString)
-            .map { dailyRecords ->
-                if (dailyRecords.isEmpty()) {
-                    emit(null)
-                    return@map
-                }
-                val aggregatedUsage = dailyRecords
-                    .groupBy { it.packageName }
-                    .mapValues { entry -> entry.value.sumOf { it.usageTimeMillis } }
-                    .maxByOrNull { it.value }
-
-                if (aggregatedUsage != null) {
-                    val topAppPackageName = aggregatedUsage.key
-                    val totalTime = aggregatedUsage.value
-                    val representativeRecord = DailyAppUsageRecord(
-                        packageName = topAppPackageName,
-                        dateString = endDateString,
-                        usageTimeMillis = totalTime
-                    )
-                    emit(mapper.mapToAppUsageUiItem(representativeRecord))
-                } else {
-                    emit(null)
-                }
-            }.catch { e ->
-                Log.e("TodaySummaryViewModel", "Error fetching or processing top used app for last 7 days", e)
-                emit(null)
-            }.collect()
+        if (topAppRecord != null) {
+            emit(mapper.mapToAppUsageUiItem(topAppRecord))
+        } else {
+            emit(null)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    // Corrected helper to check permission
-    @Suppress("DEPRECATION")
+
     private fun isUsageStatsPermissionGrantedByAppOps(): Boolean {
-        val appOpsManager = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager
-        return if (appOpsManager != null) {
-            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                appOpsManager.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName)
-            } else {
-                appOpsManager.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), context.packageName)
-            }
-            mode == AppOpsManager.MODE_ALLOWED
+        val appOpsManager = context.getSystemService(Context.APP_OPS_SERVICE) as? AppOpsManager ?: return false
+        val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            appOpsManager.unsafeCheckOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.packageName
+            )
         } else {
-            Log.w("TodaySummaryViewModel", "AppOpsManager was null, cannot check usage stats permission.")
-            false
+            @Suppress("DEPRECATION")
+            appOpsManager.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                Process.myUid(),
+                context.packageName
+            )
         }
+        return mode == AppOpsManager.MODE_ALLOWED
     }
 
-    fun refreshDataForToday() {
-        viewModelScope.launch {
-            Log.d("TodaySummaryViewModel", "Explicit refresh for today's data triggered. Attempting to update today's stats in DB.")
-            val success = repository.updateTodayAppUsageStats()
-            if (success) {
-                Log.d("TodaySummaryViewModel", "Successfully updated today's app usage stats in the database.")
-            } else {
-                Log.w("TodaySummaryViewModel", "Failed to update today's app usage stats in the database.")
-            }
-        }
-    }
-
-    fun performHistoricalUsageDataBackfill(days: Int = 10, onComplete: (Boolean) -> Unit) {
+    fun performHistoricalUsageDataBackfill(days: Int, onComplete: (Boolean) -> Unit) {
         viewModelScope.launch {
             Log.i("TodaySummaryViewModel", "Starting historical usage data backfill for $days days.")
             val success = repository.backfillHistoricalAppUsageData(days)
             if (success) {
-                Log.i("TodaySummaryViewModel", "Historical data backfill completed successfully.")
-                // Refresh today's data and potentially the historical screen if it's open
+                Log.i("TodaySummaryViewModel", "Historical backfill successful.")
                 withContext(Dispatchers.Main) {
-                    refreshDataForToday()
+                    // No explicit refresh needed here as liveTodaySummary will update
                 }
             } else {
-                Log.w("TodaySummaryViewModel", "Historical data backfill failed or had issues.")
+                Log.e("TodaySummaryViewModel", "Historical backfill failed.")
             }
             onComplete(success)
         }

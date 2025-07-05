@@ -19,7 +19,7 @@ interface DailyAppUsageDao {
      * This is useful for daily updates of usage stats.
      */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertOrUpdateUsage(dailyAppUsageRecord: DailyAppUsageRecord)
+    suspend fun insertOrUpdateUsage(record: DailyAppUsageRecord)
 
     /**
      * Inserts a list of daily app usage records. If a record for the same package and date
@@ -27,7 +27,7 @@ interface DailyAppUsageDao {
      * Useful for batch inserting historical data.
      */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAllUsage(dailyAppUsageRecords: List<DailyAppUsageRecord>)
+    suspend fun insertAllUsage(records: List<DailyAppUsageRecord>)
 
     /**
      * Retrieves all app usage records for a specific date, ordered by usage time descending.
@@ -74,8 +74,8 @@ interface DailyAppUsageDao {
      * Useful for data pruning.
      * @param timestampMillis The timestamp (milliseconds since epoch). Records with lastUpdatedTimestamp < this will be deleted.
      */
-    @Query("DELETE FROM daily_app_usage WHERE last_updated_timestamp < :timestampMillis")
-    suspend fun deleteOldUsageData(timestampMillis: Long): Int // Returns the number of rows deleted
+    @Query("DELETE FROM daily_app_usage WHERE last_updated_timestamp < :timestamp")
+    suspend fun deleteOldUsageData(timestamp: Long): Int // Returns the number of rows deleted
 
     /**
      * Deletes all data from the daily_app_usage table.
@@ -91,7 +91,7 @@ interface DailyAppUsageDao {
      * Returns the number of records for a given date string.
      * Useful for checking if a backfill has already been performed for a day.
      */
-    @Query("SELECT COUNT(*) FROM daily_app_usage WHERE date_string = :dateString")
+    @Query("SELECT COUNT(id) FROM daily_app_usage WHERE date_string = :dateString")
     suspend fun getUsageCountForDateString(dateString: String): Int
 
     @Query("SELECT DISTINCT date_string FROM daily_app_usage ORDER BY date_string DESC")

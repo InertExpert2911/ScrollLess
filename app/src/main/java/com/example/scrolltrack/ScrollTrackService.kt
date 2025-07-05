@@ -20,6 +20,7 @@ import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
 import com.example.scrolltrack.util.SessionManager
 import com.example.scrolltrack.util.ScrollSessionAggregator
+import com.example.scrolltrack.util.AppConstants
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +51,7 @@ class ScrollTrackService : AccessibilityService() {
     // CoroutineScope for notification updates. The service manages its own lifecycle for this.
     private val serviceJob = SupervisorJob()
     private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
+    private var periodicUsageFetchJob: Job? = null // Job for the new background task
 
     // DAOs and Repositories will be initialized in onCreate
     @Inject
@@ -103,7 +105,27 @@ class ScrollTrackService : AccessibilityService() {
         Log.i(TAG, "Screen state receiver registered.")
 
         updateNotificationTextAndStartForeground()
+        startPeriodicUsageFetch() // Start the new background fetching task
         Log.i(TAG, "Service started in foreground with initial notification.")
+    }
+
+    private fun startPeriodicUsageFetch() {
+        if (periodicUsageFetchJob?.isActive == true) {
+            Log.d(TAG, "Periodic usage fetch is already active.")
+            return
+        }
+        periodicUsageFetchJob = serviceScope.launch {
+            Log.i(TAG, "Starting periodic usage event fetcher.")
+            while (true) {
+                try {
+                    dataRepository.fetchAndStoreNewUsageEvents()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error during periodic usage event fetch", e)
+                }
+                // Wait for the next interval.
+                delay(AppConstants.BACKGROUND_USAGE_FETCH_INTERVAL_MS)
+            }
+        }
     }
 
     // This function remains in the service as it directly interacts with its DataRepository
@@ -280,36 +302,25 @@ class ScrollTrackService : AccessibilityService() {
     }
 
     override fun onInterrupt() {
-        Log.w(TAG, "Service interrupted.")
-        // On interrupt, flush any pending inferred scroll data before handling the stop.
-        sessionManager.getCurrentAppPackage()?.let { processInferredScroll(it) }
-        sessionManager.handleServiceStop(SessionManager.SessionEndReason.SERVICE_INTERRUPT)
-        serviceScope.launch { scrollSessionAggregator.flushBuffer() }
+        Log.w(TAG, "Accessibility service interrupted.")
+        sessionManager.finalizeAndSaveCurrentSession(System.currentTimeMillis(), SessionManager.SessionEndReason.SERVICE_INTERRUPT)
     }
 
     override fun onDestroy() {
-        Log.i(TAG, "Service destroying.")
-        // On destroy, flush any pending inferred scroll data before handling the final stop.
-        sessionManager.getCurrentAppPackage()?.let { processInferredScroll(it) }
-        sessionManager.handleServiceStop(SessionManager.SessionEndReason.SERVICE_DESTROY)
-        
-        serviceScope.launch {
-            Log.d(TAG, "Flushing aggregator buffer before destroying service.")
-            scrollSessionAggregator.flushBuffer()
-            scrollSessionAggregator.stop()
-        }
-
+        super.onDestroy()
+        Log.w(TAG, "ScrollTrackService onDestroy: Service is being destroyed.")
+        // Clean up coroutines
+        periodicUsageFetchJob?.cancel() // Cancel the new background task
+        serviceJob.cancel()
+        // Finalize any active session
+        sessionManager.finalizeAndSaveCurrentSession(System.currentTimeMillis(), SessionManager.SessionEndReason.SERVICE_DESTROY)
+        // Unregister receiver
         try {
             unregisterReceiver(screenStateReceiver)
             Log.i(TAG, "Screen state receiver unregistered.")
-        } catch (e: Exception) {
-            Log.w(TAG, "Error unregistering screen state receiver: ${e.message}")
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "Receiver not registered, skipping unregister.")
         }
-
-        serviceJob.cancel()
-        Log.i(TAG, "Service scope cancelled.")
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        super.onDestroy()
     }
 
     /**

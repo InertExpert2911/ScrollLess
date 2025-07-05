@@ -40,63 +40,78 @@ class FakeSettingsRepository : SettingsRepository {
 }
 
 class FakeScrollDataRepository : ScrollDataRepository {
-    override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> =
-        flowOf(emptyList())
+    private val appUsageData = mutableListOf<DailyAppUsageRecord>()
+    private val scrollData = mutableListOf<AppScrollData>()
 
-    override fun getTotalScrollForDate(dateString: String): Flow<Long?> = flowOf(13106L)
+    override fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>> {
+        return flowOf(scrollData)
+    }
 
-    override fun getAllSessions(): Flow<List<ScrollSessionRecord>> = flowOf(emptyList())
+    override fun getTotalScrollForDate(dateString: String): Flow<Long?> {
+        return flowOf(scrollData.sumOf { it.totalScroll })
+    }
 
-    override fun getTotalUsageTimeMillisForDate(dateString: String): Flow<Long?> =
-        flowOf((2.75 * 60 * 60 * 1000).toLong())
+    override fun getAllSessions(): Flow<List<ScrollSessionRecord>> {
+        return flowOf(emptyList())
+    }
 
-    override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean = true
-
-    override fun getDailyUsageRecordsForDate(dateString: String): Flow<List<DailyAppUsageRecord>> =
-        flowOf(emptyList())
+    override fun getDailyUsageRecordsForDate(dateString: String): Flow<List<DailyAppUsageRecord>> {
+        return flowOf(appUsageData.filter { it.dateString == dateString })
+    }
 
     override fun getUsageRecordsForDateRange(
         startDateString: String,
         endDateString: String
-    ): Flow<List<DailyAppUsageRecord>> = flowOf(emptyList())
+    ): Flow<List<DailyAppUsageRecord>> {
+        return flowOf(appUsageData)
+    }
 
-    override suspend fun updateTodayAppUsageStats(): Boolean = true
+    override suspend fun insertScrollSession(session: ScrollSessionRecord) {
+        // Not implemented
+    }
+
+    override suspend fun updateTodayAppUsageStats(): Boolean {
+        return true
+    }
+
+    override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean {
+        return true
+    }
 
     override suspend fun getUsageForPackageAndDates(
         packageName: String,
         dateStrings: List<String>
-    ): List<DailyAppUsageRecord> = emptyList()
+    ): List<DailyAppUsageRecord> {
+        return emptyList()
+    }
 
     override suspend fun getAggregatedScrollForPackageAndDates(
         packageName: String,
         dateStrings: List<String>
-    ): List<AppScrollDataPerDate> = emptyList()
+    ): List<AppScrollDataPerDate> {
+        return emptyList()
+    }
 
-    override suspend fun insertScrollSession(session: ScrollSessionRecord) {}
+    override fun getTotalUsageTimeMillisForDate(dateString: String): Flow<Long?> {
+        return flowOf(appUsageData.filter { it.dateString == dateString }.sumOf { it.usageTimeMillis })
+    }
 
-    override fun getTotalUnlockCountForDate(dateString: String): Flow<Int> = flowOf(24)
+    override suspend fun fetchAndStoreNewUsageEvents() {
+        // Not implemented
+    }
 
-    override fun getTotalNotificationCountForDate(dateString: String): Flow<Int> = flowOf(128)
+    override fun getLiveSummaryForDate(dateString: String): Flow<DailyDeviceSummary> {
+        return flowOf(DailyDeviceSummary(dateString = dateString))
+    }
 
+    // --- Implementing missing members ---
+
+    override fun getTotalUnlockCountForDate(dateString: String): Flow<Int> = flowOf(0)
+    override fun getTotalNotificationCountForDate(dateString: String): Flow<Int> = flowOf(0)
     override fun getAllDeviceSummaries(): Flow<List<DailyDeviceSummary>> = flowOf(emptyList())
-
     override fun getAllDistinctUsageDateStrings(): Flow<List<String>> = flowOf(emptyList())
-
-    override fun getAllDistinctScrollDateStrings(): Flow<List<String>> {
-        return flowOf(emptyList())
-    }
-
-    override fun getNotificationSummaryForPeriod(
-        startDateString: String,
-        endDateString: String
-    ): Flow<List<NotificationSummary>> = flowOf(emptyList())
-
-    override fun getNotificationCountPerAppForPeriod(
-        startDateString: String,
-        endDateString: String
-    ): Flow<List<NotificationCountPerApp>> = flowOf(emptyList())
-
-    override fun getDeviceSummaryForDate(dateString: String): Flow<DailyDeviceSummary?> {
-        return flowOf(null)
-    }
+    override fun getAllDistinctScrollDateStrings(): Flow<List<String>> = flowOf(emptyList())
+    override fun getNotificationSummaryForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationSummary>> = flowOf(emptyList())
+    override fun getNotificationCountPerAppForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationCountPerApp>> = flowOf(emptyList())
+    override fun getDeviceSummaryForDate(dateString: String): Flow<DailyDeviceSummary?> = flowOf(null)
 } 

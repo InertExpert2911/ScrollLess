@@ -113,16 +113,17 @@ private fun NavGraphBuilder.addDashboardGraph(
         composable(ScreenRoutes.Dashboard.route) {
             val viewModel: TodaySummaryViewModel = hiltViewModel()
             val greeting by viewModel.greeting.collectAsStateWithLifecycle()
-            val appScrollItems by viewModel.aggregatedScrollDataToday.collectAsStateWithLifecycle()
+            val todaysAppUsage by viewModel.todaysAppUsageUiList.collectAsStateWithLifecycle()
+            val aggregatedScrollData by viewModel.aggregatedScrollDataToday.collectAsStateWithLifecycle()
             val totalScrollUnits by viewModel.totalScrollToday.collectAsStateWithLifecycle()
             val totalUsageTimeFormatted by viewModel.totalPhoneUsageTodayFormatted.collectAsStateWithLifecycle()
-            val totalUsageTimeMillis: Long by viewModel.totalPhoneUsageTodayMillis.collectAsStateWithLifecycle()
-            val scrollDistance by viewModel.scrollDistanceTodayFormatted.collectAsStateWithLifecycle()
-            val topWeeklyApp by viewModel.topUsedAppLast7Days.collectAsStateWithLifecycle()
+            val totalUsageTimeMillis by viewModel.totalPhoneUsageTodayMillis.collectAsStateWithLifecycle()
+            val scrollDistanceFormatted by viewModel.scrollDistanceTodayFormatted.collectAsStateWithLifecycle()
             val selectedTheme by viewModel.selectedThemePalette.collectAsStateWithLifecycle()
             val isDarkMode by viewModel.isDarkMode.collectAsStateWithLifecycle()
             val totalUnlocks by viewModel.totalUnlocksToday.collectAsStateWithLifecycle()
             val totalNotifications by viewModel.totalNotificationsToday.collectAsStateWithLifecycle()
+            val topWeeklyApp by viewModel.topWeeklyApp.collectAsStateWithLifecycle()
 
             TodaySummaryScreen(
                 navController = navController,
@@ -137,7 +138,7 @@ private fun NavGraphBuilder.addDashboardGraph(
                 totalUsageTimeMillis = totalUsageTimeMillis,
                 topWeeklyApp = topWeeklyApp,
                 totalScrollUnits = totalScrollUnits,
-                scrollDistanceMeters = "${scrollDistance.first} ${scrollDistance.second}",
+                scrollDistanceMeters = "${scrollDistanceFormatted.first} / ${scrollDistanceFormatted.second}",
                 totalUnlocks = totalUnlocks,
                 totalNotifications = totalNotifications,
                 onNavigateToHistoricalUsage = {
@@ -154,17 +155,14 @@ private fun NavGraphBuilder.addDashboardGraph(
                 }
             )
         }
-
         composable(ScreenRoutes.NotificationsRoute.route) {
             val notificationsViewModel: NotificationsViewModel = hiltViewModel()
             NotificationsScreen(navController = navController, viewModel = notificationsViewModel)
         }
-
         composable(ScreenRoutes.UnlocksRoute.route) {
             val unlocksViewModel: UnlocksViewModel = hiltViewModel()
             UnlocksScreen(navController = navController, viewModel = unlocksViewModel)
         }
-
         composable(ScreenRoutes.HistoricalUsageRoute.route) {
             val historicalViewModel: HistoricalViewModel = hiltViewModel()
             HistoricalUsageScreen(
