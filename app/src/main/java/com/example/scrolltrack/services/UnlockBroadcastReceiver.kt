@@ -35,7 +35,8 @@ class UnlockBroadcastReceiver : BroadcastReceiver() {
                         className = null,
                         eventType = RawAppEvent.EVENT_TYPE_USER_PRESENT,
                         eventTimestamp = System.currentTimeMillis(),
-                        eventDateString = DateUtil.getCurrentLocalDateString()
+                        eventDateString = DateUtil.getCurrentLocalDateString(),
+                        source = RawAppEvent.SOURCE_SYSTEM_BROADCAST
                     )
                     rawAppEventDao.insertEvent(unlockEvent)
                     Log.i(TAG, "Logged user unlock event to database.")

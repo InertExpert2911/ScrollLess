@@ -100,8 +100,8 @@ class ScrollDataRepositoryImplTest {
         unmockkAll()
     }
 
-    private fun createRawEvent(pkg: String, type: Int, timestamp: Long, className: String? = null): RawAppEvent {
-        return RawAppEvent(0, pkg, className, type, timestamp, DateUtil.formatUtcTimestampToLocalDateString(timestamp))
+    private fun createRawEvent(pkg: String, type: Int, timestamp: Long, className: String? = null, value: Long? = null): RawAppEvent {
+        return RawAppEvent(0, pkg, className, type, timestamp, DateUtil.formatUtcTimestampToLocalDateString(timestamp), value = value)
     }
 
     private fun createUsageStatsEvent(pkg: String, className: String?, eventType: Int, timestamp: Long): UsageEvents.Event {
@@ -118,6 +118,87 @@ class ScrollDataRepositoryImplTest {
     }
 
     @Test
+    fun `processAndSummarizeDate - with mixed events - creates correct summaries`() = runTest {
+        val date = "2024-01-20"
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
+        val endOfDay = DateUtil.getEndOfDayUtcMillis(date)
+
+        val app1 = "com.app.one"
+        val app2 = "com.app.two"
+        val filteredApp = "com.system.background"
+
+        val events = listOf(
+            // --- App 1 Session ---
+            createRawEvent(app1, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 1000), // App 1 open
+            createRawEvent(app1, RawAppEvent.EVENT_TYPE_SCROLL, startOfDay + 2000, value = 50L),
+            createRawEvent(app1, RawAppEvent.EVENT_TYPE_SCROLL, startOfDay + 3000, value = 50L), // scroll 100
+            createRawEvent(app1, RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startOfDay + 5000), // 4s usage, 2s active
+            // --- App 2 Session ---
+            createRawEvent(app2, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 6000), // App 2 open
+            createRawEvent(app2, RawAppEvent.EVENT_TYPE_SCROLL, startOfDay + 7000, value = 50L), // scroll 50
+            createRawEvent(app2, RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startOfDay + 9000), // 3s usage, 1s active
+            // --- Filtered App Session (should be ignored) ---
+            createRawEvent(filteredApp, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 10000),
+            createRawEvent(filteredApp, RawAppEvent.EVENT_TYPE_SCROLL, startOfDay + 11000, value = 1000L),
+            createRawEvent(filteredApp, RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startOfDay + 12000),
+            // --- Device Events ---
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_PRESENT, startOfDay + 500),
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_NOTIFICATION_POSTED, startOfDay + 1500, app1),
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_NOTIFICATION_POSTED, startOfDay + 1600, app1),
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_NOTIFICATION_POSTED, startOfDay + 6500, app2)
+        )
+
+        // Mocks
+        coEvery { mockRawAppEventDao.getEventsForPeriod(startOfDay, endOfDay) } returns events
+        coEvery { mockAppMetadataRepository.getAllMetadata() } returns listOf(createAppMeta(filteredApp, isUserVisible = false))
+        coEvery { mockScrollSessionDao.deleteSessionsForDate(date) } just Runs
+        coEvery { mockDailyAppUsageDao.deleteUsageForDate(date) } just Runs
+        coEvery { mockDailyDeviceSummaryDao.deleteSummaryForDate(date) } just Runs
+
+        val capturedScrolls = slot<List<ScrollSessionRecord>>()
+        val capturedUsages = slot<List<DailyAppUsageRecord>>()
+        val capturedSummary = slot<DailyDeviceSummary>()
+        coEvery { mockScrollSessionDao.insertSessions(capture(capturedScrolls)) } just Runs
+        coEvery { mockDailyAppUsageDao.insertAllUsage(capture(capturedUsages)) } just Runs
+        coEvery { mockDailyDeviceSummaryDao.insertOrUpdate(capture(capturedSummary)) } just Runs
+
+        // Action
+        repository.processAndSummarizeDate(date)
+
+        // Assertions
+        // Scroll Sessions
+        assertThat(capturedScrolls.isCaptured).isTrue()
+        assertThat(capturedScrolls.captured).hasSize(2)
+        val app1Scroll = capturedScrolls.captured.find { it.packageName == app1 }
+        val app2Scroll = capturedScrolls.captured.find { it.packageName == app2 }
+        assertThat(app1Scroll?.scrollAmount).isEqualTo(100L) // 50+50
+        assertThat(app2Scroll?.scrollAmount).isEqualTo(50L)
+
+        // App Usage
+        assertThat(capturedUsages.isCaptured).isTrue()
+        assertThat(capturedUsages.captured).hasSize(2) // app1 and app2
+        val app1Usage = capturedUsages.captured.find { it.packageName == app1 }
+        val app2Usage = capturedUsages.captured.find { it.packageName == app2 }
+        assertThat(app1Usage?.usageTimeMillis).isEqualTo(4000L)
+        assertThat(app1Usage?.activeTimeMillis).isEqualTo(2000L) // 2 events * window
+        assertThat(app1Usage?.appOpenCount).isEqualTo(1)
+        assertThat(app1Usage?.notificationCount).isEqualTo(2)
+        assertThat(app2Usage?.usageTimeMillis).isEqualTo(3000L)
+        assertThat(app2Usage?.activeTimeMillis).isEqualTo(1000L) // 1 event * window
+        assertThat(app2Usage?.appOpenCount).isEqualTo(1)
+        assertThat(app2Usage?.notificationCount).isEqualTo(1)
+
+        // Device Summary
+        assertThat(capturedSummary.isCaptured).isTrue()
+        assertThat(capturedSummary.captured.dateString).isEqualTo(date)
+        assertThat(capturedSummary.captured.totalUnlockCount).isEqualTo(1)
+        assertThat(capturedSummary.captured.totalAppOpens).isEqualTo(2)
+        assertThat(capturedSummary.captured.totalNotificationCount).isEqualTo(3)
+        assertThat(capturedSummary.captured.totalUsageTimeMillis).isEqualTo(7000L) // 4000 + 3000
+        assertThat(capturedSummary.captured.firstUnlockTimestampUtc).isEqualTo(startOfDay + 500)
+    }
+
+    @Test
     fun `getAggregatedScrollDataForDate - calls DAO and returns its flow`() = runTest {
         val dateString = "2023-01-01"
         val expectedData = listOf(AppScrollData("pkg1", 100L, "m"), AppScrollData("pkg2", 200L, "m"))
@@ -126,14 +207,6 @@ class ScrollDataRepositoryImplTest {
         val resultFlow = repository.getAggregatedScrollDataForDate(dateString)
         assertThat(resultFlow.first()).isEqualTo(expectedData)
         verify { mockScrollSessionDao.getAggregatedScrollDataForDate(dateString) }
-    }
-
-    @Test
-    fun `insertScrollSession - calls DAO`() = runTest {
-        val session = ScrollSessionRecord(packageName = "test", scrollAmount = 10, dataType = "m", sessionStartTime = 0, sessionEndTime = 1, date = "d", sessionEndReason = "r")
-        coEvery { mockScrollSessionDao.insertSession(session) } just Runs
-        repository.insertScrollSession(session)
-        coVerify { mockScrollSessionDao.insertSession(session) }
     }
 
     @Test

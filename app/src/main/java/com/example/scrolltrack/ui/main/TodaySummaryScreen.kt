@@ -1,48 +1,30 @@
 package com.example.scrolltrack.ui.main
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.filled.AccessibilityNew
-import androidx.compose.material.icons.filled.Brightness2
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.QueryStats
-import androidx.compose.material.icons.filled.WbSunny
-import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.outlined.PhoneAndroid
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,45 +33,11 @@ import androidx.navigation.NavHostController
 import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.R
 import com.example.scrolltrack.navigation.ScreenRoutes
-import com.example.scrolltrack.ui.model.AppScrollUiItem
+import com.example.scrolltrack.ui.components.AppUsageCard
 import com.example.scrolltrack.ui.model.AppUsageUiItem
-import com.example.scrolltrack.util.ConversionUtil
-import com.example.scrolltrack.util.DateUtil
-import com.example.scrolltrack.util.GreetingUtil
-import androidx.compose.ui.res.stringResource
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.ui.unit.TextUnit
-import androidx.compose.ui.unit.Dp
-import java.util.concurrent.TimeUnit
-import androidx.compose.ui.graphics.vector.ImageVector
-import com.example.scrolltrack.ui.theme.*
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.RadioButton
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.LightMode
-import androidx.compose.foundation.border
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.ui.tooling.preview.PreviewParameter
-import com.example.scrolltrack.ui.theme.ScrollTrackTheme
-import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import com.example.scrolltrack.ui.theme.AppTheme
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Rule
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.Waves
-import androidx.compose.material3.CircularProgressIndicator
+import com.example.scrolltrack.ui.theme.getThemeColors
+import com.example.scrolltrack.util.DateUtil
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -104,6 +52,7 @@ fun TodaySummaryScreen(
     onEnableNotificationListenerClick: () -> Unit,
     totalUsageTime: String,
     totalUsageTimeMillis: Long,
+    todaysAppUsage: List<AppUsageUiItem>,
     topWeeklyApp: AppUsageUiItem?,
     totalScrollUnits: Long,
     scrollDistanceMeters: String,
@@ -113,15 +62,27 @@ fun TodaySummaryScreen(
     onNavigateToUnlocks: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppDetail: (String) -> Unit,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface)
-            .verticalScroll(rememberScrollState())
-    ) {
+    Scaffold { paddingValues ->
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = onRefresh,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                item {
         // Header Section
+                    Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -142,10 +103,13 @@ fun TodaySummaryScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 24.dp)
         )
+                    }
+                }
 
         // Permissions Section
         val permissionsNeeded = !isAccessibilityServiceEnabled || !isUsageStatsPermissionGranted || !isNotificationListenerEnabled
-        AnimatedVisibility(visible = permissionsNeeded) {
+                if (permissionsNeeded) {
+                    item {
             Column {
                 if (!isAccessibilityServiceEnabled) {
                     PermissionRequestCard(
@@ -176,9 +140,20 @@ fun TodaySummaryScreen(
                 }
                 Spacer(modifier = Modifier.height(16.dp))
             }
+                    }
+                }
+
+                item {
+                    AppUsageCard(
+                        apps = todaysAppUsage,
+                        totalUsageTimeMillis = totalUsageTimeMillis,
+                        onAppClick = onNavigateToAppDetail,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
         }
 
         // Stats Grid
+                item {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -198,8 +173,10 @@ fun TodaySummaryScreen(
                 topApp = topWeeklyApp,
                 onClick = onNavigateToAppDetail
             )
+                    }
         }
 
+                item {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -220,8 +197,10 @@ fun TodaySummaryScreen(
                 icon = Icons.Filled.Notifications,
                 onCardClick = onNavigateToNotifications
             )
+                    }
         }
 
+                item {
         ScrollStatsCard(
             modifier = Modifier
                 .fillMaxWidth()
@@ -233,8 +212,13 @@ fun TodaySummaryScreen(
                 navController.navigate(ScreenRoutes.ScrollDetailRoute.createRoute(todayDate))
             }
         )
+                }
 
+                item {
         Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
+        }
     }
 }
 

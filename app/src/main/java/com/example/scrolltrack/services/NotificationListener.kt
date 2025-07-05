@@ -5,6 +5,8 @@ import android.service.notification.StatusBarNotification
 import android.util.Log
 import com.example.scrolltrack.db.NotificationDao
 import com.example.scrolltrack.db.NotificationRecord
+import com.example.scrolltrack.db.RawAppEvent
+import com.example.scrolltrack.db.RawAppEventDao
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -23,6 +25,9 @@ class NotificationListener : NotificationListenerService() {
 
     @Inject
     lateinit var notificationDao: NotificationDao
+
+    @Inject
+    lateinit var rawAppEventDao: RawAppEventDao
 
     override fun onCreate() {
         super.onCreate()
@@ -70,6 +75,21 @@ class NotificationListener : NotificationListenerService() {
             } catch (e: Exception) {
                 Log.e(TAG, "Error processing notification for $packageName", e)
             }
+
+            try {
+                val rawEvent = RawAppEvent(
+                    packageName = packageName,
+                    className = null, // No relevant class for notifications
+                    eventType = RawAppEvent.EVENT_TYPE_NOTIFICATION_POSTED,
+                    eventTimestamp = postTime,
+                    eventDateString = DateUtil.formatUtcTimestampToLocalDateString(postTime),
+                    source = RawAppEvent.SOURCE_NOTIFICATION_LISTENER,
+                    value = null
+                )
+                rawAppEventDao.insertEvent(rawEvent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error logging raw notification event for $packageName", e)
+            }
         }
     }
 
@@ -82,6 +102,7 @@ class NotificationListener : NotificationListenerService() {
             return // Don't log our own notifications
         }
 
+        val removalTime = System.currentTimeMillis()
         Log.d(TAG, "Notification Removed: Pkg=$packageName, Reason=$reason")
 
         serviceScope.launch {
@@ -89,6 +110,21 @@ class NotificationListener : NotificationListenerService() {
                 notificationDao.updateRemovalReason(sbn.packageName, sbn.postTime, reason)
             } catch (e: Exception) {
                 Log.e(TAG, "Error updating notification removal reason for $packageName", e)
+            }
+
+            try {
+                val rawEvent = RawAppEvent(
+                    packageName = packageName,
+                    className = null,
+                    eventType = RawAppEvent.EVENT_TYPE_NOTIFICATION_REMOVED,
+                    eventTimestamp = removalTime,
+                    eventDateString = DateUtil.formatUtcTimestampToLocalDateString(removalTime),
+                    source = RawAppEvent.SOURCE_NOTIFICATION_LISTENER,
+                    value = reason.toLong() // Store the removal reason in the 'value' field
+                )
+                rawAppEventDao.insertEvent(rawEvent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error logging raw notification removal event for $packageName", e)
             }
         }
     }

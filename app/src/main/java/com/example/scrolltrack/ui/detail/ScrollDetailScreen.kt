@@ -37,9 +37,11 @@ import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
 import android.text.format.DateUtils as AndroidDateUtils
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import com.example.scrolltrack.ui.main.FakeSettingsRepository
-import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.scrolltrack.data.SettingsRepository
+import com.example.scrolltrack.ui.theme.AppTheme
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 
 @Composable
 fun ScrollDetailScreen(
@@ -75,7 +77,6 @@ fun ScrollDetailScreenContent(
 ) {
     val context = LocalContext.current
     var showDatePickerDialog by remember { mutableStateOf(false) }
-    val coroutineScope = rememberCoroutineScope()
 
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = remember(selectedDateString) {
@@ -139,7 +140,8 @@ fun ScrollDetailScreenContent(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     items(items = scrollData, key = { it.id }) { appItem ->
                         var formattedDistance by remember { mutableStateOf("...") }
@@ -262,6 +264,15 @@ fun AppScrollDetailItemEntry(
             )
         }
     }
+}
+
+private class FakeSettingsRepository : SettingsRepository {
+    override val selectedTheme: Flow<AppTheme> = flowOf(AppTheme.CalmLavender)
+    override suspend fun setSelectedTheme(theme: AppTheme) {}
+    override val isDarkMode: Flow<Boolean> = flowOf(true)
+    override suspend fun setIsDarkMode(isDark: Boolean) {}
+    override val calibrationFactor: Flow<Float?> = flowOf(null)
+    override suspend fun setCalibrationFactor(factor: Float?) {}
 }
 
 @Preview(showBackground = true, name = "Scroll Detail Screen")

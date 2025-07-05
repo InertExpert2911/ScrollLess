@@ -33,5 +33,8 @@ data class DailyDeviceSummary(
     val totalAppOpens: Int = 0,
 
     @ColumnInfo(name = "first_unlock_timestamp_utc")
-    val firstUnlockTimestampUtc: Long? = null
+    val firstUnlockTimestampUtc: Long? = null,
+
+    @ColumnInfo(name = "last_unlock_timestamp_utc", defaultValue = "NULL")
+    val lastUnlockTimestampUtc: Long? = null
 )

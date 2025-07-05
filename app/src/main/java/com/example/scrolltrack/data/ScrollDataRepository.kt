@@ -1,114 +1,41 @@
 package com.example.scrolltrack.data
 
-// Assuming AppScrollData is in this 'data' package
-// If it's in 'db', change the import accordingly.
-// import com.example.scrolltrack.db.AppScrollData
 import com.example.scrolltrack.db.DailyAppUsageRecord
-import com.example.scrolltrack.db.ScrollSessionRecord
 import com.example.scrolltrack.db.AppScrollDataPerDate
-import com.example.scrolltrack.ui.model.AppScrollUiItem
-import kotlinx.coroutines.flow.Flow
-import com.example.scrolltrack.data.NotificationSummary
-import com.example.scrolltrack.data.NotificationCountPerApp
 import com.example.scrolltrack.db.DailyDeviceSummary
-import com.example.scrolltrack.db.RawAppEvent
+import kotlinx.coroutines.flow.Flow
+import com.example.scrolltrack.data.AppScrollData
+import com.example.scrolltrack.data.NotificationCountPerApp
+import com.example.scrolltrack.data.NotificationSummary
 
 interface ScrollDataRepository {
-
-    /**
-     * Retrieves aggregated scroll data (package name and sum of scroll_amount)
-     * for a specific date, ordered by total scroll amount descending.
-     */
-    fun getAggregatedScrollDataForDate(dateString: String): Flow<List<AppScrollData>>
-
-    /**
-     * Calculates the overall total summed scrollAmount for a specific date.
-     */
-    fun getTotalScrollForDate(dateString: String): Flow<Long?>
-
-    /**
-     * Retrieves all scroll sessions from the database, ordered by start time descending.
-     */
-    fun getAllSessions(): Flow<List<ScrollSessionRecord>>
-
-    /**
-     * Fetches the total foreground usage time for all filtered apps on a specific date.
-     * @param dateString The date in "YYYY-MM-DD" format.
-     * @return Total usage time in milliseconds, or null if permission is denied or an error occurs.
-     */
-    fun getTotalUsageTimeMillisForDate(dateString: String): Flow<Long?>
-
-    /**
-     * Fetches and stores historical per-app usage data for the specified number of past days.
-     * Applies filtering to include only user-relevant apps.
-     * @param numberOfDays How many past days of data to fetch (e.g., 7 or 10).
-     * @return True if successful, false otherwise.
-     */
+    // --- Core Processing Triggers ---
+    suspend fun syncSystemEvents(): Boolean
+    suspend fun processAndSummarizeDate(dateString: String)
     suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean
 
-    /**
-     * Retrieves all raw DailyAppUsageRecord entries for a specific date.
-     * The ViewModel will then map these to UI items, including fetching app names/icons.
-     */
-    fun getDailyUsageRecordsForDate(dateString: String): Flow<List<DailyAppUsageRecord>>
+    // --- Live / Real-time Data Flows ---
+    fun getLiveSummaryForDate(dateString: String): Flow<DailyDeviceSummary>
 
-    /**
-     * Retrieves all raw DailyAppUsageRecord entries within a specific date range.
-     * The ViewModel will use this to find the top used app over a period.
-     */
-    fun getUsageRecordsForDateRange(startDateString: String, endDateString: String): Flow<List<DailyAppUsageRecord>>
+    // --- Daily Summary Data Access ---
+    fun getTotalScrollForDate(dateString: String): Flow<Long?>
+    fun getTotalUsageTimeMillisForDate(dateString: String): Flow<Long?>
+    fun getTotalUnlockCountForDate(dateString: String): Flow<Int>
+    fun getTotalNotificationCountForDate(dateString: String): Flow<Int>
+    fun getDeviceSummaryForDate(dateString: String): Flow<DailyDeviceSummary?>
+    fun getScrollDataForDate(dateString: String): Flow<List<AppScrollData>>
 
-    /**
-     * Fetches and stores app usage stats specifically for the current day.
-     * @return True if successful, false otherwise.
-     */
-    suspend fun updateTodayAppUsageStats(): Boolean
-
-    /**
-     * Fetches only the usage events that have occurred since the last stored event
-     * and inserts them into the raw event database. This is a lightweight operation
-     * intended for frequent background execution.
-     */
-    suspend fun fetchAndStoreNewUsageEvents()
-
-    /**
-     * Retrieves usage records for a specific package over a list of dates.
-     */
+    // --- App-Specific Data Access ---
+    fun getAppUsageForDate(dateString: String): Flow<List<DailyAppUsageRecord>>
     suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord>
-
-    /**
-     * Retrieves aggregated scroll data for a specific package over a list of dates.
-     */
     suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate>
 
-    /**
-     * Inserts a new scroll session into the database.
-     * @param session The scroll session to be inserted.
-     */
-    suspend fun insertScrollSession(session: ScrollSessionRecord)
-
-    fun getTotalUnlockCountForDate(dateString: String): Flow<Int>
-
-    fun getTotalNotificationCountForDate(dateString: String): Flow<Int>
-
-    fun getAllDeviceSummaries(): Flow<List<com.example.scrolltrack.db.DailyDeviceSummary>>
-
+    // --- Historical / Date-based Data Access ---
     fun getAllDistinctUsageDateStrings(): Flow<List<String>>
+    fun getUsageRecordsForDateRange(startDateString: String, endDateString: String): Flow<List<DailyAppUsageRecord>>
+    fun getAllDeviceSummaries(): Flow<List<DailyDeviceSummary>>
 
-    fun getAllDistinctScrollDateStrings(): Flow<List<String>>
-
+    // --- Notification Data Access ---
     fun getNotificationSummaryForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationSummary>>
-
     fun getNotificationCountPerAppForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationCountPerApp>>
-
-    // --- New function for hybrid data access ---
-    fun getDeviceSummaryForDate(dateString: String): Flow<DailyDeviceSummary?>
-
-    /**
-     * Retrieves a live, automatically updating summary for a specific date.
-     * The Flow will emit new summary data whenever the underlying raw events for that day change.
-     * @param dateString The date to observe in "yyyy-MM-dd" format.
-     * @return A Flow emitting the summary data for the requested day.
-     */
-    fun getLiveSummaryForDate(dateString: String): Flow<DailyDeviceSummary>
 }

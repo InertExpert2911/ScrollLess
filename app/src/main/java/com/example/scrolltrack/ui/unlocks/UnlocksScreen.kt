@@ -1,434 +1,243 @@
 package com.example.scrolltrack.ui.unlocks
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AvTimer
+import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.HourglassTop
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
-import com.example.scrolltrack.util.DateUtil
-import java.time.LocalDate
-import java.time.YearMonth
-import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
+import java.text.NumberFormat
+import kotlin.math.roundToInt
+import java.util.Calendar
+import java.util.Date
 import java.util.Locale
-import androidx.compose.foundation.Image
-import coil.compose.rememberAsyncImagePainter
-import com.example.scrolltrack.R
-import com.example.scrolltrack.navigation.ScreenRoutes
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material.icons.filled.Check
+import java.util.TimeZone
+import java.text.SimpleDateFormat
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UnlocksScreen(
     navController: NavController,
-    viewModel: UnlocksViewModel,
-    modifier: Modifier = Modifier
+    viewModel: UnlocksViewModel = hiltViewModel()
 ) {
-    val heatmapData by viewModel.heatmapData.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Unlocks & App Opens") },
+                title = { Text("Unlocks Analysis") },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
-        },
-        modifier = modifier.background(MaterialTheme.colorScheme.background)
+        }
     ) { innerPadding ->
-        LazyColumn(
+        if (uiState.daysTracked == 0) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Not enough data to analyze unlocks.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            return@Scaffold
+        }
+
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(innerPadding)
+                .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Heatmap Section
-            item {
-                HeatmapSection(
-                    heatmapData = heatmapData,
-                    onDateSelected = viewModel::setSelectedDate
-                )
-            }
-
-            // App Opens Section
-            item {
-                when (val state = uiState) {
-                    is UnlocksUiState.Loading -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 32.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator()
-                        }
-                    }
-                    is UnlocksUiState.Success -> {
-                        Column {
-                            PeriodSelector(
-                                selectedPeriod = state.selectedPeriod,
-                                onPeriodSelected = viewModel::selectPeriod
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            HeatmapLegend()
-                            Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = state.periodTitle,
-                                style = MaterialTheme.typography.titleMedium,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth()
+                "Unlock Patterns",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.primary
                             )
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            if (state.selectedPeriod == UnlockPeriod.Daily) {
-                                StatChip(
+            // Stats Grid
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                UnlockStatCard(
+                    modifier = Modifier.weight(1f),
+                    label = "Daily Average",
+                    value = formatDouble(uiState.dailyAverage),
+                    icon = Icons.Default.Today
+                )
+                UnlockStatCard(
+                    modifier = Modifier.weight(1f),
+                    label = "Weekly Average",
+                    value = formatDouble(uiState.weeklyAverage),
+                    icon = Icons.Default.CalendarToday
+                )
+                UnlockStatCard(
+                    modifier = Modifier.weight(1f),
                                     label = "Total Unlocks",
-                                    value = state.totalUnlockCount.toString()
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                            }
+                    value = uiState.totalUnlocks.toString(),
+                    icon = Icons.Default.PhoneAndroid
+                )
+            }
 
-                            if (state.appOpens.isEmpty()) {
-                                Text(
-                                    text = "No app opens recorded for this period.",
-                                    modifier = Modifier.padding(vertical = 16.dp),
-                                    textAlign = TextAlign.Center
+            // Bar Chart for last 7 days
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Last 7 Days", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(16.dp))
+                    if (uiState.barChartData.isNotEmpty()) {
+                        SimpleBarChart(
+                            data = uiState.barChartData,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp)
                                 )
                             } else {
-                                // This Column is not lazy, which is fine for the items inside the LazyColumn item
-                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    state.appOpens.forEach { appOpen ->
-                                        AppOpenRow(
-                                            appItem = appOpen,
-                                            onAppClick = { packageName ->
-                                                navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(packageName))
-                                            }
-                                        )
-                                    }
-                                }
-                            }
+                        Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                           Text("No recent data.")
                         }
                     }
                 }
             }
-        }
-    }
-}
 
-@Composable
-fun MonthView(
-    yearMonth: YearMonth,
-    data: Map<String, Int>,
-    maxCount: Float,
-    onDateSelected: (String) -> Unit
-) {
-    val firstDayOfMonth = yearMonth.atDay(1)
-    val firstDayOfWeek = firstDayOfMonth.dayOfWeek.value % 7 // Sun = 0, Mon = 1..
-    val daysInMonth = yearMonth.lengthOfMonth()
-    val dateFormatter = remember { DateTimeFormatter.ofPattern("yyyy-MM-dd") }
-    val today = remember { LocalDate.now() }
-
-    val colorStops = listOf(
-        MaterialTheme.colorScheme.surfaceContainer,
-        MaterialTheme.colorScheme.tertiaryContainer,
-        MaterialTheme.colorScheme.tertiary
-    )
-
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = "${yearMonth.month.getDisplayName(TextStyle.SHORT, Locale.getDefault())} ${yearMonth.year}",
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-        
-        // Day of week labels
-        Row {
-            val weekdays = listOf("S", "M", "T", "W", "T", "F", "S")
-            weekdays.forEach { day ->
-                Box(
-                    modifier = Modifier.size(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = day, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-
-        val allCellsInGrid = List(firstDayOfWeek) { null } + (1..daysInMonth).toList()
-        val weeks = allCellsInGrid.chunked(7)
-
-        weeks.forEach { weekDays ->
-            Row {
-                weekDays.forEach { dayOfMonth ->
-                    if (dayOfMonth == null) {
-                        Spacer(modifier = Modifier.size(32.dp))
-                        return@forEach
-                    }
-
-                    val date = yearMonth.atDay(dayOfMonth)
-                    val dateString = date.format(dateFormatter)
-                    val isFutureDate = date.isAfter(today)
-                    val count = if (!isFutureDate) data[dateString] ?: 0 else 0
-                    val ratio = if(maxCount > 0) (count / maxCount).coerceIn(0f, 1f) else 0f
-
-                    val cellColor = when {
-                        ratio <= 0f -> colorStops[0]
-                        ratio < 0.5f -> lerp(colorStops[0], colorStops[1], ratio * 2)
-                        else -> lerp(colorStops[1], colorStops[2], (ratio - 0.5f) * 2)
-                    }
-
-                    Surface(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .padding(2.dp),
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (!isFutureDate) cellColor else Color.Transparent,
-                        tonalElevation = if (!isFutureDate) 1.dp else 0.dp
-                    ) {
-                        if (!isFutureDate) {
-                            Box(modifier = Modifier
-                                .fillMaxSize()
-                                .clickable { onDateSelected(dateString) })
-                        }
-                    }
-                }
-                // Add spacers to fill out the last row if it's not a full week
-                if (weekDays.size < 7) {
-                    repeat(7 - weekDays.size) {
-                        Spacer(modifier = Modifier.size(32.dp))
-                    }
-                }
+            // First/Last Unlock
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                UnlockStatCard(
+                    modifier = Modifier.weight(1f),
+                    label = "Today's First Unlock",
+                    value = uiState.firstUnlockTime ?: "N/A",
+                    icon = Icons.Default.HourglassTop
+                )
+                UnlockStatCard(
+                    modifier = Modifier.weight(1f),
+                    label = "Today's Last Unlock",
+                    value = uiState.lastUnlockTime ?: "N/A",
+                    icon = Icons.Default.AvTimer
+                )
             }
         }
     }
 }
 
 @Composable
-fun HeatmapLegend() {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
-    ) {
-        Text("Less", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.width(8.dp))
-        (0..4).forEach { i ->
-            val ratio = i / 4f
-            val colorStops = listOf(
-                MaterialTheme.colorScheme.surfaceContainer,
-                MaterialTheme.colorScheme.tertiaryContainer,
-                MaterialTheme.colorScheme.tertiary
-            )
-            val cellColor = when {
-                ratio < 0.5f -> lerp(colorStops[0], colorStops[1], ratio * 2)
-                else -> lerp(colorStops[1], colorStops[2], (ratio - 0.5f) * 2)
-            }
-            Box(
-                modifier = Modifier
-                    .size(16.dp)
-                    .background(cellColor, RoundedCornerShape(3.dp))
-                    .border(
-                        width = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                        shape = RoundedCornerShape(3.dp)
-                    )
-            )
-            Spacer(Modifier.width(2.dp))
-        }
-        Spacer(Modifier.width(8.dp))
-        Text("More", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun PeriodSelector(
-    selectedPeriod: UnlockPeriod,
-    onPeriodSelected: (UnlockPeriod) -> Unit
-) {
-    val options = UnlockPeriod.entries
-    val segmentedButtonColors = SegmentedButtonDefaults.colors(
-        activeContainerColor = MaterialTheme.colorScheme.primary,
-        activeContentColor = MaterialTheme.colorScheme.onPrimary,
-        inactiveContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-        inactiveContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-    )
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        options.forEachIndexed { index, period ->
-            SegmentedButton(
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                onClick = { onPeriodSelected(period) },
-                selected = period == selectedPeriod,
-                colors = segmentedButtonColors,
-                icon = {
-                    if (period == selectedPeriod) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = "Selected",
-                            modifier = Modifier.size(ButtonDefaults.IconSize)
-                        )
-                    }
-                }
-            ) {
-                Text(period.name)
-            }
-        }
-    }
-}
-
-@Composable
-fun HeatmapSection(
-    heatmapData: Map<YearMonth, List<HeatmapCell>>,
-    onDateSelected: (String) -> Unit
-) {
-    val sortedMonths = heatmapData.keys.sortedDescending()
-
-    if (heatmapData.isEmpty()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 32.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "Unlock data is being gathered...",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        return
-    }
-
-    LazyRow(
-        modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
-        reverseLayout = true
-    ) {
-        items(sortedMonths, key = { it.toString() }) { month ->
-            val monthData = heatmapData[month] ?: emptyList()
-            MonthView(
-                yearMonth = month,
-                data = monthData.associate { it.date to it.count },
-                maxCount = (heatmapData.values.flatten().maxOfOrNull { it.count } ?: 1).toFloat(),
-                onDateSelected = onDateSelected
-            )
-        }
-    }
-}
-
-@Composable
-fun AppOpenRow(
-    appItem: AppOpenUiItem,
-    onAppClick: (String) -> Unit,
+fun SimpleBarChart(
+    data: List<Pair<String, Int>>,
     modifier: Modifier = Modifier
 ) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable { onAppClick(appItem.packageName) },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Image(
-                painter = rememberAsyncImagePainter(
-                    model = appItem.icon,
-                    fallback = painterResource(id = R.drawable.ic_launcher_foreground)
-                ),
-                contentDescription = "${appItem.appName} icon",
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape),
-                contentScale = ContentScale.Fit
+    val maxVal = data.maxOfOrNull { it.second } ?: 0
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val textMeasurer = rememberTextMeasurer()
+    val labelStyle = MaterialTheme.typography.bodySmall.copy(color = labelColor)
+    val axisLabelPaint = remember { android.graphics.Paint().apply { textAlign = android.graphics.Paint.Align.CENTER } }
+
+
+    Canvas(modifier = modifier) {
+        val barCount = data.size
+        if (barCount == 0) return@Canvas
+
+        val barWidth = size.width / (barCount * 2)
+        val spaceBetweenBars = barWidth
+
+        data.forEachIndexed { index, pair ->
+            val barHeight = if (maxVal > 0) (pair.second.toFloat() / maxVal.toFloat()) * size.height * 0.9f else 0f
+            val left = (index * (barWidth + spaceBetweenBars)) + spaceBetweenBars / 2
+            val top = size.height - barHeight - (size.height * 0.1f) // Leave space at bottom for labels
+            drawRect(
+                color = primaryColor,
+                topLeft = Offset(left, top),
+                size = androidx.compose.ui.geometry.Size(barWidth, barHeight)
             )
-            Column(modifier = Modifier.weight(1f)) {
+
+            // Draw labels
+            val textLayoutResult = textMeasurer.measure(
+                text = pair.first,
+                style = labelStyle
+            )
+            axisLabelPaint.color = labelColor.toArgb()
+            axisLabelPaint.textSize = labelStyle.fontSize.toPx()
+            drawContext.canvas.nativeCanvas.drawText(
+                pair.first,
+                left + barWidth / 2,
+                size.height,
+                axisLabelPaint
+            )
+        }
+    }
+}
+
+@Composable
+private fun UnlockStatCard(
+    modifier: Modifier = Modifier,
+    label: String,
+    value: String,
+    icon: ImageVector
+) {
+    Card(modifier = modifier) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = appItem.appName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = appItem.packageName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Text(
-                text = appItem.openCount.toString(),
-                style = MaterialTheme.typography.titleMedium,
+                text = value,
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
 
-@Composable
-fun StatChip(label: String, value: String) {
-    Card(
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
-    }
+private fun formatDouble(value: Double): String {
+    return if (value.isNaN()) "0.0"
+    else NumberFormat.getInstance().apply {
+        maximumFractionDigits = 1
+        minimumFractionDigits = 1
+    }.format(value)
 } 

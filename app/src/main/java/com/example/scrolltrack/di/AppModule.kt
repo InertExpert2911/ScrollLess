@@ -24,11 +24,11 @@ abstract class AppModule {
 
     @Binds
     @Singleton
-    abstract fun bindDraftRepository(impl: DraftRepositoryImpl): DraftRepository
+    abstract fun bindAppMetadataRepository(impl: AppMetadataRepositoryImpl): AppMetadataRepository
 
     @Binds
     @Singleton
-    abstract fun bindAppMetadataRepository(impl: AppMetadataRepositoryImpl): AppMetadataRepository
+    abstract fun bindScrollDataRepository(impl: ScrollDataRepositoryImpl): ScrollDataRepository
 
     companion object {
         @Provides
@@ -69,31 +69,5 @@ abstract class AppModule {
         @Provides
         @IoDispatcher
         fun provideIoDispatcher(): CoroutineDispatcher = Dispatchers.IO
-
-        @Provides
-        @Singleton
-        fun provideScrollDataRepository(
-            appDatabase: AppDatabase,
-            appMetadataRepository: AppMetadataRepository,
-            scrollSessionDao: ScrollSessionDao,
-            dailyAppUsageDao: DailyAppUsageDao,
-            rawAppEventDao: RawAppEventDao,
-            notificationDao: NotificationDao,
-            dailyDeviceSummaryDao: DailyDeviceSummaryDao,
-            @ApplicationContext context: Context,
-            @IoDispatcher ioDispatcher: CoroutineDispatcher
-        ): ScrollDataRepository {
-            return ScrollDataRepositoryImpl(
-                appDatabase,
-                appMetadataRepository,
-                scrollSessionDao,
-                dailyAppUsageDao,
-                rawAppEventDao,
-                notificationDao,
-                dailyDeviceSummaryDao,
-                context,
-                ioDispatcher
-            )
-        }
     }
 }

@@ -113,6 +113,18 @@ object DateUtil {
         }
     }
 
+    fun getWeekOfYear(date: Date): Int {
+        val calendar = Calendar.getInstance()
+        calendar.time = date
+        return calendar.get(Calendar.WEEK_OF_YEAR)
+    }
+
+    fun formatUtcTimestampToTimeString(timestamp: Long): String {
+        val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+        sdf.timeZone = TimeZone.getDefault() // Display in user's local time
+        return sdf.format(Date(timestamp))
+    }
+
     fun getYesterdayDateString(): String {
         // Using java.time for a clearer and more robust implementation.
         val yesterday = LocalDate.now(ZoneOffset.UTC).minusDays(1)

@@ -10,6 +10,12 @@ import android.text.TextUtils
 import android.view.accessibility.AccessibilityManager
 import android.content.ComponentName
 import android.util.Log
+import com.example.scrolltrack.ScrollTrackService
+import com.example.scrolltrack.services.NotificationListener
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
 
 object PermissionUtils {
 
@@ -20,6 +26,27 @@ object PermissionUtils {
             ComponentName.unflattenFromString(it)
         }?.any { it == componentName } ?: false
     }
+
+    fun isAccessibilityServiceEnabledFlow(context: Context): Flow<Boolean> = flow {
+        while (true) {
+            emit(isAccessibilityServiceEnabled(context, ScrollTrackService::class.java))
+            delay(1000) // Check every second
+        }
+    }.distinctUntilChanged()
+
+    fun isNotificationListenerEnabledFlow(context: Context): Flow<Boolean> = flow {
+        while (true) {
+            emit(isNotificationListenerEnabled(context, NotificationListener::class.java))
+            delay(1000)
+        }
+    }.distinctUntilChanged()
+
+    fun isUsageStatsPermissionGrantedFlow(context: Context): Flow<Boolean> = flow {
+        while (true) {
+            emit(hasUsageStatsPermission(context))
+            delay(1000)
+        }
+    }.distinctUntilChanged()
 
     fun isAccessibilityServiceEnabled(context: Context, serviceClass: Class<*>): Boolean {
         val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager

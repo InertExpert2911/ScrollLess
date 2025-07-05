@@ -27,9 +27,21 @@ data class RawAppEvent(
     val eventTimestamp: Long,
 
     @ColumnInfo(name = "event_date_string", index = true)
-    val eventDateString: String // Format: "yyyy-MM-dd"
+    val eventDateString: String, // Format: "yyyy-MM-dd"
+
+    @ColumnInfo(name = "source", index = true)
+    val source: String,
+
+    @ColumnInfo(name = "value")
+    val value: Long? = null
 ) {
     companion object {
+        // Source constants
+        const val SOURCE_USAGE_STATS = "USAGE_STATS"
+        const val SOURCE_ACCESSIBILITY = "ACCESSIBILITY"
+        const val SOURCE_NOTIFICATION_LISTENER = "NOTIFICATION_LISTENER"
+        const val SOURCE_SYSTEM_BROADCAST = "SYSTEM_BROADCAST"
+
         // --- System event types from UsageStatsManager ---
         const val EVENT_TYPE_UNKNOWN = 0
         const val EVENT_TYPE_ACTIVITY_RESUMED = 1
@@ -51,6 +63,10 @@ data class RawAppEvent(
         const val EVENT_TYPE_ACCESSIBILITY_VIEW_FOCUSED = EVENT_TYPE_ACCESSIBILITY_OFFSET + 2
         const val EVENT_TYPE_ACCESSIBILITY_TYPING = EVENT_TYPE_ACCESSIBILITY_OFFSET + 3
         const val EVENT_TYPE_ACCESSIBILITY_SCROLLED = EVENT_TYPE_ACCESSIBILITY_OFFSET + 4
+
+        // --- Custom event types from our own logic ---
+        const val EVENT_TYPE_CUSTOM_OFFSET = 3000
+        const val EVENT_TYPE_SCROLL = EVENT_TYPE_CUSTOM_OFFSET + 1 // Specific for scroll delta tracking
 
         // --- Custom event types from our Notification Listener ---
         const val EVENT_TYPE_NOTIFICATION_OFFSET = 2000

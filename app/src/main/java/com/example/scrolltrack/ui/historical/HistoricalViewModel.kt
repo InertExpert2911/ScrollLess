@@ -42,7 +42,7 @@ class HistoricalViewModel @Inject constructor(
 
     val dailyAppUsageForSelectedDateHistory: StateFlow<List<AppUsageUiItem>> =
         selectedDateForHistory.flatMapLatest { dateString ->
-            repository.getDailyUsageRecordsForDate(dateString)
+            repository.getAppUsageForDate(dateString)
                 .map { dailyUsageRecords ->
                     dailyUsageRecords.map { mapper.mapToAppUsageUiItem(it) }
                         .sortedByDescending { it.usageTimeMillis }

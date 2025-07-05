@@ -23,6 +23,12 @@ object AppConstants {
      */
     val CONTEXTUAL_APP_OPEN_DEBOUNCE_MS = TimeUnit.SECONDS.toMillis(15)
 
+    /**
+     * The maximum time gap in milliseconds between two scroll events for them to be considered
+     * part of the same continuous scrolling session.
+     */
+    val SESSION_MERGE_GAP_MS = TimeUnit.SECONDS.toMillis(30)
+
     // --- Aggregation Logic ---
     const val QUICK_SWITCH_THRESHOLD_MS = 2000L // Not currently in use, but kept for future logic refinement
 

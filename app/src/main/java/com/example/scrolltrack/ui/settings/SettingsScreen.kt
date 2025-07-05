@@ -43,6 +43,7 @@ fun SettingsScreen(
     if (showThemeDialog) {
         ThemeSelectorDialog(
             currentTheme = selectedTheme,
+            isDarkMode = isDarkMode,
             onThemeSelected = {
                 viewModel.setSelectedTheme(it)
                 showThemeDialog = false
@@ -148,6 +149,7 @@ fun SettingRow(
 @Composable
 fun ThemeSelectorDialog(
     currentTheme: AppTheme,
+    isDarkMode: Boolean,
     onThemeSelected: (AppTheme) -> Unit,
     onDismissRequest: () -> Unit
 ) {
@@ -170,7 +172,7 @@ fun ThemeSelectorDialog(
                 ) {
                     items(AppTheme.entries) { theme ->
                         val isSelected = theme == currentTheme
-                        val themeColors = getThemeColors(theme = theme, darkTheme = isSystemInDarkTheme())
+                        val themeColors = getThemeColors(theme = theme, darkTheme = isDarkMode)
                         val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
 
                         Box(

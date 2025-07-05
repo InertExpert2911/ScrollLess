@@ -160,18 +160,35 @@ class AppDetailViewModel @Inject constructor(
             _appDetailFocusedOpenCount.value = totalOpens
 
             val currentUsageMap = currentPeriodUsageRecords.associateBy { it.dateString }
-            val currentScrollMap = currentPeriodScrollRecords.associateBy { it.date }
+            val currentScrollMap = currentPeriodScrollRecords.associateBy { it.dateString }
 
-            val currentCombinedData = dateStringsForCurrentPeriod.map { dateStr ->
-                AppDailyDetailData(
-                    date = dateStr,
-                    usageTimeMillis = currentUsageMap[dateStr]?.usageTimeMillis ?: 0L,
-                    activeTimeMillis = currentUsageMap[dateStr]?.activeTimeMillis ?: 0L,
-                    scrollUnits = currentScrollMap[dateStr]?.totalScroll ?: 0L
-                )
+            val combinedData = currentUsageMap.toMutableMap()
+            currentScrollMap.forEach { scroll ->
+                val existing = combinedData[scroll.key]
+                if (existing != null) {
+                    combinedData[scroll.key] = existing.copy(
+                        // This is a bit of a hack, storing scroll in a temp field.
+                        // A proper solution would be a combined data class.
+                        lastUpdatedTimestamp = scroll.value.totalScroll
+                    )
+                }
             }
-            _appDetailChartData.value = currentCombinedData
-            Log.d("AppDetailViewModel", "Chart data loaded: ${currentCombinedData.size} points for current period.")
+
+            val chartEntries = combinedData.values.mapNotNull { record ->
+                val date = DateUtil.parseLocalDateString(record.dateString)
+                if (date != null) {
+                    AppDailyDetailData(
+                        date = record.dateString,
+                        usageTimeMillis = record.usageTimeMillis,
+                        activeTimeMillis = record.activeTimeMillis,
+                        scrollUnits = record.lastUpdatedTimestamp // Re-using this field for scroll
+                    )
+                } else {
+                    null
+                }
+            }.sortedBy { it.date }
+            _appDetailChartData.value = chartEntries
+            Log.d("AppDetailViewModel", "Chart data loaded: ${chartEntries.size} points for current period.")
 
             val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
             DateUtil.parseLocalDateString(referenceDate)?.let { calendar.time = it }
@@ -181,7 +198,7 @@ class AppDetailViewModel @Inject constructor(
 
             when (period) {
                 ChartPeriodType.DAILY -> {
-                    val focusedDayData = currentCombinedData.firstOrNull { it.date == referenceDate }
+                    val focusedDayData = chartEntries.firstOrNull { it.date == referenceDate }
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(focusedDayData?.usageTimeMillis ?: 0L)
                     _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(focusedDayData?.activeTimeMillis ?: 0L)
                     val (dist, unit) = conversionUtil.formatScrollDistance(focusedDayData?.scrollUnits ?: 0L, context)
@@ -192,11 +209,11 @@ class AppDetailViewModel @Inject constructor(
                     _appDetailComparisonText.value = null
                 }
                 ChartPeriodType.WEEKLY -> {
-                    val currentPeriodAverageUsage = calculateAverageUsage(currentCombinedData)
+                    val currentPeriodAverageUsage = calculateAverageUsage(chartEntries)
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageUsage)
-                    val currentPeriodAverageActiveUsage = calculateAverageActiveUsage(currentCombinedData)
+                    val currentPeriodAverageActiveUsage = calculateAverageActiveUsage(chartEntries)
                     _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageActiveUsage)
-                    val currentPeriodAverageScroll = calculateAverageScroll(currentCombinedData)
+                    val currentPeriodAverageScroll = calculateAverageScroll(chartEntries)
                     val (dist, unit) = conversionUtil.formatScrollDistance(currentPeriodAverageScroll, context)
                     _appDetailFocusedScrollDisplay.value = "$dist $unit"
                     _appDetailPeriodDescriptionText.value = "Weekly Average"
@@ -214,11 +231,11 @@ class AppDetailViewModel @Inject constructor(
                     }
                 }
                 ChartPeriodType.MONTHLY -> {
-                    val currentPeriodAverageUsage = calculateAverageUsage(currentCombinedData)
+                    val currentPeriodAverageUsage = calculateAverageUsage(chartEntries)
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageUsage)
-                    val currentPeriodAverageActiveUsage = calculateAverageActiveUsage(currentCombinedData)
+                    val currentPeriodAverageActiveUsage = calculateAverageActiveUsage(chartEntries)
                     _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageActiveUsage)
-                    val currentPeriodAverageScroll = calculateAverageScroll(currentCombinedData)
+                    val currentPeriodAverageScroll = calculateAverageScroll(chartEntries)
                     val (dist, unit) = conversionUtil.formatScrollDistance(currentPeriodAverageScroll, context)
                     _appDetailFocusedScrollDisplay.value = "$dist $unit"
 

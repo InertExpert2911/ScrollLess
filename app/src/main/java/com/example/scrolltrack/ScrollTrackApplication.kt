@@ -14,14 +14,16 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.scrolltrack.data.AppMetadataRepository
-import com.example.scrolltrack.services.DailyDataAggregatorWorker
+import com.example.scrolltrack.util.UsageStatsWorker
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
+import com.example.scrolltrack.BuildConfig
 
 @HiltAndroidApp
 class ScrollTrackApplication : Application(), Configuration.Provider {
@@ -48,9 +50,12 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        if (BuildConfig.DEBUG) {
+            Timber.plant(Timber.DebugTree())
+        }
         createNotificationChannel()
         runInitialAppMetadataSync()
-        setupDailyAggregationWorker()
+        setupWorkers()
     }
 
     private fun runInitialAppMetadataSync() {
@@ -73,6 +78,10 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
         }
     }
 
+    private fun setupWorkers() {
+        setupUsageStatsWorker()
+    }
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val name = "ScrollTrack Service"
@@ -87,21 +96,17 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
         }
     }
 
-    private fun setupDailyAggregationWorker() {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .setRequiresDeviceIdle(true)
-            .setRequiresCharging(true)
-            .build()
-
-        val repeatingRequest = PeriodicWorkRequestBuilder<DailyDataAggregatorWorker>(1, TimeUnit.DAYS)
-            .setConstraints(constraints)
+    private fun setupUsageStatsWorker() {
+        // This worker runs frequently to pull in the latest system events.
+        // It does not need network and should run even if the device is not idle or charging.
+        val repeatingRequest = PeriodicWorkRequestBuilder<UsageStatsWorker>(15, TimeUnit.MINUTES)
             .build()
 
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            DailyDataAggregatorWorker.WORKER_NAME,
+            UsageStatsWorker.WORK_NAME,
             ExistingPeriodicWorkPolicy.KEEP,
             repeatingRequest
         )
+        Timber.d("UsageStatsWorker scheduled.")
     }
 } 

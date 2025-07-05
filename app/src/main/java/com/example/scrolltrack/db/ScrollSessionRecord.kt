@@ -33,7 +33,7 @@ data class ScrollSessionRecord(
     val sessionEndTime: Long,
 
     @ColumnInfo(name = "date_string")
-    val date: String,
+    val dateString: String,
 
     @ColumnInfo(name = "session_end_reason") // New field
     val sessionEndReason: String // e.g., "APP_SWITCH", "SCREEN_OFF", "SERVICE_DESTROYED"

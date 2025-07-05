@@ -1,9 +1,12 @@
 package com.example.scrolltrack.util
 
 import java.util.Calendar
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlin.random.Random
 
-object GreetingUtil {
+@Singleton
+class GreetingUtil @Inject constructor() {
     // A list of appropriate and friendly emojis for greetings
     private val greetingEmojis = listOf(
         "👋", // Waving hand

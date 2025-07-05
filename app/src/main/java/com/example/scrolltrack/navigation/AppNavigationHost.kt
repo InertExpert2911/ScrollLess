@@ -124,6 +124,7 @@ private fun NavGraphBuilder.addDashboardGraph(
             val totalUnlocks by viewModel.totalUnlocksToday.collectAsStateWithLifecycle()
             val totalNotifications by viewModel.totalNotificationsToday.collectAsStateWithLifecycle()
             val topWeeklyApp by viewModel.topWeeklyApp.collectAsStateWithLifecycle()
+            val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
 
             TodaySummaryScreen(
                 navController = navController,
@@ -136,23 +137,20 @@ private fun NavGraphBuilder.addDashboardGraph(
                 onEnableNotificationListenerClick = onEnableNotificationListenerClick,
                 totalUsageTime = totalUsageTimeFormatted,
                 totalUsageTimeMillis = totalUsageTimeMillis,
+                todaysAppUsage = todaysAppUsage,
                 topWeeklyApp = topWeeklyApp,
                 totalScrollUnits = totalScrollUnits,
-                scrollDistanceMeters = "${scrollDistanceFormatted.first} / ${scrollDistanceFormatted.second}",
+                scrollDistanceMeters = "${scrollDistanceFormatted.first} ${scrollDistanceFormatted.second}",
                 totalUnlocks = totalUnlocks,
                 totalNotifications = totalNotifications,
-                onNavigateToHistoricalUsage = {
-                    navController.navigate(ScreenRoutes.HistoricalUsageRoute.route)
-                },
-                onNavigateToUnlocks = {
-                    navController.navigate(ScreenRoutes.UnlocksRoute.route)
-                },
-                onNavigateToNotifications = {
-                    navController.navigate(ScreenRoutes.NotificationsRoute.route)
-                },
-                onNavigateToAppDetail = { packageName ->
+                onNavigateToHistoricalUsage = { navController.navigate(ScreenRoutes.HistoricalUsageRoute.route) },
+                onNavigateToUnlocks = { navController.navigate(ScreenRoutes.UnlocksRoute.route) },
+                onNavigateToNotifications = { navController.navigate(ScreenRoutes.NotificationsRoute.route) },
+                onNavigateToAppDetail = { packageName: String ->
                     navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(packageName))
-                }
+                },
+                isRefreshing = isRefreshing,
+                onRefresh = { viewModel.onPullToRefresh() }
             )
         }
         composable(ScreenRoutes.NotificationsRoute.route) {
