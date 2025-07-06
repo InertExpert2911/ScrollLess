@@ -44,7 +44,7 @@ class ChartStyles(
 )
 
 class ChartState(
-    val data: List<AppDailyDetailData>,
+    val data: List<CombinedAppDailyData>,
     val periodType: ChartPeriodType,
     val colors: ChartColors,
     val styles: ChartStyles,
@@ -63,28 +63,16 @@ class ChartState(
     val maxScrollUnits = data.maxOfOrNull { it.scrollUnits } ?: 1L
     val minScrollUnits = 0L
 
-    val yAxisLabelUsageTimeWidth: Float
-    val yAxisLabelScrollDistWidth: Float
-    val xAxisLabelHeight: Float
-    val legendItemHeight: Float
-    val legendTotalHeight: Float
-    val tickMarkAndLabelPadding = 20f
-    val topMargin: Float
-    val leftMargin: Float
-    val rightMargin: Float
-    val bottomMargin: Float
-
-    init {
-        yAxisLabelUsageTimeWidth = textMeasurer.measure(text = buildAnnotatedString { append("99h") }, style = styles.axisLabelTextStyle).size.width.toFloat()
-        yAxisLabelScrollDistWidth = textMeasurer.measure(text = buildAnnotatedString { append("99.9km") }, style = styles.axisLabelTextStyle).size.width.toFloat()
-        xAxisLabelHeight = textMeasurer.measure(text = buildAnnotatedString { append("M") }, style = styles.axisLabelTextStyle).size.height.toFloat()
-        legendItemHeight = textMeasurer.measure(text = buildAnnotatedString { append("Legend") }, style = styles.axisLabelTextStyle).size.height.toFloat() + 10f
-        legendTotalHeight = legendItemHeight * 2
-        topMargin = tickMarkAndLabelPadding
-        leftMargin = yAxisLabelUsageTimeWidth + tickMarkAndLabelPadding
-        rightMargin = yAxisLabelScrollDistWidth + tickMarkAndLabelPadding
-        bottomMargin = xAxisLabelHeight + tickMarkAndLabelPadding + legendTotalHeight
-    }
+    private val tickMarkAndLabelPadding = 20f
+    private val yAxisLabelUsageTimeWidth: Float = textMeasurer.measure(text = buildAnnotatedString { append("99h") }, style = styles.axisLabelTextStyle).size.width.toFloat()
+    private val yAxisLabelScrollDistWidth: Float = textMeasurer.measure(text = buildAnnotatedString { append("99.9km") }, style = styles.axisLabelTextStyle).size.width.toFloat()
+    val xAxisLabelHeight: Float = textMeasurer.measure(text = buildAnnotatedString { append("M") }, style = styles.axisLabelTextStyle).size.height.toFloat()
+    val legendItemHeight: Float = textMeasurer.measure(text = buildAnnotatedString { append("Legend") }, style = styles.axisLabelTextStyle).size.height.toFloat() + 10f
+    val legendTotalHeight: Float = legendItemHeight * 2
+    val topMargin: Float = tickMarkAndLabelPadding
+    val leftMargin: Float = yAxisLabelUsageTimeWidth + tickMarkAndLabelPadding
+    val rightMargin: Float = yAxisLabelScrollDistWidth + tickMarkAndLabelPadding
+    val bottomMargin: Float = xAxisLabelHeight + tickMarkAndLabelPadding + legendTotalHeight
 
     val maxUsageTimeForAxis = (maxUsageTime * Y_AXIS_PADDING_FACTOR).toLong().coerceAtLeast(1L)
     val maxScrollUnitsForAxis = (maxScrollUnits * Y_AXIS_PADDING_FACTOR).toLong().coerceAtLeast(1L)
@@ -139,7 +127,7 @@ class ChartState(
 
 @Composable
 fun rememberChartState(
-    data: List<AppDailyDetailData>,
+    data: List<CombinedAppDailyData>,
     periodType: ChartPeriodType,
     conversionUtil: ConversionUtil
 ): ChartState {

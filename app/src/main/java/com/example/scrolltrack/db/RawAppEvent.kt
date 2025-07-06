@@ -62,10 +62,13 @@ data class RawAppEvent(
         const val EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED = EVENT_TYPE_ACCESSIBILITY_OFFSET + 1
         const val EVENT_TYPE_ACCESSIBILITY_VIEW_FOCUSED = EVENT_TYPE_ACCESSIBILITY_OFFSET + 2
         const val EVENT_TYPE_ACCESSIBILITY_TYPING = EVENT_TYPE_ACCESSIBILITY_OFFSET + 3
-        const val EVENT_TYPE_ACCESSIBILITY_SCROLLED = EVENT_TYPE_ACCESSIBILITY_OFFSET + 4
+        const val EVENT_TYPE_SCROLL_MEASURED = EVENT_TYPE_ACCESSIBILITY_OFFSET + 4 // Explicitly measured
+        const val EVENT_TYPE_SCROLL_INFERRED = EVENT_TYPE_ACCESSIBILITY_OFFSET + 5 // Inferred from other events
+
 
         // --- Custom event types from our own logic ---
         const val EVENT_TYPE_CUSTOM_OFFSET = 3000
+        @Deprecated("Use MEASURED or INFERRED specific types", ReplaceWith("EVENT_TYPE_SCROLL_MEASURED"))
         const val EVENT_TYPE_SCROLL = EVENT_TYPE_CUSTOM_OFFSET + 1 // Specific for scroll delta tracking
 
         // --- Custom event types from our Notification Listener ---

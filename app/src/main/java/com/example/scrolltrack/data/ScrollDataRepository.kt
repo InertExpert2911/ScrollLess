@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import com.example.scrolltrack.data.AppScrollData
 import com.example.scrolltrack.data.NotificationCountPerApp
 import com.example.scrolltrack.data.NotificationSummary
+import com.example.scrolltrack.db.RawAppEvent
 
 interface ScrollDataRepository {
     // --- Core Processing Triggers ---
@@ -15,7 +16,7 @@ interface ScrollDataRepository {
     suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean
 
     // --- Live / Real-time Data Flows ---
-    fun getLiveSummaryForDate(dateString: String): Flow<DailyDeviceSummary>
+    fun getRawEventsForDateFlow(dateString: String): Flow<List<RawAppEvent>>
 
     // --- Daily Summary Data Access ---
     fun getTotalScrollForDate(dateString: String): Flow<Long?>

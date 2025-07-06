@@ -52,6 +52,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
     companion object {
         private const val KEY_LAST_SYSTEM_EVENT_SYNC_TIMESTAMP = "last_system_event_sync_timestamp"
+        private const val SYNC_OVERLAP_MS = 10_000L // 10 seconds
     }
 
     override suspend fun syncSystemEvents(): Boolean = withContext(ioDispatcher) {
@@ -62,7 +63,11 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
         val lastSyncTimestamp = prefs.getLong(KEY_LAST_SYSTEM_EVENT_SYNC_TIMESTAMP, 0L)
         val currentTime = System.currentTimeMillis()
-        val startTime = if (lastSyncTimestamp == 0L) currentTime - TimeUnit.DAYS.toMillis(1) else lastSyncTimestamp + 1
+        val startTime = if (lastSyncTimestamp == 0L) {
+            currentTime - TimeUnit.DAYS.toMillis(1)
+        } else {
+            lastSyncTimestamp - SYNC_OVERLAP_MS
+        }
 
         Timber.d("Syncing system events from $startTime to $currentTime")
         try {
@@ -97,12 +102,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
         val events = rawAppEventDao.getEventsForPeriod(startTime, endTime)
 
         if (events.isEmpty()) {
-            Timber.i("No events for $dateString. Clearing summary data.")
-            appDatabase.withTransaction {
-                dailyAppUsageDao.deleteUsageForDate(dateString)
-                scrollSessionDao.deleteSessionsForDate(dateString)
-                dailyDeviceSummaryDao.deleteSummaryForDate(dateString)
-            }
+            Timber.i("No new events to process for $dateString. No action taken.")
             return@withContext
         }
 
@@ -135,7 +135,10 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
     private fun processScrollEvents(events: List<RawAppEvent>, filterSet: Set<String>): List<ScrollSessionRecord> {
         val scrollEvents = events
-            .filter { it.eventType == RawAppEvent.EVENT_TYPE_SCROLL && it.value != null && it.packageName !in filterSet }
+            .filter {
+                (it.eventType == RawAppEvent.EVENT_TYPE_SCROLL_MEASURED || it.eventType == RawAppEvent.EVENT_TYPE_SCROLL_INFERRED)
+                        && it.value != null && it.packageName !in filterSet
+            }
             .sortedBy { it.eventTimestamp }
 
         if (scrollEvents.isEmpty()) return emptyList()
@@ -144,6 +147,8 @@ class ScrollDataRepositoryImpl @Inject constructor(
         var currentSession: ScrollSessionRecord? = null
 
         for (event in scrollEvents) {
+            val eventDataType = if (event.eventType == RawAppEvent.EVENT_TYPE_SCROLL_MEASURED) "MEASURED" else "INFERRED"
+
             if (currentSession == null) {
                 currentSession = ScrollSessionRecord(
                     packageName = event.packageName,
@@ -152,11 +157,13 @@ class ScrollDataRepositoryImpl @Inject constructor(
                     scrollAmount = event.value!!,
                     dateString = event.eventDateString,
                     sessionEndReason = "PROCESSED",
-                    dataType = "MEASURED"
+                    dataType = eventDataType
                 )
             } else {
                 val timeDiff = event.eventTimestamp - currentSession.sessionEndTime
-                if (event.packageName == currentSession.packageName && timeDiff <= AppConstants.SESSION_MERGE_GAP_MS) {
+                if (event.packageName == currentSession.packageName &&
+                    currentSession.dataType == eventDataType &&
+                    timeDiff <= AppConstants.SESSION_MERGE_GAP_MS) {
                     currentSession = currentSession.copy(
                         sessionEndTime = event.eventTimestamp,
                         scrollAmount = currentSession.scrollAmount + event.value!!
@@ -170,7 +177,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
                         scrollAmount = event.value!!,
                         dateString = event.eventDateString,
                         sessionEndReason = "PROCESSED",
-                        dataType = "MEASURED"
+                        dataType = eventDataType
                     )
                 }
             }
@@ -221,17 +228,10 @@ class ScrollDataRepositoryImpl @Inject constructor(
         return Pair(usageRecords, deviceSummary)
     }
 
-    override fun getLiveSummaryForDate(dateString: String): Flow<DailyDeviceSummary> {
+    override fun getRawEventsForDateFlow(dateString: String): Flow<List<RawAppEvent>> {
         val startOfDayUTC = DateUtil.getStartOfDayUtcMillis(dateString)
         val endOfDayUTC = DateUtil.getEndOfDayUtcMillis(dateString)
-
         return rawAppEventDao.getEventsForPeriodFlow(startOfDayUTC, endOfDayUTC)
-            .distinctUntilChanged()
-            .map { events ->
-                Timber.d("Live summary triggered for $dateString. Processing ${events.size} events.")
-                val (_, summary) = processUsageAndDeviceSummary(events, buildFilterSet(), dateString)
-                summary ?: DailyDeviceSummary(dateString = dateString) // Return default if null
-            }
     }
 
     private fun isFiltered(packageName: String, filterSet: Set<String>): Boolean {
@@ -386,16 +386,40 @@ class ScrollDataRepositoryImpl @Inject constructor(
     }
 
     override suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean = withContext(ioDispatcher) {
+        if (!PermissionUtils.hasUsageStatsPermission(context)) {
+            Timber.w("Cannot perform backfill, Usage Stats permission not granted.")
+            return@withContext false
+        }
         Timber.i("Starting historical backfill for $numberOfDays days.")
-        val today = DateUtil.getCurrentLocalDateString()
-        for (i in 0 until numberOfDays) {
+
+        for (i in 1..numberOfDays) { // Start from 1 to skip today
             val date = DateUtil.getPastDateString(i)
-            if (date == today) continue
+            Timber.d("Backfilling date: $date")
             try {
+                // Step 1: Fetch historical system events for the day
+                val startTime = DateUtil.getStartOfDayUtcMillis(date)
+                val endTime = DateUtil.getEndOfDayUtcMillis(date)
+
+                val usageEvents = usageStatsManager.queryEvents(startTime, endTime)
+                val eventsToInsert = mutableListOf<RawAppEvent>()
+                val event = UsageEvents.Event()
+
+                while (usageEvents.hasNextEvent()) {
+                    usageEvents.getNextEvent(event)
+                    mapUsageEventToRawAppEvent(event)?.let { eventsToInsert.add(it) }
+                }
+
+                if (eventsToInsert.isNotEmpty()) {
+                    rawAppEventDao.insertEvents(eventsToInsert)
+                    Timber.d("Inserted ${eventsToInsert.size} historical events for $date.")
+                }
+
+                // Step 2: Process the newly fetched events for that day
                 processAndSummarizeDate(date)
+
             } catch (e: Exception) {
                 Timber.e(e, "Error during backfill for date: $date")
-                return@withContext false
+                // We continue to the next day even if one day fails
             }
         }
         Timber.i("Historical backfill completed.")

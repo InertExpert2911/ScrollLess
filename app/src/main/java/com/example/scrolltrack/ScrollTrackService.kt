@@ -8,18 +8,18 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.app.NotificationCompat
 import com.example.scrolltrack.db.RawAppEvent
 import com.example.scrolltrack.db.RawAppEventDao
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import kotlin.math.abs
+import com.example.scrolltrack.util.AppConstants
+import kotlin.math.sqrt
 
 @AndroidEntryPoint
 class ScrollTrackService : AccessibilityService() {
@@ -31,6 +31,11 @@ class ScrollTrackService : AccessibilityService() {
 
     @Inject
     lateinit var rawAppEventDao: RawAppEventDao
+
+    private val inferredScrollCounters = ConcurrentHashMap<String, Int>()
+    private val inferredScrollJobs = ConcurrentHashMap<String, Job>()
+
+    private var currentForegroundPackage: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -59,44 +64,102 @@ class ScrollTrackService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         val info = AccessibilityServiceInfo().apply {
-            eventTypes = AccessibilityEvent.TYPE_VIEW_SCROLLED
+            eventTypes = AccessibilityEvent.TYPE_VIEW_SCROLLED or
+                    AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                    AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             notificationTimeout = 100 // ms
         }
         this.serviceInfo = info
-        Log.i(TAG, "Accessibility service connected and configured to listen for scroll events.")
+        Log.i(TAG, "Accessibility service connected and configured.")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.eventType != AccessibilityEvent.TYPE_VIEW_SCROLLED) {
-            return
-        }
+        if (event == null) return
+        val packageName = event.packageName?.toString() ?: return
 
-        val packageName = event.packageName?.toString()
-        if (packageName.isNullOrEmpty()) {
-            return
+        when (event.eventType) {
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> handleWindowStateChange(event)
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> handleMeasuredScroll(event, packageName)
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> handleInferredScroll(event, packageName)
         }
+    }
+
+    private fun handleWindowStateChange(event: AccessibilityEvent) {
+        val sourceNode = event.source
+        if (sourceNode != null && sourceNode.isFocused) {
+            currentForegroundPackage = sourceNode.packageName?.toString()
+            Log.d(TAG, "Foreground package updated to: $currentForegroundPackage")
+        }
+        sourceNode?.recycle()
+    }
+
+    private fun handleMeasuredScroll(event: AccessibilityEvent, packageName: String) {
+        if (!isNodeScrollable(event.source)) return
 
         val scrollDelta = (abs(event.scrollDeltaX) + abs(event.scrollDeltaY)).toLong()
         if (scrollDelta == 0L) return
 
-        val timestamp = System.currentTimeMillis()
+        val activePackage = currentForegroundPackage ?: packageName
+        logRawEvent(
+            activePackage,
+            event.className?.toString(),
+            RawAppEvent.EVENT_TYPE_SCROLL_MEASURED,
+            scrollDelta
+        )
+    }
 
-        serviceScope.launch {
-            try {
-                val rawEvent = RawAppEvent(
-                    packageName = packageName,
-                    className = event.className?.toString(),
-                    eventType = RawAppEvent.EVENT_TYPE_SCROLL,
-                    eventTimestamp = timestamp,
-                    eventDateString = DateUtil.formatUtcTimestampToLocalDateString(timestamp),
-                    source = RawAppEvent.SOURCE_ACCESSIBILITY,
-                    value = scrollDelta
+    private fun handleInferredScroll(event: AccessibilityEvent, packageName: String) {
+        if (!isNodeScrollable(event.source)) return
+
+        val activePackage = currentForegroundPackage ?: return
+        inferredScrollCounters.merge(activePackage, 1, Int::plus)
+
+        inferredScrollJobs[activePackage]?.cancel()
+        inferredScrollJobs[activePackage] = serviceScope.launch {
+            delay(AppConstants.INFERRED_SCROLL_DEBOUNCE_MS)
+            val count = inferredScrollCounters.remove(activePackage) ?: 0
+            if (count > 0) {
+                val inferredValue = (sqrt(count.toDouble()) * AppConstants.INFERRED_SCROLL_MULTIPLIER).toLong()
+                logRawEvent(
+                    activePackage,
+                    event.className?.toString(),
+                    RawAppEvent.EVENT_TYPE_SCROLL_INFERRED,
+                    inferredValue
                 )
-                rawAppEventDao.insertEvent(rawEvent)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to insert scroll event into database.", e)
             }
+            inferredScrollJobs.remove(activePackage)
+        }
+    }
+
+    private fun isNodeScrollable(node: AccessibilityNodeInfo?): Boolean {
+        var currentNode = node
+        var depth = 0
+        while (currentNode != null && depth < 10) {
+            if (currentNode.isScrollable) {
+                currentNode.recycle()
+                return true
+            }
+            val parent = currentNode.parent
+            currentNode.recycle()
+            currentNode = parent
+            depth++
+        }
+        return false
+    }
+
+    private fun logRawEvent(packageName: String, className: String?, eventType: Int, value: Long?) {
+        serviceScope.launch {
+            val eventToStore = RawAppEvent(
+                packageName = packageName,
+                className = className,
+                eventType = eventType,
+                eventTimestamp = System.currentTimeMillis(),
+                eventDateString = DateUtil.getCurrentLocalDateString(),
+                source = RawAppEvent.SOURCE_ACCESSIBILITY,
+                value = value
+            )
+            rawAppEventDao.insertEvent(eventToStore)
         }
     }
 
@@ -106,7 +169,7 @@ class ScrollTrackService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        serviceScope.cancel()
-        Log.i(TAG, "ScrollTrackService destroyed.")
+        serviceJob.cancel()
+        Log.d(TAG, "ScrollTrackService destroyed.")
     }
 }

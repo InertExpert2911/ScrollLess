@@ -125,6 +125,8 @@ private fun NavGraphBuilder.addDashboardGraph(
             val totalNotifications by viewModel.totalNotificationsToday.collectAsStateWithLifecycle()
             val topWeeklyApp by viewModel.topWeeklyApp.collectAsStateWithLifecycle()
             val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+            val firstUnlockTime by viewModel.firstUnlockTime.collectAsStateWithLifecycle()
+            val lastUnlockTime by viewModel.lastUnlockTime.collectAsStateWithLifecycle()
 
             TodaySummaryScreen(
                 navController = navController,
@@ -143,6 +145,8 @@ private fun NavGraphBuilder.addDashboardGraph(
                 scrollDistanceMeters = "${scrollDistanceFormatted.first} ${scrollDistanceFormatted.second}",
                 totalUnlocks = totalUnlocks,
                 totalNotifications = totalNotifications,
+                firstUnlockTime = firstUnlockTime,
+                lastUnlockTime = lastUnlockTime,
                 onNavigateToHistoricalUsage = { navController.navigate(ScreenRoutes.HistoricalUsageRoute.route) },
                 onNavigateToUnlocks = { navController.navigate(ScreenRoutes.UnlocksRoute.route) },
                 onNavigateToNotifications = { navController.navigate(ScreenRoutes.NotificationsRoute.route) },
@@ -197,7 +201,7 @@ private fun NavGraphBuilder.addDashboardGraph(
                 val selectableDates by scrollDetailViewModel.selectableDatesForScrollDetail.collectAsStateWithLifecycle()
 
                 LaunchedEffect(date) {
-                    DateUtil.parseLocalDateString(date)?.time?.let {
+                    DateUtil.parseLocalDate(date)?.atStartOfDay(java.time.ZoneOffset.UTC)?.toInstant()?.toEpochMilli()?.let {
                         scrollDetailViewModel.updateSelectedDateForScrollDetail(it)
                     }
                 }

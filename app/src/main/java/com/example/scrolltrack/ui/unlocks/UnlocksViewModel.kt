@@ -22,7 +22,9 @@ data class UnlocksUiState(
     val daysTracked: Int = 0,
     val barChartData: List<Pair<String, Int>> = emptyList(),
     val firstUnlockTime: String? = null,
-    val lastUnlockTime: String? = null
+    val lastUnlockTime: String? = null,
+    val heatmapData: Map<LocalDate, Int> = emptyMap(),
+    val totalUnlocksLast180Days: Int = 0
 )
 
 @HiltViewModel
@@ -59,6 +61,13 @@ class UnlocksViewModel @Inject constructor(
                 DateUtil.formatUtcTimestampToTimeString(it)
             }
 
+            val heatmapData = summaries.associate {
+                LocalDate.parse(it.dateString) to it.totalUnlockCount
+            }
+            val totalUnlocksLast180Days = summaries
+                .filter { LocalDate.parse(it.dateString) >= LocalDate.now().minusDays(180) }
+                .sumOf { it.totalUnlockCount }
+
             UnlocksUiState(
                 weeklyAverage = weeklyAverage,
                 dailyAverage = dailyAverage,
@@ -66,7 +75,9 @@ class UnlocksViewModel @Inject constructor(
                 daysTracked = daysTracked,
                 barChartData = barChartData,
                 firstUnlockTime = firstUnlockTime,
-                lastUnlockTime = lastUnlockTime
+                lastUnlockTime = lastUnlockTime,
+                heatmapData = heatmapData,
+                totalUnlocksLast180Days = totalUnlocksLast180Days
             )
         }
         .stateIn(

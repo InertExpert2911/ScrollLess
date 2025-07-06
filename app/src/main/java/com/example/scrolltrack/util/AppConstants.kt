@@ -29,6 +29,16 @@ object AppConstants {
      */
     val SESSION_MERGE_GAP_MS = TimeUnit.SECONDS.toMillis(30)
 
+    /**
+     * The multiplier used in the square root model for calculating inferred scroll distance.
+     */
+    const val INFERRED_SCROLL_MULTIPLIER = 50.0
+
+    /**
+     * The window over which to batch content change events for a single inferred scroll calculation.
+     */
+    const val INFERRED_SCROLL_DEBOUNCE_MS = 1500L
+
     // --- Aggregation Logic ---
     const val QUICK_SWITCH_THRESHOLD_MS = 2000L // Not currently in use, but kept for future logic refinement
 

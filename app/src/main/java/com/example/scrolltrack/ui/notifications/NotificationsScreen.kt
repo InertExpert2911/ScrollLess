@@ -22,6 +22,17 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.graphics.Color
 import coil.compose.rememberAsyncImagePainter
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import com.example.scrolltrack.R
+import com.example.scrolltrack.data.AppMetadataRepository
+import com.example.scrolltrack.db.AppMetadata
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,7 +87,7 @@ fun NotificationsScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    if (state.treemapItems.isEmpty()) {
+                    if (state.notificationCounts.isEmpty()) {
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
@@ -88,12 +99,50 @@ fun NotificationsScreen(
                             )
                         }
                     } else {
-                        Treemap(
-                            items = state.treemapItems,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(MaterialTheme.shapes.large)
-                        )
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(state.notificationCounts, key = { it.first.packageName }) { (metadata, count) ->
+                                var icon by remember { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
+                                LaunchedEffect(metadata.packageName) {
+                                    icon = viewModel.getIcon(metadata.packageName)
+                                }
+
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Image(
+                                            painter = rememberAsyncImagePainter(
+                                                model = icon ?: R.mipmap.ic_launcher_round
+                                            ),
+                                            contentDescription = "${metadata.appName} icon",
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(CircleShape)
+                                        )
+                                        Spacer(modifier = Modifier.width(16.dp))
+                                        Text(
+                                            text = metadata.appName,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Text(
+                                            text = count.toString(),
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

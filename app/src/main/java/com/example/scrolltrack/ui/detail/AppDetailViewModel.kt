@@ -22,13 +22,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
+import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
+import java.time.temporal.WeekFields
 import javax.inject.Inject
 import kotlinx.coroutines.async
+import java.time.LocalDate
+import java.time.format.FormatStyle
+import java.time.temporal.TemporalAdjusters
+import java.util.Locale
 import kotlin.math.abs
 
 
@@ -37,7 +39,13 @@ enum class ChartPeriodType {
     WEEKLY,
     MONTHLY
 }
-
+data class CombinedAppDailyData(
+    val date: String,
+    val usageTimeMillis: Long,
+    val activeTimeMillis: Long,
+    val scrollUnits: Long,
+    val openCount: Int
+)
 @HiltViewModel
 class AppDetailViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
@@ -56,8 +64,8 @@ class AppDetailViewModel @Inject constructor(
     private val _appDetailAppIcon = MutableStateFlow<Drawable?>(null)
     val appDetailAppIcon: StateFlow<Drawable?> = _appDetailAppIcon.asStateFlow()
 
-    private val _appDetailChartData = MutableStateFlow<List<AppDailyDetailData>>(emptyList())
-    val appDetailChartData: StateFlow<List<AppDailyDetailData>> = _appDetailChartData.asStateFlow()
+    private val _appDetailChartData = MutableStateFlow<List<CombinedAppDailyData>>(emptyList())
+    val appDetailChartData: StateFlow<List<CombinedAppDailyData>> = _appDetailChartData.asStateFlow()
 
     private val _currentChartPeriodType = MutableStateFlow(ChartPeriodType.DAILY)
     val currentChartPeriodType: StateFlow<ChartPeriodType> = _currentChartPeriodType.asStateFlow()
@@ -125,7 +133,7 @@ class AppDetailViewModel @Inject constructor(
         loadAppDetailChartData(packageName, _currentChartPeriodType.value, _currentChartReferenceDate.value)
     }
 
-    private fun loadAppDetailChartData(packageName: String, period: ChartPeriodType, referenceDate: String) {
+    private fun loadAppDetailChartData(packageName: String, period: ChartPeriodType, referenceDateStr: String) {
         viewModelScope.launch(Dispatchers.IO) {
             _appDetailChartData.value = emptyList()
             _appDetailFocusedUsageDisplay.value = "..."
@@ -137,7 +145,15 @@ class AppDetailViewModel @Inject constructor(
             _appDetailPeriodDescriptionText.value = null
             _appDetailFocusedOpenCount.value = 0
 
-            Log.d("AppDetailViewModel", "Loading chart data for $packageName, Period: $period, RefDate: $referenceDate")
+            Log.d("AppDetailViewModel", "Loading chart data for $packageName, Period: $period, RefDate: $referenceDateStr")
+
+            val referenceDate = DateUtil.parseLocalDate(referenceDateStr)
+            if (referenceDate == null) {
+                Log.e("AppDetailViewModel", "Could not parse reference date: $referenceDateStr")
+                // Handle error state appropriately, maybe clear the chart
+                _appDetailChartData.value = emptyList()
+                return@launch
+            }
 
             val dateStringsForCurrentPeriod = calculateDateStringsForPeriod(period, referenceDate)
             if (dateStringsForCurrentPeriod.isEmpty()) {
@@ -162,49 +178,35 @@ class AppDetailViewModel @Inject constructor(
             val currentUsageMap = currentPeriodUsageRecords.associateBy { it.dateString }
             val currentScrollMap = currentPeriodScrollRecords.associateBy { it.dateString }
 
-            val combinedData = currentUsageMap.toMutableMap()
-            currentScrollMap.forEach { scroll ->
-                val existing = combinedData[scroll.key]
-                if (existing != null) {
-                    combinedData[scroll.key] = existing.copy(
-                        // This is a bit of a hack, storing scroll in a temp field.
-                        // A proper solution would be a combined data class.
-                        lastUpdatedTimestamp = scroll.value.totalScroll
-                    )
-                }
-            }
+            val allDates = dateStringsForCurrentPeriod.toSet()
 
-            val chartEntries = combinedData.values.mapNotNull { record ->
-                val date = DateUtil.parseLocalDateString(record.dateString)
-                if (date != null) {
-                    AppDailyDetailData(
-                        date = record.dateString,
-                        usageTimeMillis = record.usageTimeMillis,
-                        activeTimeMillis = record.activeTimeMillis,
-                        scrollUnits = record.lastUpdatedTimestamp // Re-using this field for scroll
-                    )
-                } else {
-                    null
-                }
+            val chartEntries = allDates.map { dateString ->
+                val usage = currentUsageMap[dateString]
+                val scroll = currentScrollMap[dateString]
+                CombinedAppDailyData(
+                    date = dateString,
+                    usageTimeMillis = usage?.usageTimeMillis ?: 0L,
+                    activeTimeMillis = usage?.activeTimeMillis ?: 0L,
+                    scrollUnits = scroll?.totalScroll ?: 0L,
+                    openCount = usage?.appOpenCount ?: 0
+                )
             }.sortedBy { it.date }
+
             _appDetailChartData.value = chartEntries
             Log.d("AppDetailViewModel", "Chart data loaded: ${chartEntries.size} points for current period.")
 
-            val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
-            DateUtil.parseLocalDateString(referenceDate)?.let { calendar.time = it }
-            val sdfDisplay = SimpleDateFormat("EEE, MMM d", Locale.getDefault())
-            val sdfMonth = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
-
+            val sdfDisplay = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+            val sdfMonth = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())
 
             when (period) {
                 ChartPeriodType.DAILY -> {
-                    val focusedDayData = chartEntries.firstOrNull { it.date == referenceDate }
+                    val focusedDayData = chartEntries.firstOrNull { it.date == referenceDateStr }
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(focusedDayData?.usageTimeMillis ?: 0L)
                     _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(focusedDayData?.activeTimeMillis ?: 0L)
-                    val (dist, unit) = conversionUtil.formatScrollDistance(focusedDayData?.scrollUnits ?: 0L, context)
-                    _appDetailFocusedScrollDisplay.value = "$dist $unit"
+                    val scrollDistance = conversionUtil.formatScrollDistance(focusedDayData?.scrollUnits ?: 0L, context)
+                    _appDetailFocusedScrollDisplay.value = "${scrollDistance.first} ${scrollDistance.second}"
                     _appDetailPeriodDescriptionText.value = "Daily Summary"
-                    _appDetailFocusedPeriodDisplay.value = sdfDisplay.format(calendar.time)
+                    _appDetailFocusedPeriodDisplay.value = referenceDate.format(sdfDisplay)
                     _appDetailWeekNumberDisplay.value = null
                     _appDetailComparisonText.value = null
                 }
@@ -214,12 +216,12 @@ class AppDetailViewModel @Inject constructor(
                     val currentPeriodAverageActiveUsage = calculateAverageActiveUsage(chartEntries)
                     _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageActiveUsage)
                     val currentPeriodAverageScroll = calculateAverageScroll(chartEntries)
-                    val (dist, unit) = conversionUtil.formatScrollDistance(currentPeriodAverageScroll, context)
-                    _appDetailFocusedScrollDisplay.value = "$dist $unit"
+                    val scrollDistance = conversionUtil.formatScrollDistance(currentPeriodAverageScroll, context)
+                    _appDetailFocusedScrollDisplay.value = "${scrollDistance.first} ${scrollDistance.second}"
                     _appDetailPeriodDescriptionText.value = "Weekly Average"
-                    val (startOfWeekStr, endOfWeekStr) = getPeriodDisplayStrings(period, referenceDate)
-                    _appDetailFocusedPeriodDisplay.value = "$startOfWeekStr - $endOfWeekStr"
-                    _appDetailWeekNumberDisplay.value = "Week ${getWeekOfYear(calendar)}"
+                    val (startOfWeek, endOfWeek) = getPeriodDisplayStrings(period, referenceDate)
+                    _appDetailFocusedPeriodDisplay.value = "$startOfWeek - $endOfWeek"
+                    _appDetailWeekNumberDisplay.value = "Week ${DateUtil.getWeekOfYear(referenceDate)}"
 
                     val (prevWeekDateStrings, _) = calculatePreviousPeriodDateStrings(period, referenceDate)
                     if (prevWeekDateStrings.isNotEmpty()) {
@@ -236,11 +238,11 @@ class AppDetailViewModel @Inject constructor(
                     val currentPeriodAverageActiveUsage = calculateAverageActiveUsage(chartEntries)
                     _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageActiveUsage)
                     val currentPeriodAverageScroll = calculateAverageScroll(chartEntries)
-                    val (dist, unit) = conversionUtil.formatScrollDistance(currentPeriodAverageScroll, context)
-                    _appDetailFocusedScrollDisplay.value = "$dist $unit"
+                    val scrollDistance = conversionUtil.formatScrollDistance(currentPeriodAverageScroll, context)
+                    _appDetailFocusedScrollDisplay.value = "${scrollDistance.first} ${scrollDistance.second}"
 
                     _appDetailPeriodDescriptionText.value = "Monthly Average"
-                    _appDetailFocusedPeriodDisplay.value = sdfMonth.format(calendar.time)
+                    _appDetailFocusedPeriodDisplay.value = referenceDate.format(sdfMonth)
                     _appDetailWeekNumberDisplay.value = null
 
                     val (prevMonthDateStrings, _) = calculatePreviousPeriodDateStrings(period, referenceDate)
@@ -256,21 +258,21 @@ class AppDetailViewModel @Inject constructor(
         }
     }
 
-    private fun getWeekOfYear(calendar: Calendar): Int {
-        return calendar.get(Calendar.WEEK_OF_YEAR)
+    private fun getWeekOfYear(date: LocalDate): Int {
+        return DateUtil.getWeekOfYear(date)
     }
 
-    private fun calculateAverageUsage(data: List<AppDailyDetailData>): Long {
+    private fun calculateAverageUsage(data: List<CombinedAppDailyData>): Long {
         if (data.isEmpty()) return 0L
         return data.sumOf { it.usageTimeMillis } / data.size
     }
 
-    private fun calculateAverageActiveUsage(data: List<AppDailyDetailData>): Long {
+    private fun calculateAverageActiveUsage(data: List<CombinedAppDailyData>): Long {
         if (data.isEmpty()) return 0L
         return data.sumOf { it.activeTimeMillis } / data.size
     }
 
-    private fun calculateAverageScroll(data: List<AppDailyDetailData>): Long {
+    private fun calculateAverageScroll(data: List<CombinedAppDailyData>): Long {
         if (data.isEmpty()) return 0L
         return data.sumOf { it.scrollUnits } / data.size
     }
@@ -318,106 +320,67 @@ class AppDetailViewModel @Inject constructor(
         }
     }
 
-    private fun calculatePreviousPeriodDateStrings(period: ChartPeriodType, currentReferenceDateStr: String): Pair<List<String>, String> {
-        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
-        DateUtil.parseLocalDateString(currentReferenceDateStr)?.let { calendar.time = it }
-        lateinit var newReferenceDateStr: String
-
-        val previousPeriodDates = when (period) {
-            ChartPeriodType.DAILY -> {
-                calendar.add(Calendar.WEEK_OF_YEAR, -1)
-                newReferenceDateStr = DateUtil.formatDateToYyyyMmDdString(calendar.time)
-                calculateDateStringsForPeriod(ChartPeriodType.WEEKLY, newReferenceDateStr)
-            }
-            ChartPeriodType.WEEKLY -> {
-                calendar.add(Calendar.WEEK_OF_YEAR, -1)
-                newReferenceDateStr = DateUtil.formatDateToYyyyMmDdString(calendar.time)
-                calculateDateStringsForPeriod(ChartPeriodType.WEEKLY, newReferenceDateStr)
-            }
-            ChartPeriodType.MONTHLY -> {
-                calendar.add(Calendar.MONTH, -1)
-                newReferenceDateStr = DateUtil.formatDateToYyyyMmDdString(calendar.time)
-                calculateDateStringsForPeriod(ChartPeriodType.MONTHLY, newReferenceDateStr)
-            }
+    private fun calculatePreviousPeriodDateStrings(period: ChartPeriodType, currentReferenceDate: LocalDate): Pair<List<String>, LocalDate> {
+        val previousReferenceDate = when (period) {
+            ChartPeriodType.DAILY -> currentReferenceDate.minusWeeks(1) // Not used but for completeness
+            ChartPeriodType.WEEKLY -> currentReferenceDate.minusWeeks(1)
+            ChartPeriodType.MONTHLY -> currentReferenceDate.minusMonths(1)
         }
-        return Pair(previousPeriodDates, newReferenceDateStr)
+        val previousPeriodDates = calculateDateStringsForPeriod(period, previousReferenceDate)
+        return Pair(previousPeriodDates, previousReferenceDate)
     }
 
-    private fun getPeriodDisplayStrings(period: ChartPeriodType, referenceDateStr: String, includeYear: Boolean = true): Pair<String, String> {
-        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
-        DateUtil.parseLocalDateString(referenceDateStr)?.let { calendar.time = it }
-
-        val monthDayFormat = SimpleDateFormat("MMM d", Locale.getDefault())
-        val fullDateFormat = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
+    private fun getPeriodDisplayStrings(period: ChartPeriodType, referenceDate: LocalDate, includeYear: Boolean = true): Pair<String, String> {
+        val monthDayFormat = DateTimeFormatter.ofPattern("MMM d", Locale.getDefault())
+        val monthDayYearFormat = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault())
+        val dayOnlyFormat = DateTimeFormatter.ofPattern("d", Locale.getDefault())
 
         return when (period) {
             ChartPeriodType.DAILY -> {
-                val sdf = if (includeYear) SimpleDateFormat("EEE, MMM d, yyyy", Locale.getDefault()) else SimpleDateFormat("EEE, MMM d", Locale.getDefault())
-                Pair(sdf.format(calendar.time), "")
+                val format = if (includeYear) DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL) else DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+                Pair(referenceDate.format(format), "")
             }
             ChartPeriodType.WEEKLY -> {
-                DateUtil.parseLocalDateString(referenceDateStr)?.let { calendar.time = it }
-                val currentDayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
-                val daysToSubtract = if (currentDayOfWeek == Calendar.SUNDAY) 6 else currentDayOfWeek - Calendar.MONDAY
-                calendar.add(Calendar.DAY_OF_YEAR, -daysToSubtract)
-                val startOfWeek = calendar.time
-
-                calendar.add(Calendar.DAY_OF_YEAR, 6)
-                val endOfWeek = calendar.time
-
-                val startCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { time = startOfWeek }
-                val endCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { time = endOfWeek }
+                val startOfWeek = DateUtil.getStartOfWeek(referenceDate)
+                val endOfWeek = DateUtil.getEndOfWeek(referenceDate)
 
                 val startFormat = monthDayFormat
-                val endFormat = if (startCal.get(Calendar.YEAR) != endCal.get(Calendar.YEAR) || !includeYear) {
-                    if (includeYear) fullDateFormat else monthDayFormat
-                } else if (startCal.get(Calendar.MONTH) != endCal.get(Calendar.MONTH)) {
+                val endFormat = if (startOfWeek.year != endOfWeek.year || !includeYear) {
+                    if (includeYear) monthDayYearFormat else monthDayFormat
+                } else if (startOfWeek.month != endOfWeek.month) {
                     monthDayFormat
                 } else {
-                    SimpleDateFormat("d", Locale.getDefault())
+                    dayOnlyFormat
                 }
-                val yearSuffix = if (includeYear && startCal.get(Calendar.YEAR) == endCal.get(Calendar.YEAR)) ", ${startCal.get(Calendar.YEAR)}" else ""
+                val yearSuffix = if (includeYear && startOfWeek.year == endOfWeek.year) ", ${startOfWeek.year}" else ""
 
                 if (!includeYear){
-                    return Pair(startFormat.format(startOfWeek), SimpleDateFormat("MMM d", Locale.getDefault()).format(endOfWeek))
+                    return Pair(startOfWeek.format(monthDayFormat), endOfWeek.format(monthDayFormat))
                 }
 
-                Pair(startFormat.format(startOfWeek), "${endFormat.format(endOfWeek)}$yearSuffix")
+                Pair(startOfWeek.format(startFormat), "${endOfWeek.format(endFormat)}$yearSuffix")
             }
             ChartPeriodType.MONTHLY -> {
-                val sdf = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
-                Pair(sdf.format(calendar.time), "")
+                val format = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())
+                Pair(referenceDate.format(format), "")
             }
         }
     }
 
 
-    private fun calculateDateStringsForPeriod(period: ChartPeriodType, referenceDateStr: String): List<String> {
-        val calendar = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
-        DateUtil.parseLocalDateString(referenceDateStr)?.let { calendar.time = it }
-
+    private fun calculateDateStringsForPeriod(period: ChartPeriodType, referenceDate: LocalDate): List<String> {
         return when (period) {
             ChartPeriodType.DAILY, ChartPeriodType.WEEKLY -> {
-                DateUtil.parseLocalDateString(referenceDateStr)?.let { calendar.time = it }
-
-                val currentDayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
-                val daysToSubtract = if (currentDayOfWeek == Calendar.SUNDAY) 6 else currentDayOfWeek - Calendar.MONDAY
-                calendar.add(Calendar.DAY_OF_YEAR, -daysToSubtract)
-
+                val startOfWeek = DateUtil.getStartOfWeek(referenceDate)
                 (0..6).map {
-                    val dayCal = Calendar.getInstance().apply { time = calendar.time }
-                    dayCal.add(Calendar.DAY_OF_YEAR, it)
-                    DateUtil.formatDateToYyyyMmDdString(dayCal.time)
+                    startOfWeek.plusDays(it.toLong()).format(DateTimeFormatter.ISO_LOCAL_DATE)
                 }
             }
             ChartPeriodType.MONTHLY -> {
-                DateUtil.parseLocalDateString(referenceDateStr)?.let { calendar.time = it }
-                calendar.set(Calendar.DAY_OF_MONTH, 1)
-                val daysInMonth = calendar.getActualMaximum(Calendar.DAY_OF_MONTH)
+                val startOfMonth = DateUtil.getStartOfMonth(referenceDate)
+                val daysInMonth = startOfMonth.lengthOfMonth()
                 (0 until daysInMonth).map {
-                    val dayCal = Calendar.getInstance().apply { time = calendar.time }
-                    dayCal.add(Calendar.DAY_OF_MONTH, it)
-                    DateUtil.formatDateToYyyyMmDdString(dayCal.time)
+                    startOfMonth.plusDays(it.toLong()).format(DateTimeFormatter.ISO_LOCAL_DATE)
                 }
             }
         }
@@ -432,15 +395,13 @@ class AppDetailViewModel @Inject constructor(
     }
 
     fun navigateChartDate(direction: Int) {
-        val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-            time = DateUtil.parseLocalDateString(_currentChartReferenceDate.value) ?: Date()
+        val currentRefDate = DateUtil.parseLocalDate(_currentChartReferenceDate.value) ?: return
+        val newDate = when (_currentChartPeriodType.value) {
+            ChartPeriodType.DAILY -> currentRefDate.plusDays(direction.toLong())
+            ChartPeriodType.WEEKLY -> currentRefDate.plusWeeks(direction.toLong())
+            ChartPeriodType.MONTHLY -> currentRefDate.plusMonths(direction.toLong())
         }
-        when (_currentChartPeriodType.value) {
-            ChartPeriodType.DAILY -> cal.add(Calendar.DAY_OF_YEAR, direction)
-            ChartPeriodType.WEEKLY -> cal.add(Calendar.WEEK_OF_YEAR, direction)
-            ChartPeriodType.MONTHLY -> cal.add(Calendar.MONTH, direction)
-        }
-        val newDateStr = DateUtil.formatDateToYyyyMmDdString(cal.time)
+        val newDateStr = DateUtil.formatDateToYyyyMmDdString(newDate)
         _currentChartReferenceDate.value = newDateStr
         loadAppDetailChartData(packageName, _currentChartPeriodType.value, newDateStr)
     }

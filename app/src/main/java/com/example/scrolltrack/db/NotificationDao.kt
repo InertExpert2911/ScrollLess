@@ -17,19 +17,19 @@ interface NotificationDao {
     @Query("SELECT * FROM notifications ORDER BY post_time_utc DESC")
     fun getAllNotifications(): Flow<List<NotificationRecord>>
 
-    @Query("SELECT COUNT(DISTINCT id) FROM notifications WHERE date(post_time_utc / 1000, 'unixepoch', 'localtime') = :dateString")
+    @Query("SELECT COUNT(DISTINCT id) FROM notifications WHERE date_string = :dateString")
     fun getNotificationCountForDate(dateString: String): Flow<Int>
 
-    @Query("SELECT COUNT(DISTINCT id) FROM notifications WHERE date(post_time_utc / 1000, 'unixepoch', 'localtime') = :dateString")
+    @Query("SELECT COUNT(DISTINCT id) FROM notifications WHERE date_string = :dateString")
     suspend fun getNotificationCountForDateImmediate(dateString: String): Int
 
-    @Query("SELECT * FROM notifications WHERE date(post_time_utc / 1000, 'unixepoch', 'localtime') = :dateString")
+    @Query("SELECT * FROM notifications WHERE date_string = :dateString")
     suspend fun getNotificationsForDateList(dateString: String): List<NotificationRecord>
 
     @Query("""
         SELECT category, COUNT(*) as count
         FROM notifications
-        WHERE category IS NOT NULL AND date(post_time_utc / 1000, 'unixepoch', 'localtime') BETWEEN :startDateString AND :endDateString
+        WHERE category IS NOT NULL AND date_string BETWEEN :startDateString AND :endDateString
         GROUP BY category
         ORDER BY count DESC
     """)
@@ -40,13 +40,13 @@ interface NotificationDao {
             package_name as packageName, 
             COUNT(id) as count 
         FROM notifications 
-        WHERE date(post_time_utc / 1000, 'unixepoch', 'localtime') BETWEEN :startDateString AND :endDateString
+        WHERE date_string BETWEEN :startDateString AND :endDateString
         GROUP BY package_name 
         ORDER BY count DESC
     """)
     fun getNotificationCountPerAppForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationCountPerApp>>
 
-    @Query("SELECT * FROM notifications WHERE date(post_time_utc / 1000, 'unixepoch', 'localtime') = :dateString ORDER BY post_time_utc DESC")
+    @Query("SELECT * FROM notifications WHERE date_string = :dateString ORDER BY post_time_utc DESC")
     fun getNotificationsForDate(dateString: String): Flow<List<NotificationRecord>>
 
     @Query("DELETE FROM notifications WHERE post_time_utc < :cutoffTimestamp")

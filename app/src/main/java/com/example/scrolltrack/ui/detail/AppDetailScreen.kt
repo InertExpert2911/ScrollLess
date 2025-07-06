@@ -70,18 +70,20 @@ import com.example.scrolltrack.ui.detail.ChartState
 import com.example.scrolltrack.ui.detail.rememberChartState
 import androidx.compose.ui.unit.toSize
 import androidx.compose.material.icons.filled.Check
+import java.time.LocalDate
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.compose.rememberNavController
+import com.example.scrolltrack.ui.theme.ScrollTrackTheme
 
 // Helper functions for date formatting specific to this screen
 private fun formatDateToDayOfWeek(dateString: String): String {
-    val date = DateUtil.parseLocalDateString(dateString) ?: return ""
-    return SimpleDateFormat("E", Locale.getDefault()).format(date)
+    val date = DateUtil.parseLocalDate(dateString) ?: return ""
+    return date.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, Locale.getDefault())
 }
 
 private fun formatDateToDayOfMonth(dateString: String): String {
-    val date = DateUtil.parseLocalDateString(dateString) ?: return ""
-    val cal = Calendar.getInstance()
-    cal.time = date
-    return cal.get(Calendar.DAY_OF_MONTH).toString()
+    return DateUtil.parseLocalDate(dateString)?.dayOfMonth?.toString() ?: ""
 }
 
 // Constant for swipe threshold
@@ -130,31 +132,18 @@ fun AppDetailScreen(
 
     val canNavigateForward by remember(currentPeriodType, currentReferenceDateStr) {
         derivedStateOf {
-            val today = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
-            val refDateCal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-                time = DateUtil.parseLocalDateString(currentReferenceDateStr) ?: Date()
-            }
+            val refDate = DateUtil.parseLocalDate(currentReferenceDateStr) ?: return@derivedStateOf false
+            val today = LocalDate.now(DateUtil.UTC_ZONE_ID)
 
             when (currentPeriodType) {
-                ChartPeriodType.DAILY -> !DateUtils.isToday(refDateCal.timeInMillis)
+                ChartPeriodType.DAILY -> refDate.isBefore(today)
                 ChartPeriodType.WEEKLY -> {
-                    val endOfWeekForRef = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-                        time = refDateCal.time
-                        // Assuming week ends on the reference date for simplicity of check
-                    }
-                    // If the end of the current week view is before today, allow moving forward.
-                    // This logic assumes referenceDate is the *end* of the period.
-                    // If refDateCal is already today or in future, can't go further.
-                    !DateUtils.isToday(endOfWeekForRef.timeInMillis) && endOfWeekForRef.before(today)
-
+                    val endOfWeekForRef = DateUtil.getEndOfWeek(refDate)
+                    endOfWeekForRef.isBefore(today)
                 }
                 ChartPeriodType.MONTHLY -> {
-                    val endOfMonthForRef = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-                        time = refDateCal.time
-                        set(Calendar.DAY_OF_MONTH, getActualMaximum(Calendar.DAY_OF_MONTH))
-                    }
-                    // If the end of the current month view is before today, allow moving forward.
-                    !DateUtils.isToday(endOfMonthForRef.timeInMillis) && endOfMonthForRef.before(today)
+                    val endOfMonthForRef = DateUtil.getEndOfMonth(refDate)
+                    endOfMonthForRef.isBefore(today)
                 }
             }
         }

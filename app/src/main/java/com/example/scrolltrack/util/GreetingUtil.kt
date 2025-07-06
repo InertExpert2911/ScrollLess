@@ -1,9 +1,8 @@
 package com.example.scrolltrack.util
 
-import java.util.Calendar
+import java.time.LocalTime
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.random.Random
 
 @Singleton
 class GreetingUtil @Inject constructor() {
@@ -30,9 +29,8 @@ class GreetingUtil @Inject constructor() {
      * Generates a time-of-day appropriate greeting with a random emoji.
      * @return A greeting string like "Good Morning 👋".
      */
-    fun getGreeting(calendar: Calendar = Calendar.getInstance()): String {
-        val hour = calendar.get(Calendar.HOUR_OF_DAY)
-        return getGreetingForHour(hour)
+    fun getGreeting(time: LocalTime = LocalTime.now()): String {
+        return getGreetingForHour(time.hour)
     }
 
     internal fun getGreetingForHour(hour: Int): String {

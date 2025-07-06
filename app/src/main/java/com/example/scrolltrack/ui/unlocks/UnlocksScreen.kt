@@ -8,35 +8,23 @@ import androidx.compose.material.icons.filled.AvTimer
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.PhoneAndroid
-import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import java.text.NumberFormat
-import kotlin.math.roundToInt
-import java.util.Calendar
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
-import java.text.SimpleDateFormat
+import java.time.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,7 +52,9 @@ fun UnlocksScreen(
     ) { innerPadding ->
         if (uiState.daysTracked == 0) {
             Box(
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -84,13 +74,6 @@ fun UnlocksScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-                            Text(
-                "Unlock Patterns",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-
             // Stats Grid
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 UnlockStatCard(
@@ -107,27 +90,34 @@ fun UnlocksScreen(
                 )
                 UnlockStatCard(
                     modifier = Modifier.weight(1f),
-                                    label = "Total Unlocks",
+                    label = "Total Unlocks",
                     value = uiState.totalUnlocks.toString(),
                     icon = Icons.Default.PhoneAndroid
                 )
             }
 
-            // Bar Chart for last 7 days
+            // Heatmap for last 180 days
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp)) {
-                    Text("Last 7 Days", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Last 180 Days (${uiState.totalUnlocksLast180Days} unlocks)",
+                        style = MaterialTheme.typography.titleMedium
+                    )
                     Spacer(Modifier.height(16.dp))
-                    if (uiState.barChartData.isNotEmpty()) {
-                        SimpleBarChart(
-                            data = uiState.barChartData,
+                    if (uiState.heatmapData.isNotEmpty()) {
+                        CalendarHeatmap(
+                            data = uiState.heatmapData,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(200.dp)
-                                )
-                            } else {
-                        Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                           Text("No recent data.")
+                        )
+                    } else {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(200.dp), contentAlignment = Alignment.Center
+                        ) {
+                            Text("No recent data.")
                         }
                     }
                 }
@@ -153,47 +143,53 @@ fun UnlocksScreen(
 }
 
 @Composable
-fun SimpleBarChart(
-    data: List<Pair<String, Int>>,
+fun CalendarHeatmap(
+    data: Map<LocalDate, Int>,
     modifier: Modifier = Modifier
 ) {
-    val maxVal = data.maxOfOrNull { it.second } ?: 0
-    val primaryColor = MaterialTheme.colorScheme.primary
-    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val textMeasurer = rememberTextMeasurer()
-    val labelStyle = MaterialTheme.typography.bodySmall.copy(color = labelColor)
-    val axisLabelPaint = remember { android.graphics.Paint().apply { textAlign = android.graphics.Paint.Align.CENTER } }
+    val endDate = LocalDate.now()
+    val startDate = endDate.minusDays(180)
+    val weekCount = 26 // Approx 180 days / 7 days/week
 
+    val maxCount = data.values.maxOrNull() ?: 1
+    val colorStops = listOf(
+        MaterialTheme.colorScheme.surfaceVariant,
+        MaterialTheme.colorScheme.primaryContainer,
+        MaterialTheme.colorScheme.primary
+    )
+    val emptyCellColor = MaterialTheme.colorScheme.surfaceContainer
 
     Canvas(modifier = modifier) {
-        val barCount = data.size
-        if (barCount == 0) return@Canvas
+        val cellSize = size.width / weekCount
+        val cellPadding = cellSize * 0.1f
 
-        val barWidth = size.width / (barCount * 2)
-        val spaceBetweenBars = barWidth
+        for (i in 0 until 180) {
+            val date = startDate.plusDays(i.toLong())
+            val dayOfWeek = date.dayOfWeek.value % 7 // Sun = 0, Mon = 1...
+            val weekOfYear = (i / 7)
 
-        data.forEachIndexed { index, pair ->
-            val barHeight = if (maxVal > 0) (pair.second.toFloat() / maxVal.toFloat()) * size.height * 0.9f else 0f
-            val left = (index * (barWidth + spaceBetweenBars)) + spaceBetweenBars / 2
-            val top = size.height - barHeight - (size.height * 0.1f) // Leave space at bottom for labels
+            val count = data[date] ?: 0
+            val color = if (count == 0) {
+                emptyCellColor
+            } else {
+                val ratio = count.toFloat() / maxCount
+                when {
+                    ratio > 0.66 -> colorStops[2]
+                    ratio > 0.33 -> colorStops[1]
+                    else -> colorStops[0]
+                }
+            }
+
             drawRect(
-                color = primaryColor,
-                topLeft = Offset(left, top),
-                size = androidx.compose.ui.geometry.Size(barWidth, barHeight)
-            )
-
-            // Draw labels
-            val textLayoutResult = textMeasurer.measure(
-                text = pair.first,
-                style = labelStyle
-            )
-            axisLabelPaint.color = labelColor.toArgb()
-            axisLabelPaint.textSize = labelStyle.fontSize.toPx()
-            drawContext.canvas.nativeCanvas.drawText(
-                pair.first,
-                left + barWidth / 2,
-                size.height,
-                axisLabelPaint
+                color = color,
+                topLeft = Offset(
+                    x = weekOfYear * cellSize + cellPadding,
+                    y = dayOfWeek * cellSize + cellPadding
+                ),
+                size = androidx.compose.ui.geometry.Size(
+                    cellSize - 2 * cellPadding,
+                    cellSize - 2 * cellPadding
+                )
             )
         }
     }
@@ -219,7 +215,7 @@ private fun UnlockStatCard(
                 modifier = Modifier.size(24.dp)
             )
             Spacer(modifier = Modifier.height(8.dp))
-                Text(
+            Text(
                 text = value,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,

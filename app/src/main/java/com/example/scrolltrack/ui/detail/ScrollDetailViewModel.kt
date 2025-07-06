@@ -10,6 +10,7 @@ import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
+import java.time.ZoneOffset
 import java.util.*
 import javax.inject.Inject
 
@@ -36,12 +37,14 @@ class ScrollDetailViewModel @Inject constructor(
     val selectableDatesForScrollDetail: StateFlow<Set<Long>> =
         repository.getAllDistinctUsageDateStrings()
             .map { dateStrings ->
-                dateStrings.mapNotNull { DateUtil.parseLocalDateString(it)?.time }.toSet()
+                dateStrings.mapNotNull { dateString ->
+                    DateUtil.parseLocalDate(dateString)?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli()
+                }.toSet()
             }
             .stateIn(viewModelScope, SharingStarted.Lazily, emptySet())
 
     fun updateSelectedDateForScrollDetail(dateMillis: Long) {
-        val newDateString = DateUtil.formatDateToYyyyMmDdString(Date(dateMillis))
+        val newDateString = DateUtil.formatUtcTimestampToLocalDateString(dateMillis)
         if (_selectedDateForScrollDetail.value != newDateString) {
             _selectedDateForScrollDetail.value = newDateString
         }

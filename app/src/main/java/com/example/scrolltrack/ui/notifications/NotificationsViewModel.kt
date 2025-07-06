@@ -1,11 +1,11 @@
 package com.example.scrolltrack.ui.notifications
 
-import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.scrolltrack.data.AppMetadataRepository
+import com.example.scrolltrack.data.NotificationCountPerApp
 import com.example.scrolltrack.data.ScrollDataRepository
-import com.example.scrolltrack.ui.model.NotificationTreemapItem
+import com.example.scrolltrack.db.AppMetadata
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +15,7 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
+import android.graphics.drawable.Drawable
 
 enum class NotificationPeriod {
     Daily, Weekly, Monthly
@@ -23,7 +24,7 @@ enum class NotificationPeriod {
 sealed interface NotificationsUiState {
     object Loading : NotificationsUiState
     data class Success(
-        val treemapItems: List<NotificationTreemapItem>,
+        val notificationCounts: List<Pair<AppMetadata, Int>>,
         val selectedPeriod: NotificationPeriod,
         val periodTitle: String,
         val totalCount: Int
@@ -39,11 +40,6 @@ class NotificationsViewModel @Inject constructor(
 
     private val _selectedDate = MutableStateFlow(DateUtil.getCurrentLocalDateString())
     private val _selectedPeriod = MutableStateFlow(NotificationPeriod.Weekly)
-
-    // A simple color palette for the treemap items
-    private val treemapColors = listOf(
-        Color(0xFF00497D), Color(0xFFB4D173), Color(0xFF7C292F), Color(0xFF4E6813), Color(0xFF9A4045)
-    )
 
     val uiState: StateFlow<NotificationsUiState> = combine(
         _selectedDate,
@@ -72,27 +68,18 @@ class NotificationsViewModel @Inject constructor(
             val appNotificationCounts = repository.getNotificationCountPerAppForPeriod(startDate, endDate).first()
             val totalCount = appNotificationCounts.sumOf { it.count }
 
-            val treemapItems = withContext(Dispatchers.Default) {
+            val notificationItems = withContext(Dispatchers.Default) {
                 appNotificationCounts
                     .mapNotNull { countPerApp ->
                         appMetadataRepository.getAppMetadata(countPerApp.packageName)?.let { metadata ->
-                            if (!metadata.isUserVisible || !metadata.isInstalled) return@mapNotNull null // Filter out non-visible and uninstalled apps
-                            val iconFile = appMetadataRepository.getIconFile(countPerApp.packageName)
-                            Triple(metadata, iconFile, countPerApp.count)
+                            if (!metadata.isUserVisible || !metadata.isInstalled) return@mapNotNull null
+                            metadata to countPerApp.count
                         }
                     }
-                    .mapIndexed { index, (metadata, iconFile, count) ->
-                        NotificationTreemapItem(
-                            packageName = metadata.packageName,
-                            appName = metadata.appName,
-                            count = count,
-                            icon = iconFile?.let { android.graphics.drawable.Drawable.createFromPath(it.absolutePath) },
-                            color = treemapColors[index % treemapColors.size]
-                        )
-                    }
+                    .sortedByDescending { it.second }
             }
 
-            emit(NotificationsUiState.Success(treemapItems, period, title, totalCount))
+            emit(NotificationsUiState.Success(notificationItems, period, title, totalCount))
         }
     }.stateIn(
         scope = viewModelScope,
@@ -102,5 +89,11 @@ class NotificationsViewModel @Inject constructor(
 
     fun selectPeriod(period: NotificationPeriod) {
         _selectedPeriod.value = period
+    }
+
+    suspend fun getIcon(packageName: String): Drawable? = withContext(Dispatchers.IO) {
+        appMetadataRepository.getIconFile(packageName)?.let {
+            Drawable.createFromPath(it.absolutePath)
+        }
     }
 } 

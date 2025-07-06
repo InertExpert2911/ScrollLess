@@ -14,6 +14,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
+import java.time.ZoneOffset
 import java.util.Date
 import javax.inject.Inject
 
@@ -36,7 +37,9 @@ class HistoricalViewModel @Inject constructor(
     val selectableDatesForHistoricalUsage: StateFlow<Set<Long>> =
         repository.getAllDistinctUsageDateStrings()
             .map { dateStrings ->
-                dateStrings.mapNotNull { DateUtil.parseLocalDateString(it)?.time }.toSet()
+                dateStrings.mapNotNull { dateString ->
+                    DateUtil.parseLocalDate(dateString)?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli()
+                }.toSet()
             }
             .stateIn(viewModelScope, SharingStarted.Lazily, emptySet())
 
@@ -57,7 +60,7 @@ class HistoricalViewModel @Inject constructor(
 
 
     fun updateSelectedDateForHistory(dateMillis: Long) {
-        val newDateString = DateUtil.formatDateToYyyyMmDdString(Date(dateMillis))
+        val newDateString = DateUtil.formatUtcTimestampToLocalDateString(dateMillis)
         if (_selectedDateForHistory.value != newDateString) {
             _selectedDateForHistory.value = newDateString
         }

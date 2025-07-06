@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import com.example.scrolltrack.navigation.AppNavigationBar
 import com.example.scrolltrack.navigation.AppNavigationHost
@@ -14,6 +15,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun MainScreen(
+    navController: NavHostController,
     isAccessibilityEnabledState: Boolean,
     isUsageStatsGrantedState: Boolean,
     isNotificationListenerEnabledState: Boolean,
@@ -21,8 +23,6 @@ fun MainScreen(
     onEnableUsageStatsClick: () -> Unit,
     onEnableNotificationListenerClick: () -> Unit
 ) {
-    val navController = rememberNavController()
-
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0), // Let the content handle insets
         bottomBar = {

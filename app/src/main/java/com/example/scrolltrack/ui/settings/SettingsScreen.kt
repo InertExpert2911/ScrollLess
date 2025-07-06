@@ -43,7 +43,6 @@ fun SettingsScreen(
     if (showThemeDialog) {
         ThemeSelectorDialog(
             currentTheme = selectedTheme,
-            isDarkMode = isDarkMode,
             onThemeSelected = {
                 viewModel.setSelectedTheme(it)
                 showThemeDialog = false
@@ -149,10 +148,10 @@ fun SettingRow(
 @Composable
 fun ThemeSelectorDialog(
     currentTheme: AppTheme,
-    isDarkMode: Boolean,
     onThemeSelected: (AppTheme) -> Unit,
     onDismissRequest: () -> Unit
 ) {
+    val isDarkMode = isSystemInDarkTheme()
     AlertDialog(
         onDismissRequest = onDismissRequest,
         title = { Text("Select a Theme") },

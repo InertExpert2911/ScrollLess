@@ -23,6 +23,12 @@ import com.example.scrolltrack.util.PermissionUtils.isAccessibilityServiceEnable
 import com.example.scrolltrack.util.PermissionUtils.isNotificationListenerEnabledFlow
 import com.example.scrolltrack.util.PermissionUtils.isUsageStatsPermissionGrantedFlow
 
+private data class PermissionState(
+    val accessibility: Boolean,
+    val usage: Boolean,
+    val notification: Boolean
+)
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class TodaySummaryViewModel @Inject constructor(
@@ -33,6 +39,8 @@ class TodaySummaryViewModel @Inject constructor(
     private val greetingUtil: GreetingUtil,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
+
+    private var lastPermissionState: PermissionState? = null
 
     private val _selectedDate = MutableStateFlow(DateUtil.getCurrentLocalDateString())
 
@@ -55,16 +63,16 @@ class TodaySummaryViewModel @Inject constructor(
     val greeting: StateFlow<String> = flow { emit(greetingUtil.getGreeting()) }
         .stateIn(viewModelScope, SharingStarted.Lazily, "Welcome")
 
-    private val liveSummary: Flow<DailyDeviceSummary> = _selectedDate.flatMapLatest { date ->
-        repository.getLiveSummaryForDate(date)
-    }
+    private val summaryData: StateFlow<DailyDeviceSummary?> = _selectedDate.flatMapLatest { date ->
+        repository.getDeviceSummaryForDate(date)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
     val totalPhoneUsageTodayFormatted: StateFlow<String> =
-        liveSummary.map { DateUtil.formatDuration(it.totalUsageTimeMillis) }
+        summaryData.map { DateUtil.formatDuration(it?.totalUsageTimeMillis ?: 0L) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "...")
 
     val totalPhoneUsageTodayMillis: StateFlow<Long> =
-        liveSummary.map { it.totalUsageTimeMillis }
+        summaryData.map { it?.totalUsageTimeMillis ?: 0L }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
 
     val todaysAppUsageUiList: StateFlow<List<AppUsageUiItem>> =
@@ -88,11 +96,19 @@ class TodaySummaryViewModel @Inject constructor(
             conversionUtil.formatScrollDistance(totalUnits, context)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0" to "m")
 
-    val totalUnlocksToday: StateFlow<Int> = liveSummary.map { it.totalUnlockCount }
+    val totalUnlocksToday: StateFlow<Int> = summaryData.map { it?.totalUnlockCount ?: 0 }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
 
-    val totalNotificationsToday: StateFlow<Int> = liveSummary.map { it.totalNotificationCount }
+    val totalNotificationsToday: StateFlow<Int> = summaryData.map { it?.totalNotificationCount ?: 0 }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
+
+    val firstUnlockTime: StateFlow<String> = summaryData.map {
+        it?.firstUnlockTimestampUtc?.let { ts -> DateUtil.formatUtcTimestampToTimeString(ts) } ?: "N/A"
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "N/A")
+
+    val lastUnlockTime: StateFlow<String> = summaryData.map {
+        it?.lastUnlockTimestampUtc?.let { ts -> DateUtil.formatUtcTimestampToTimeString(ts) } ?: "N/A"
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "N/A")
 
     val topWeeklyApp: StateFlow<AppUsageUiItem?> = flow {
         val today = DateUtil.getCurrentLocalDateString()
@@ -128,6 +144,19 @@ class TodaySummaryViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
+    init {
+        // This is the new reactive trigger. It observes raw events for today,
+        // waits for a quiet period (debounce), then processes them into the summary tables.
+        viewModelScope.launch {
+            repository.getRawEventsForDateFlow(DateUtil.getCurrentLocalDateString())
+                .debounce(1500L) // Wait for 1.5s of no new events before processing
+                .collect {
+                    Log.d("TodaySummaryViewModel", "Raw event change detected, processing summary.")
+                    repository.processAndSummarizeDate(DateUtil.getCurrentLocalDateString())
+                }
+        }
+    }
+
     fun onPullToRefresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
@@ -143,8 +172,24 @@ class TodaySummaryViewModel @Inject constructor(
     }
 
     private fun checkAllPermissions() {
-        // This function body can be expanded if we need to trigger logic based on permission changes
-        // For now, the flows will automatically update the UI state.
+        val currentState = PermissionState(
+            accessibility = isAccessibilityServiceEnabled.value,
+            usage = isUsagePermissionGranted.value,
+            notification = isNotificationListenerEnabled.value
+        )
+
+        lastPermissionState?.let { lastState ->
+            val accessibilityJustGranted = !lastState.accessibility && currentState.accessibility
+            val usageJustGranted = !lastState.usage && currentState.usage
+            val notificationJustGranted = !lastState.notification && currentState.notification
+
+            if (accessibilityJustGranted || usageJustGranted || notificationJustGranted) {
+                Log.i("TodaySummaryViewModel", "A permission was granted, triggering data refresh.")
+                onPullToRefresh()
+            }
+        }
+
+        lastPermissionState = currentState
     }
 
     fun updateThemePalette(theme: AppTheme) {

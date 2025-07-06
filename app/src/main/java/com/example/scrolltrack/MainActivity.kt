@@ -25,6 +25,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.navigation.compose.rememberNavController
 
 // Constants for theme variants to be used by the Switch logic
 private const val THEME_LIGHT = "light"
@@ -90,13 +91,14 @@ class MainActivity : ComponentActivity() {
             val isAccessibilityEnabled by viewModel.isAccessibilityServiceEnabled.collectAsStateWithLifecycle()
             val isUsageStatsGranted by viewModel.isUsagePermissionGranted.collectAsStateWithLifecycle()
             val isNotificationListenerEnabled by viewModel.isNotificationListenerEnabled.collectAsStateWithLifecycle()
-
+            val navController = rememberNavController()
             ScrollTrackTheme(
                 appTheme = selectedPalette,
                 darkTheme = useDarkTheme,
                 dynamicColor = false
             ) {
                 MainScreen(
+                    navController = navController,
                     isAccessibilityEnabledState = isAccessibilityEnabled,
                     isUsageStatsGrantedState = isUsageStatsGranted,
                     isNotificationListenerEnabledState = isNotificationListenerEnabled,

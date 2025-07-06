@@ -42,6 +42,7 @@ import com.example.scrolltrack.ui.theme.AppTheme
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import java.time.ZoneOffset
 
 @Composable
 fun ScrollDetailScreen(
@@ -80,7 +81,7 @@ fun ScrollDetailScreenContent(
 
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = remember(selectedDateString) {
-            DateUtil.parseLocalDateString(selectedDateString)?.time ?: System.currentTimeMillis()
+            DateUtil.parseLocalDate(selectedDateString)?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli() ?: System.currentTimeMillis()
         },
         selectableDates = object : SelectableDates {
             override fun isSelectableDate(utcTimeMillis: Long): Boolean {
