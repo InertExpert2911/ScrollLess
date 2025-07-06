@@ -207,7 +207,9 @@ fun AppScrollDetailItemEntry(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Image(
-                painter = rememberAsyncImagePainter(model = appItem.icon ?: R.mipmap.ic_launcher_round),
+                painter = rememberAsyncImagePainter(
+                    model = appItem.icon ?: R.mipmap.ic_launcher_round
+                ),
                 contentDescription = "${appItem.appName} icon",
                 modifier = Modifier
                     .size(40.dp)

@@ -21,13 +21,13 @@ class AppUiModelMapper @Inject constructor(
     suspend fun mapToAppUsageUiItem(record: DailyAppUsageRecord): AppUsageUiItem {
         return withContext(Dispatchers.IO) {
             val metadata = appMetadataRepository.getAppMetadata(record.packageName)
-            val icon = getDrawableFromIconFile(appMetadataRepository.getIconFile(record.packageName))
+            val iconFile = appMetadataRepository.getIconFile(record.packageName)
 
             if (metadata != null) {
                 AppUsageUiItem(
                     id = record.packageName,
                     appName = metadata.appName,
-                    icon = icon,
+                    icon = iconFile,
                     usageTimeMillis = record.usageTimeMillis,
                     packageName = record.packageName
                 )
@@ -42,13 +42,13 @@ class AppUiModelMapper @Inject constructor(
     suspend fun mapToAppScrollUiItem(appData: AppScrollData): AppScrollUiItem {
         return withContext(Dispatchers.IO) {
             val metadata = appMetadataRepository.getAppMetadata(appData.packageName)
-            val icon = getDrawableFromIconFile(appMetadataRepository.getIconFile(appData.packageName))
+            val iconFile = appMetadataRepository.getIconFile(appData.packageName)
 
             if (metadata != null) {
                 AppScrollUiItem(
                     id = appData.packageName,
                     appName = metadata.appName,
-                    icon = icon,
+                    icon = iconFile,
                     totalScroll = appData.totalScroll,
                     packageName = appData.packageName,
                     dataType = appData.dataType
@@ -59,12 +59,5 @@ class AppUiModelMapper @Inject constructor(
                 AppScrollUiItem(appData.packageName, fallbackAppName, null, appData.totalScroll, appData.packageName, appData.dataType)
             }
         }
-    }
-
-    private fun getDrawableFromIconFile(iconFile: File?): Drawable? {
-        if (iconFile != null && iconFile.exists()) {
-            return Drawable.createFromPath(iconFile.absolutePath)
-        }
-        return null
     }
 } 

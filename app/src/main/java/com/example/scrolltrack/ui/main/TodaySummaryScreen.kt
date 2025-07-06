@@ -16,12 +16,16 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -38,8 +42,9 @@ import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.ui.theme.AppTheme
 import com.example.scrolltrack.ui.theme.getThemeColors
 import com.example.scrolltrack.util.DateUtil
+import java.io.File
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun TodaySummaryScreen(
     navController: NavHostController,
@@ -68,170 +73,198 @@ fun TodaySummaryScreen(
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Scaffold { paddingValues ->
-        PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = onRefresh,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize(),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+    val state = rememberPullToRefreshState()
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+        modifier = modifier.fillMaxSize(),
+        state = state,
+        indicator = {
+            // Correctly access distanceFraction from the 'state' variable
+            val scale = state.distanceFraction.coerceIn(0f, 1.5f)
+            Box(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 64.dp)
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale
+                    )
             ) {
+                if (isRefreshing || state.distanceFraction > 0) {
+                    LoadingIndicator()
+                }
+            }
+        }
+    ) {
+        // The rest of your LazyColumn content remains here...
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                // Header Section
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = greeting,
+                            style = MaterialTheme.typography.displaySmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    Text(
+                        text = stringResource(id = R.string.greeting_manage_habits),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Permissions Section
+            val permissionsNeeded = !isAccessibilityServiceEnabled || !isUsageStatsPermissionGranted || !isNotificationListenerEnabled
+            if (permissionsNeeded) {
                 item {
-                    // Header Section
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = greeting,
-                                style = MaterialTheme.typography.displaySmall,
-                                color = MaterialTheme.colorScheme.onSurface
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier
+                    ) {
+                        if (!isAccessibilityServiceEnabled) {
+                            PermissionRequestCard(
+                                leadingIcon = { Icon(Icons.Filled.AccessibilityNew, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer) },
+                                title = stringResource(id = R.string.permission_accessibility_title),
+                                description = stringResource(id = R.string.permission_accessibility_description),
+                                buttonText = stringResource(id = R.string.permission_button_open_settings),
+                                onButtonClick = onEnableAccessibilityClick
                             )
                         }
-
-                        Text(
-                            text = stringResource(id = R.string.greeting_manage_habits),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                // Permissions Section
-                val permissionsNeeded = !isAccessibilityServiceEnabled || !isUsageStatsPermissionGranted || !isNotificationListenerEnabled
-                if (permissionsNeeded) {
-                    item {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            if (!isAccessibilityServiceEnabled) {
-                                PermissionRequestCard(
-                                    leadingIcon = { Icon(Icons.Filled.AccessibilityNew, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer) },
-                                    title = stringResource(id = R.string.permission_accessibility_title),
-                                    description = stringResource(id = R.string.permission_accessibility_description),
-                                    buttonText = stringResource(id = R.string.permission_button_open_settings),
-                                    onButtonClick = onEnableAccessibilityClick
-                                )
-                            }
-                            if (!isUsageStatsPermissionGranted) {
-                                PermissionRequestCard(
-                                    leadingIcon = { Icon(Icons.Filled.QueryStats, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer) },
-                                    title = stringResource(id = R.string.permission_usage_stats_title),
-                                    description = stringResource(id = R.string.permission_usage_stats_description),
-                                    buttonText = stringResource(id = R.string.permission_button_grant_access),
-                                    onButtonClick = onEnableUsageStatsClick
-                                )
-                            }
-                            if (!isNotificationListenerEnabled) {
-                                PermissionRequestCard(
-                                    leadingIcon = { Icon(Icons.Filled.NotificationsActive, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer) },
-                                    title = stringResource(id = R.string.permission_notification_listener_title),
-                                    description = stringResource(id = R.string.permission_notification_listener_description),
-                                    buttonText = stringResource(id = R.string.permission_button_grant_access),
-                                    onButtonClick = onEnableNotificationListenerClick
-                                )
-                            }
+                        if (!isUsageStatsPermissionGranted) {
+                            PermissionRequestCard(
+                                leadingIcon = { Icon(Icons.Filled.QueryStats, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer) },
+                                title = stringResource(id = R.string.permission_usage_stats_title),
+                                description = stringResource(id = R.string.permission_usage_stats_description),
+                                buttonText = stringResource(id = R.string.permission_button_grant_access),
+                                onButtonClick = onEnableUsageStatsClick
+                            )
+                        }
+                        if (!isNotificationListenerEnabled) {
+                            PermissionRequestCard(
+                                leadingIcon = { Icon(Icons.Filled.NotificationsActive, contentDescription = null, tint = MaterialTheme.colorScheme.onTertiaryContainer) },
+                                title = stringResource(id = R.string.permission_notification_listener_title),
+                                description = stringResource(id = R.string.permission_notification_listener_description),
+                                buttonText = stringResource(id = R.string.permission_button_grant_access),
+                                onButtonClick = onEnableNotificationListenerClick
+                            )
                         }
                     }
                 }
+            }
 
-                item {
-                    AppUsageCard(
-                        apps = todaysAppUsage,
-                        totalUsageTimeMillis = totalUsageTimeMillis,
-                        onAppClick = onNavigateToAppDetail
+            item {
+                AppUsageCard(
+                    apps = todaysAppUsage,
+                    totalUsageTimeMillis = totalUsageTimeMillis,
+                    onAppClick = onNavigateToAppDetail,
+                    modifier = Modifier
+                )
+            }
+
+            // Stats Grid
+            item {
+                Row(
+                    Modifier
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    StatCard(
+                        modifier = Modifier.weight(1f),
+                        label = "Phone Usage Today",
+                        value = totalUsageTime,
+                        icon = Icons.Outlined.PhoneAndroid,
+                        subValue = "View Details",
+                        onCardClick = onNavigateToHistoricalUsage
+                    )
+                    TopAppCard(
+                        modifier = Modifier.weight(1f),
+                        topApp = topWeeklyApp,
+                        onClick = onNavigateToAppDetail
                     )
                 }
+            }
 
-                // Stats Grid
-                item {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        StatCard(
-                            modifier = Modifier.weight(1f),
-                            label = "Phone Usage Today",
-                            value = totalUsageTime,
-                            icon = Icons.Outlined.PhoneAndroid,
-                            subValue = "View Details",
-                            onCardClick = onNavigateToHistoricalUsage
-                        )
-                        TopAppCard(
-                            modifier = Modifier.weight(1f),
-                            topApp = topWeeklyApp,
-                            onClick = onNavigateToAppDetail
-                        )
-                    }
-                }
-
-                item {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        StatCard(
-                            modifier = Modifier.weight(1f),
-                            label = "Screen Unlocks",
-                            value = totalUnlocks.toString(),
-                            icon = Icons.Filled.LockOpen,
-                            onCardClick = onNavigateToUnlocks
-                        )
-                        StatCard(
-                            modifier = Modifier.weight(1f),
-                            label = "Notifications",
-                            value = totalNotifications.toString(),
-                            icon = Icons.Filled.Notifications,
-                            onCardClick = onNavigateToNotifications
-                        )
-                    }
-                }
-
-                item {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        StatCard(
-                            modifier = Modifier.weight(1f),
-                            label = "First Unlock",
-                            value = firstUnlockTime,
-                            icon = Icons.Filled.HourglassTop,
-                            onCardClick = onNavigateToUnlocks
-                        )
-                        StatCard(
-                            modifier = Modifier.weight(1f),
-                            label = "Last Unlock",
-                            value = lastUnlockTime,
-                            icon = Icons.Filled.AvTimer,
-                            onCardClick = onNavigateToUnlocks
-                        )
-                    }
-                }
-
-                item {
-                    ScrollStatsCard(
-                        modifier = Modifier.fillMaxWidth(),
-                        scrollDistanceMeters = scrollDistanceMeters,
-                        totalScrollUnits = totalScrollUnits,
-                        onClick = {
-                            val todayDate = DateUtil.getCurrentLocalDateString()
-                            navController.navigate(ScreenRoutes.ScrollDetailRoute.createRoute(todayDate))
-                        }
+            item {
+                Row(
+                    Modifier
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    StatCard(
+                        modifier = Modifier.weight(1f),
+                        label = "Screen Unlocks",
+                        value = totalUnlocks.toString(),
+                        icon = Icons.Filled.LockOpen,
+                        onCardClick = onNavigateToUnlocks
+                    )
+                    StatCard(
+                        modifier = Modifier.weight(1f),
+                        label = "Notifications",
+                        value = totalNotifications.toString(),
+                        icon = Icons.Filled.Notifications,
+                        onCardClick = onNavigateToNotifications
                     )
                 }
+            }
+
+            item {
+                Row(
+                    Modifier
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    StatCard(
+                        modifier = Modifier.weight(1f),
+                        label = "First Unlock",
+                        value = firstUnlockTime,
+                        icon = Icons.Filled.HourglassTop,
+                        subValue = "Since ${firstUnlockTime}",
+                        onCardClick = {} // No action on click
+                    )
+                    StatCard(
+                        modifier = Modifier.weight(1f),
+                        label = "Last Unlock",
+                        value = lastUnlockTime,
+                        icon = Icons.Filled.PhoneLocked,
+                        subValue = if (lastUnlockTime != "N/A") "Today" else "",
+                        onCardClick = {} // No action on click
+                    )
+                }
+            }
+
+            item {
+                ScrollStatsCard(
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    scrollDistanceMeters = scrollDistanceMeters,
+                    totalScrollUnits = totalScrollUnits,
+                    onClick = {
+                        val todayDate = DateUtil.getCurrentLocalDateString()
+                        navController.navigate(ScreenRoutes.ScrollDetailRoute.createRoute(todayDate))
+                    }
+                )
             }
         }
     }
 }
 
+// ... (The rest of the file remains unchanged)
 @Composable
 fun ThemeSelectorDialog(
     currentTheme: AppTheme,
@@ -424,7 +457,9 @@ fun TopAppCard(
         ) {
             if (topApp != null) {
                 Image(
-                    painter = rememberAsyncImagePainter(model = topApp.icon ?: R.mipmap.ic_launcher_round),
+                    painter = rememberAsyncImagePainter(
+                        model = topApp.icon ?: R.mipmap.ic_launcher_round
+                    ),
                     contentDescription = "${topApp.appName} icon",
                     modifier = Modifier
                         .size(40.dp)

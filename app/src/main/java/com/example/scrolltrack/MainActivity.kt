@@ -18,13 +18,16 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import com.example.scrolltrack.ui.components.AppLoadingScreen
 import com.example.scrolltrack.ui.main.MainScreen
 import com.example.scrolltrack.ui.main.TodaySummaryViewModel
+import com.example.scrolltrack.ui.main.UiState
 import com.example.scrolltrack.ui.theme.*
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.navigation.compose.rememberNavController
 
 // Constants for theme variants to be used by the Switch logic
@@ -49,6 +52,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+    @OptIn(ExperimentalMaterial3ExpressiveApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Enable edge-to-edge display and predictive back gestures.
@@ -92,34 +96,43 @@ class MainActivity : ComponentActivity() {
             val isUsageStatsGranted by viewModel.isUsagePermissionGranted.collectAsStateWithLifecycle()
             val isNotificationListenerEnabled by viewModel.isNotificationListenerEnabled.collectAsStateWithLifecycle()
             val navController = rememberNavController()
+            val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
             ScrollTrackTheme(
                 appTheme = selectedPalette,
                 darkTheme = useDarkTheme,
                 dynamicColor = false
             ) {
-                MainScreen(
-                    navController = navController,
-                    isAccessibilityEnabledState = isAccessibilityEnabled,
-                    isUsageStatsGrantedState = isUsageStatsGranted,
-                    isNotificationListenerEnabledState = isNotificationListenerEnabled,
-                    onEnableAccessibilityClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
-                    onEnableUsageStatsClick = {
-                        try {
-                            startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error opening usage access settings", e)
-                            startActivity(Intent(Settings.ACTION_SETTINGS))
-                        }
-                    },
-                    onEnableNotificationListenerClick = {
-                        try {
-                            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error opening notification listener settings", e)
-                            startActivity(Intent(Settings.ACTION_SETTINGS))
-                        }
+                when (uiState) {
+                    is UiState.InitialLoading -> {
+                        AppLoadingScreen()
                     }
-                )
+                    is UiState.Ready, is UiState.Refreshing, is UiState.Error -> {
+                        MainScreen(
+                            navController = navController,
+                            isAccessibilityEnabledState = isAccessibilityEnabled,
+                            isUsageStatsGrantedState = isUsageStatsGranted,
+                            isNotificationListenerEnabledState = isNotificationListenerEnabled,
+                            onEnableAccessibilityClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
+                            onEnableUsageStatsClick = {
+                                try {
+                                    startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error opening usage access settings", e)
+                                    startActivity(Intent(Settings.ACTION_SETTINGS))
+                                }
+                            },
+                            onEnableNotificationListenerClick = {
+                                try {
+                                    startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Error opening notification listener settings", e)
+                                    startActivity(Intent(Settings.ACTION_SETTINGS))
+                                }
+                            }
+                        )
+                    }
+                }
             }
         }
     }

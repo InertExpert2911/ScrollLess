@@ -99,7 +99,7 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
     private fun setupUsageStatsWorker() {
         // This worker runs frequently to pull in the latest system events.
         // It does not need network and should run even if the device is not idle or charging.
-        val repeatingRequest = PeriodicWorkRequestBuilder<UsageStatsWorker>(15, TimeUnit.MINUTES)
+        val repeatingRequest = PeriodicWorkRequestBuilder<UsageStatsWorker>(30, TimeUnit.MINUTES)
             .build()
 
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(

@@ -64,7 +64,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-
+    implementation(libs.androidx.material3.expressive)
 
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
@@ -129,5 +129,4 @@ dependencies {
 
     // Lottie for animated icons
     implementation(libs.lottie.compose)
-
 }

@@ -14,6 +14,7 @@ interface ScrollDataRepository {
     suspend fun syncSystemEvents(): Boolean
     suspend fun processAndSummarizeDate(dateString: String)
     suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean
+    suspend fun refreshDataOnAppOpen()
 
     // --- Live / Real-time Data Flows ---
     fun getRawEventsForDateFlow(dateString: String): Flow<List<RawAppEvent>>

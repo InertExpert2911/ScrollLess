@@ -17,6 +17,7 @@ import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.R
 import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.util.DateUtil
+import java.io.File
 
 @Composable
 fun AppUsageCard(
@@ -79,7 +80,9 @@ private fun AppUsageRow(
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Image(
-            painter = rememberAsyncImagePainter(model = app.icon ?: R.mipmap.ic_launcher_round),
+            painter = rememberAsyncImagePainter(
+                model = app.icon ?: R.mipmap.ic_launcher_round
+            ),
             contentDescription = "${app.appName} icon",
             modifier = Modifier
                 .size(40.dp)

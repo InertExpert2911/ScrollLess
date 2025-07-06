@@ -30,6 +30,7 @@ import com.example.scrolltrack.ui.historical.HistoricalViewModel
 import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.util.DateUtil
 import android.text.format.DateUtils as AndroidDateUtils
+import java.io.File
 import java.time.ZoneOffset
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -167,7 +168,9 @@ fun AppUsageRowItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Image(
-                painter = rememberAsyncImagePainter(model = usageItem.icon ?: R.mipmap.ic_launcher_round),
+                painter = rememberAsyncImagePainter(
+                    model = usageItem.icon ?: R.mipmap.ic_launcher_round
+                ),
                 contentDescription = "${usageItem.appName} icon",
                 modifier = Modifier
                     .size(40.dp)

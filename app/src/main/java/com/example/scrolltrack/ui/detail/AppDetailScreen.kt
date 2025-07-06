@@ -70,6 +70,7 @@ import com.example.scrolltrack.ui.detail.ChartState
 import com.example.scrolltrack.ui.detail.rememberChartState
 import androidx.compose.ui.unit.toSize
 import androidx.compose.material.icons.filled.Check
+import java.io.File
 import java.time.LocalDate
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -156,7 +157,7 @@ fun AppDetailScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Image(
                             painter = rememberAsyncImagePainter(
-                                model = appIcon ?: R.mipmap.ic_launcher_round,
+                                model = appIcon ?: R.mipmap.ic_launcher_round
                             ),
                             contentDescription = "$appName icon",
                             modifier = Modifier.size(40.dp)

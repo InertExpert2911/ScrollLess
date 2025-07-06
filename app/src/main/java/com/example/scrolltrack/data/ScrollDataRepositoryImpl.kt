@@ -30,6 +30,9 @@ import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 
 @Singleton
 class ScrollDataRepositoryImpl @Inject constructor(
@@ -52,7 +55,53 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
     companion object {
         private const val KEY_LAST_SYSTEM_EVENT_SYNC_TIMESTAMP = "last_system_event_sync_timestamp"
+        private const val KEY_LAST_HISTORICAL_REPROCESS_TIMESTAMP = "last_historical_reprocess_timestamp"
         private const val SYNC_OVERLAP_MS = 10_000L // 10 seconds
+        private val HISTORICAL_REPROCESS_INTERVAL_MS = TimeUnit.HOURS.toMillis(6)
+    }
+
+    override suspend fun refreshDataOnAppOpen() = withContext(ioDispatcher) {
+        Timber.d("Smart refresh triggered.")
+
+        // Step 1: Always sync latest events from the OS.
+        syncSystemEvents()
+
+        // Step 2: Always re-process today's data for immediate dashboard freshness.
+        val today = DateUtil.getCurrentLocalDateString()
+        processAndSummarizeDate(today)
+
+        // Step 3: Implement the conditional check for historical data.
+        val lastReprocess = prefs.getLong(KEY_LAST_HISTORICAL_REPROCESS_TIMESTAMP, 0L)
+        val currentTime = System.currentTimeMillis()
+
+        if (currentTime - lastReprocess > HISTORICAL_REPROCESS_INTERVAL_MS) {
+            Timber.i("More than 6 hours since last historical re-process. Starting now.")
+            try {
+                coroutineScope {
+                    // Launch historical processing in parallel for efficiency
+                    val daysToProcess = (1..3).map { DateUtil.getPastDateString(it) }
+                    val jobs = daysToProcess.map { date ->
+                        async {
+                            try {
+                                Timber.d("Processing historical date: $date")
+                                processAndSummarizeDate(date)
+                            } catch (e: Exception) {
+                                Timber.e(e, "Error processing historical date: $date")
+                                // Continue even if one day fails
+                            }
+                        }
+                    }
+                    jobs.awaitAll() // Wait for all historical processing to complete
+                }
+                Timber.i("Parallel historical processing finished.")
+                // Only update the timestamp if the overall operation was successful
+                prefs.edit().putLong(KEY_LAST_HISTORICAL_REPROCESS_TIMESTAMP, currentTime).apply()
+            } catch (e: Exception) {
+                Timber.e(e, "A critical error occurred during parallel historical processing.")
+            }
+        } else {
+            Timber.d("Skipping historical re-process; not enough time has passed.")
+        }
     }
 
     override suspend fun syncSystemEvents(): Boolean = withContext(ioDispatcher) {

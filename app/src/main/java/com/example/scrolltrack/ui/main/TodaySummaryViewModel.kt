@@ -22,6 +22,14 @@ import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.util.PermissionUtils.isAccessibilityServiceEnabledFlow
 import com.example.scrolltrack.util.PermissionUtils.isNotificationListenerEnabledFlow
 import com.example.scrolltrack.util.PermissionUtils.isUsageStatsPermissionGrantedFlow
+import timber.log.Timber
+
+sealed class UiState {
+    object InitialLoading : UiState()
+    object Ready : UiState()
+    object Refreshing : UiState()
+    data class Error(val message: String) : UiState()
+}
 
 private data class PermissionState(
     val accessibility: Boolean,
@@ -44,8 +52,12 @@ class TodaySummaryViewModel @Inject constructor(
 
     private val _selectedDate = MutableStateFlow(DateUtil.getCurrentLocalDateString())
 
-    private val _isRefreshing = MutableStateFlow(false)
-    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+    private val _uiState = MutableStateFlow<UiState>(UiState.InitialLoading)
+    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    val isRefreshing: StateFlow<Boolean> = _uiState.map { it is UiState.Refreshing }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), false)
+
 
     val selectedThemePalette: StateFlow<AppTheme> = settingsRepository.selectedTheme
         .stateIn(viewModelScope, SharingStarted.Eagerly, AppTheme.CalmLavender)
@@ -145,30 +157,42 @@ class TodaySummaryViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
     init {
-        // This is the new reactive trigger. It observes raw events for today,
-        // waits for a quiet period (debounce), then processes them into the summary tables.
+        // Trigger the first refresh immediately on creation. This is non-blocking.
+        Timber.d("ViewModel initialized, triggering initial refresh.")
+        performRefresh(isInitialLoad = true)
+    }
+
+    private fun performRefresh(isInitialLoad: Boolean = false) {
+        // Prevent multiple refreshes from running at the same time
+        if (uiState.value is UiState.Refreshing || (isInitialLoad && uiState.value !is UiState.InitialLoading)) {
+            Timber.d("Refresh already in progress or initial load already passed. Skipping.")
+            return
+        }
+
+        _uiState.value = if (isInitialLoad) UiState.InitialLoading else UiState.Refreshing
+
         viewModelScope.launch {
-            repository.getRawEventsForDateFlow(DateUtil.getCurrentLocalDateString())
-                .debounce(1500L) // Wait for 1.5s of no new events before processing
-                .collect {
-                    Log.d("TodaySummaryViewModel", "Raw event change detected, processing summary.")
-                    repository.processAndSummarizeDate(DateUtil.getCurrentLocalDateString())
-                }
+            try {
+                repository.refreshDataOnAppOpen()
+            } catch (e: Exception) {
+                Timber.e(e, "A critical error occurred during data refresh.")
+                _uiState.value = UiState.Error("An unexpected error occurred.")
+            } finally {
+                // No matter what, always transition back to Ready.
+                _uiState.value = UiState.Ready
+            }
         }
     }
 
     fun onPullToRefresh() {
-        viewModelScope.launch {
-            _isRefreshing.value = true
-            repository.syncSystemEvents()
-            repository.processAndSummarizeDate(DateUtil.getCurrentLocalDateString())
-            _isRefreshing.value = false
-        }
+        Timber.d("Pull to refresh triggered.")
+        performRefresh()
     }
 
     fun onAppResumed() {
-        Log.d("TodaySummaryViewModel", "onAppResumed called, re-checking permissions.")
-        checkAllPermissions()
+        Timber.d("onAppResumed called.")
+        checkAllPermissions() // Check for permission changes first
+        performRefresh() // Then trigger the refresh
     }
 
     private fun checkAllPermissions() {
@@ -185,7 +209,7 @@ class TodaySummaryViewModel @Inject constructor(
 
             if (accessibilityJustGranted || usageJustGranted || notificationJustGranted) {
                 Log.i("TodaySummaryViewModel", "A permission was granted, triggering data refresh.")
-                onPullToRefresh()
+                performRefresh()
             }
         }
 

@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.time.temporal.WeekFields
@@ -61,8 +62,8 @@ class AppDetailViewModel @Inject constructor(
     private val _appDetailAppName = MutableStateFlow<String?>(null)
     val appDetailAppName: StateFlow<String?> = _appDetailAppName.asStateFlow()
 
-    private val _appDetailAppIcon = MutableStateFlow<Drawable?>(null)
-    val appDetailAppIcon: StateFlow<Drawable?> = _appDetailAppIcon.asStateFlow()
+    private val _appDetailAppIcon = MutableStateFlow<File?>(null)
+    val appDetailAppIcon: StateFlow<File?> = _appDetailAppIcon.asStateFlow()
 
     private val _appDetailChartData = MutableStateFlow<List<CombinedAppDailyData>>(emptyList())
     val appDetailChartData: StateFlow<List<CombinedAppDailyData>> = _appDetailChartData.asStateFlow()
@@ -123,7 +124,7 @@ class AppDetailViewModel @Inject constructor(
             if (metadata != null) {
                 _appDetailAppName.value = metadata.appName
                 val iconFile = appMetadataRepository.getIconFile(packageName)
-                _appDetailAppIcon.value = iconFile?.let { Drawable.createFromPath(it.absolutePath) }
+                _appDetailAppIcon.value = iconFile
             } else {
                 Log.w("AppDetailViewModel", "App info not found for $packageName in AppDetailScreen")
                 _appDetailAppName.value = packageName.substringAfterLast('.', packageName)
