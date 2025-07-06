@@ -30,6 +30,7 @@ import com.example.scrolltrack.ui.historical.HistoricalViewModel
 import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.util.DateUtil
 import android.text.format.DateUtils as AndroidDateUtils
+import java.time.ZoneOffset
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,7 +48,7 @@ fun HistoricalUsageScreen(
 
     val datePickerState = rememberDatePickerState(
         initialSelectedDateMillis = remember(selectedDateString) {
-            DateUtil.parseLocalDateString(selectedDateString)?.time ?: System.currentTimeMillis()
+            DateUtil.parseLocalDate(selectedDateString)?.atStartOfDay(ZoneOffset.UTC)?.toInstant()?.toEpochMilli() ?: System.currentTimeMillis()
         },
         selectableDates = object : SelectableDates {
             override fun isSelectableDate(utcTimeMillis: Long): Boolean {
