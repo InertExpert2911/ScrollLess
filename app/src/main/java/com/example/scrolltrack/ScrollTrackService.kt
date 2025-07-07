@@ -4,7 +4,10 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Notification
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
@@ -40,10 +43,26 @@ class ScrollTrackService : AccessibilityService() {
 
     private var currentForegroundPackage: String? = null
 
+    private val unlockReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_USER_UNLOCKED) {
+                Log.d(TAG, "ACTION_USER_UNLOCKED received in-service, logging event.")
+                logRawEvent(
+                    packageName = "android.system.unlock", // Generic package for system events
+                    className = null,
+                    eventType = RawAppEvent.EVENT_TYPE_USER_UNLOCKED,
+                    value = null
+                )
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "ScrollTrackService onCreate.")
         startForeground(SERVICE_NOTIFICATION_ID, createServiceNotification())
+        val filter = IntentFilter(Intent.ACTION_USER_UNLOCKED)
+        registerReceiver(unlockReceiver, filter)
     }
 
     private fun createServiceNotification(): Notification {
@@ -175,6 +194,7 @@ class ScrollTrackService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        unregisterReceiver(unlockReceiver)
         serviceJob.cancel()
         Log.d(TAG, "ScrollTrackService destroyed.")
     }

@@ -63,6 +63,7 @@ data class RawAppEvent(
         const val EVENT_TYPE_FOREGROUND_SERVICE_START = 10
         const val EVENT_TYPE_FOREGROUND_SERVICE_STOP = 11
         const val EVENT_TYPE_USER_PRESENT = 12
+        const val EVENT_TYPE_USER_UNLOCKED = 13
 
         // --- Custom event types from our Accessibility Service ---
         const val EVENT_TYPE_ACCESSIBILITY_OFFSET = 1000 // To avoid collision with system events

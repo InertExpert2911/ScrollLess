@@ -94,8 +94,8 @@ fun UnlocksScreen(
 
             item {
                 SingleChoiceSegmentedButtonRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 16.dp)
                 ) {
                     UnlockPeriod.entries.forEach { period ->

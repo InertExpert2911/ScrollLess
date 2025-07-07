@@ -229,10 +229,28 @@ class ScrollDataRepositoryImpl @Inject constructor(
         val notifications = calculateAccurateNotificationCounts(filteredEvents)
         val totalNotifications = notifications.values.sum()
 
-        val unlockEvents = filteredEvents.filter { it.eventType == RawAppEvent.EVENT_TYPE_USER_PRESENT || it.eventType == RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN }
-        val totalUnlocks = unlockEvents.size
-        val firstUnlockTime = unlockEvents.minOfOrNull { it.eventTimestamp }
-        val lastUnlockTime = unlockEvents.maxOfOrNull { it.eventTimestamp }
+        // --- DEBOUNCED UNLOCK CALCULATION ---
+        val rawUnlockEvents = filteredEvents
+            .filter { it.eventType == RawAppEvent.EVENT_TYPE_USER_UNLOCKED || it.eventType == RawAppEvent.EVENT_TYPE_USER_PRESENT || it.eventType == RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN }
+            .sortedBy { it.eventTimestamp }
+
+        val debouncedUnlockEvents = mutableListOf<RawAppEvent>()
+        if (rawUnlockEvents.isNotEmpty()) {
+            var lastUnlockTimestamp = rawUnlockEvents.first().eventTimestamp
+            debouncedUnlockEvents.add(rawUnlockEvents.first())
+
+            for (i in 1 until rawUnlockEvents.size) {
+                val currentEvent = rawUnlockEvents[i]
+                if (currentEvent.eventTimestamp - lastUnlockTimestamp > AppConstants.UNLOCK_EVENT_FOLLOW_WINDOW_MS) {
+                    debouncedUnlockEvents.add(currentEvent)
+                    lastUnlockTimestamp = currentEvent.eventTimestamp
+                }
+            }
+        }
+        val totalUnlocks = debouncedUnlockEvents.size
+        val firstUnlockTime = debouncedUnlockEvents.minOfOrNull { it.eventTimestamp }
+        val lastUnlockTime = debouncedUnlockEvents.maxOfOrNull { it.eventTimestamp }
+        // --- END OF DEBOUNCED UNLOCK CALCULATION ---
 
         val allPackages = usageAggregates.keys.union(appOpens.keys).union(notifications.keys)
         val usageRecords = allPackages.mapNotNull { pkg ->
@@ -426,7 +444,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
         }
         Timber.i("Starting historical backfill for $numberOfDays days.")
 
-        for (i in 1..numberOfDays) { // Start from 1 to skip today
+        for (i in 0..numberOfDays) { // Start from 0 to include today
             val date = DateUtil.getPastDateString(i)
             Timber.d("Backfilling date: $date")
             try {
