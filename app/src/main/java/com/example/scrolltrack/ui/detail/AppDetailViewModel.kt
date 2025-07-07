@@ -45,6 +45,8 @@ data class CombinedAppDailyData(
     val usageTimeMillis: Long,
     val activeTimeMillis: Long,
     val scrollUnits: Long,
+    val scrollUnitsX: Long,
+    val scrollUnitsY: Long,
     val openCount: Int
 )
 @HiltViewModel
@@ -163,7 +165,7 @@ class AppDetailViewModel @Inject constructor(
                 _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(0L)
                 _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(0L)
                 _appDetailFocusedPeriodDisplay.value = ""
-                _appDetailFocusedScrollDisplay.value = conversionUtil.formatScrollDistance(0L, context).first
+                _appDetailFocusedScrollDisplay.value = "0 m"
                 return@launch
             }
 
@@ -188,7 +190,9 @@ class AppDetailViewModel @Inject constructor(
                     date = dateString,
                     usageTimeMillis = usage?.usageTimeMillis ?: 0L,
                     activeTimeMillis = usage?.activeTimeMillis ?: 0L,
-                    scrollUnits = scroll?.totalScroll ?: 0L,
+                    scrollUnits = (scroll?.totalScrollX ?: 0L) + (scroll?.totalScrollY ?: 0L),
+                    scrollUnitsX = scroll?.totalScrollX ?: 0L,
+                    scrollUnitsY = scroll?.totalScrollY ?: 0L,
                     openCount = usage?.appOpenCount ?: 0
                 )
             }.sortedBy { it.date }
@@ -204,7 +208,7 @@ class AppDetailViewModel @Inject constructor(
                     val focusedDayData = chartEntries.firstOrNull { it.date == referenceDateStr }
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(focusedDayData?.usageTimeMillis ?: 0L)
                     _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(focusedDayData?.activeTimeMillis ?: 0L)
-                    val scrollDistance = conversionUtil.formatScrollDistance(focusedDayData?.scrollUnits ?: 0L, context)
+                    val scrollDistance = conversionUtil.formatScrollDistance(focusedDayData?.scrollUnitsX ?: 0L, focusedDayData?.scrollUnitsY ?: 0L)
                     _appDetailFocusedScrollDisplay.value = "${scrollDistance.first} ${scrollDistance.second}"
                     _appDetailPeriodDescriptionText.value = "Daily Summary"
                     _appDetailFocusedPeriodDisplay.value = referenceDate.format(sdfDisplay)
@@ -216,9 +220,12 @@ class AppDetailViewModel @Inject constructor(
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageUsage)
                     val currentPeriodAverageActiveUsage = calculateAverageActiveUsage(chartEntries)
                     _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageActiveUsage)
-                    val currentPeriodAverageScroll = calculateAverageScroll(chartEntries)
-                    val scrollDistance = conversionUtil.formatScrollDistance(currentPeriodAverageScroll, context)
+                    
+                    val totalScrollX = chartEntries.sumOf { it.scrollUnitsX }
+                    val totalScrollY = chartEntries.sumOf { it.scrollUnitsY }
+                    val scrollDistance = conversionUtil.formatScrollDistance(totalScrollX, totalScrollY)
                     _appDetailFocusedScrollDisplay.value = "${scrollDistance.first} ${scrollDistance.second}"
+
                     _appDetailPeriodDescriptionText.value = "Weekly Average"
                     val (startOfWeek, endOfWeek) = getPeriodDisplayStrings(period, referenceDate)
                     _appDetailFocusedPeriodDisplay.value = "$startOfWeek - $endOfWeek"
@@ -238,8 +245,10 @@ class AppDetailViewModel @Inject constructor(
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageUsage)
                     val currentPeriodAverageActiveUsage = calculateAverageActiveUsage(chartEntries)
                     _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageActiveUsage)
-                    val currentPeriodAverageScroll = calculateAverageScroll(chartEntries)
-                    val scrollDistance = conversionUtil.formatScrollDistance(currentPeriodAverageScroll, context)
+
+                    val totalScrollX = chartEntries.sumOf { it.scrollUnitsX }
+                    val totalScrollY = chartEntries.sumOf { it.scrollUnitsY }
+                    val scrollDistance = conversionUtil.formatScrollDistance(totalScrollX, totalScrollY)
                     _appDetailFocusedScrollDisplay.value = "${scrollDistance.first} ${scrollDistance.second}"
 
                     _appDetailPeriodDescriptionText.value = "Monthly Average"

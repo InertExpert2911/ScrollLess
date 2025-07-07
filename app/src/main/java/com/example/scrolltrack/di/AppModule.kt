@@ -13,6 +13,7 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import javax.inject.Singleton
+import android.content.SharedPreferences
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -31,6 +32,15 @@ abstract class AppModule {
     abstract fun bindScrollDataRepository(impl: ScrollDataRepositoryImpl): ScrollDataRepository
 
     companion object {
+        private const val PREFS_INFERRED_SCROLL_COUNTERS = "InferredScrollCounters"
+
+        @Provides
+        @Singleton
+        @InferredScrollPrefs
+        fun provideInferredScrollPreferences(@ApplicationContext context: Context): SharedPreferences {
+            return context.getSharedPreferences(PREFS_INFERRED_SCROLL_COUNTERS, Context.MODE_PRIVATE)
+        }
+
         @Provides
         @Singleton
         fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {

@@ -104,8 +104,10 @@ class TodaySummaryViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
 
     val scrollDistanceTodayFormatted: StateFlow<Pair<String, String>> =
-        totalScrollToday.map { totalUnits ->
-            conversionUtil.formatScrollDistance(totalUnits, context)
+        aggregatedScrollDataToday.map { list ->
+            val totalScrollX = list.sumOf { it.totalScrollX }
+            val totalScrollY = list.sumOf { it.totalScrollY }
+            conversionUtil.formatScrollDistance(totalScrollX, totalScrollY)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0" to "m")
 
     val totalUnlocksToday: StateFlow<Int> = summaryData.map { it?.totalUnlockCount ?: 0 }

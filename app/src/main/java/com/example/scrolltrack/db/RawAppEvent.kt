@@ -33,7 +33,14 @@ data class RawAppEvent(
     val source: String,
 
     @ColumnInfo(name = "value")
-    val value: Long? = null
+    val value: Long? = null,
+
+    // New columns for multi-axis scroll data
+    @ColumnInfo(name = "scroll_delta_x", defaultValue = "NULL")
+    val scrollDeltaX: Int? = null,
+
+    @ColumnInfo(name = "scroll_delta_y", defaultValue = "NULL")
+    val scrollDeltaY: Int? = null,
 ) {
     companion object {
         // Source constants

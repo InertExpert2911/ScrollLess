@@ -1,28 +1,31 @@
 package com.example.scrolltrack.ui.settings
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
-import com.example.scrolltrack.R
-import kotlinx.coroutines.launch
-import java.text.NumberFormat
-
-private const val CALIBRATION_DISTANCE_CM = 10f
+import androidx.navigation.compose.rememberNavController
+import com.example.scrolltrack.ui.theme.ScrollTrackTheme
+import kotlin.math.abs
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,12 +33,14 @@ fun CalibrationScreen(
     navController: NavController,
     viewModel: CalibrationViewModel = hiltViewModel()
 ) {
-    var isCalibrating by remember { mutableStateOf(false) }
-    val scrollState = rememberScrollState()
-    val coroutineScope = rememberCoroutineScope()
-    var startScrollPixels by remember { mutableStateOf(0) }
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val accumulatedX by viewModel.accumulatedScrollX.collectAsStateWithLifecycle()
+    val accumulatedY by viewModel.accumulatedScrollY.collectAsStateWithLifecycle()
+    val density = LocalDensity.current
 
-    val currentFactor by viewModel.calibrationFactor.collectAsStateWithLifecycle()
+    // This will hold the measured pixel size of our target Composables
+    var verticalLinePixelHeight by remember { mutableStateOf(0f) }
+    var horizontalLinePixelWidth by remember { mutableStateOf(0f) }
 
     Scaffold(
         topBar = {
@@ -45,110 +50,152 @@ fun CalibrationScreen(
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
+                },
+                actions = {
+                    TextButton(onClick = {
+                        viewModel.saveCalibration(verticalLinePixelHeight, horizontalLinePixelWidth)
+                        navController.popBackStack()
+                    }) {
+                        Text("Done")
+                    }
                 }
             )
         }
-    ) { padding ->
+    ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp)
-                .verticalScroll(scrollState),
+                .padding(paddingValues)
+                .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        "Current Calibration",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    val factorText = if (currentFactor != null) {
-                        "Custom (${NumberFormat.getNumberInstance().format(currentFactor)} pixels/meter)"
-                    } else {
-                        "Using device default (DPI)"
-                    }
-                    Text(factorText, style = MaterialTheme.typography.bodyLarge)
-
-                    if (currentFactor != null) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(
-                            onClick = { viewModel.resetCalibration() },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                        ) {
-                            Text("Reset to Default")
-                        }
-                    }
-                }
-            }
-
             Text(
-                text = stringResource(R.string.calibration_instructions, CALIBRATION_DISTANCE_CM),
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.bodyLarge
+                text = "To improve accuracy, scroll over the lines below using a real-world reference, like a ruler.",
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Visual guide for scrolling
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceVariant, shape = MaterialTheme.shapes.medium)
-                    .padding(vertical = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+            // Vertical Calibration
+            CalibrationCard(
+                title = "Vertical Calibration",
+                instruction = "Scroll Down 5cm",
+                accumulatedScroll = accumulatedY,
+                onReset = { viewModel.resetScroll("Y") }
             ) {
-                Text("START", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                Spacer(modifier = Modifier.height(8.dp))
-                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.Gray))
-                Spacer(modifier = Modifier.height(400.dp)) // Increased spacer for more scroll room
-                Text(
-                    text = "SCROLL DOWN",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(400.dp))
-                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.Gray))
-                Spacer(modifier = Modifier.height(8.dp))
-                Text("END", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            }
-
-            if (!isCalibrating) {
-                Button(
-                    onClick = {
-                        startScrollPixels = scrollState.value
-                        isCalibrating = true
-                        coroutineScope.launch {
-                            scrollState.animateScrollTo(0) // Scroll to top to start
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp) // Fixed height for calibration target
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                viewModel.addScrollDelta(0, abs(dragAmount.y.toInt()))
+                            }
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth()
+                        .onGloballyPositioned {
+                            verticalLinePixelHeight = it.size.height.toFloat()
+                        },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text("Begin Calibration")
-                }
-            } else {
-                Button(
-                    onClick = {
-                        val endScrollPixels = scrollState.value
-                        val pixelsScrolled = endScrollPixels.toFloat() - startScrollPixels.toFloat()
-                        if (pixelsScrolled > 0) {
-                            viewModel.saveCalibrationFactor(pixelsScrolled, CALIBRATION_DISTANCE_CM)
-                        }
-                        isCalibrating = false
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-                ) {
-                    Text("Save Calibration (${CALIBRATION_DISTANCE_CM}cm)")
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        drawLine(
+                            color = Color.Red,
+                            start = Offset(size.width / 2, 0f),
+                            end = Offset(size.width / 2, size.height),
+                            strokeWidth = 4.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f)) // Pushes content up if screen is large
+            // Horizontal Calibration
+            CalibrationCard(
+                title = "Horizontal Calibration",
+                instruction = "Swipe Right 5cm",
+                accumulatedScroll = accumulatedX,
+                onReset = { viewModel.resetScroll("X") }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .height(100.dp)
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                viewModel.addScrollDelta(abs(dragAmount.x.toInt()), 0)
+                            }
+                        }
+                        .onGloballyPositioned {
+                            horizontalLinePixelWidth = it.size.width.toFloat()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        drawLine(
+                            color = Color.Blue,
+                            start = Offset(0f, size.height / 2),
+                            end = Offset(size.width, size.height / 2),
+                            strokeWidth = 4.dp.toPx(),
+                            cap = StrokeCap.Round
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Text(
+                text = "Current Status: ${uiState.statusText}",
+                style = MaterialTheme.typography.titleMedium
+            )
+            if (uiState.isCalibrated) {
+                Text("Vertical: ${uiState.verticalDpi} | Horizontal: ${uiState.horizontalDpi}")
+            }
         }
+    }
+}
+
+@Composable
+fun CalibrationCard(
+    title: String,
+    instruction: String,
+    accumulatedScroll: Int,
+    onReset: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(text = title, style = MaterialTheme.typography.titleLarge)
+            Text(text = instruction, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(modifier = Modifier.height(8.dp))
+            content()
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Scrolled: $accumulatedScroll px",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Button(onClick = onReset) {
+                    Text("Reset")
+                }
+            }
+        }
+    }
+}
+
+@Preview
+@Composable
+private fun CalibrationScreenPreview() {
+    ScrollTrackTheme {
+        CalibrationScreen(navController = rememberNavController())
     }
 } 

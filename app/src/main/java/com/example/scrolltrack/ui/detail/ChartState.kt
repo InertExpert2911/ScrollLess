@@ -20,6 +20,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import com.example.scrolltrack.ui.model.AppDailyDetailData
 import com.example.scrolltrack.util.ConversionUtil
+import kotlinx.coroutines.runBlocking
 import kotlin.math.max
 
 private const val Y_AXIS_PADDING_FACTOR = 1.15f
@@ -77,13 +78,17 @@ class ChartState(
     val maxUsageTimeForAxis = (maxUsageTime * Y_AXIS_PADDING_FACTOR).toLong().coerceAtLeast(1L)
     val maxScrollUnitsForAxis = (maxScrollUnits * Y_AXIS_PADDING_FACTOR).toLong().coerceAtLeast(1L)
 
+    // This function is no longer responsible for the conversion calculation.
+    // It is now a simple formatter for the pre-calculated scroll distance.
+    // The final implementation will likely take a formatted string directly.
+    // For now, we revert to a simpler state to remove the runBlocking hack.
     fun getTooltipScrollText(index: Int): String {
-        if (index < data.size) {
-            val selectedData = data[index]
-            val (value, unit) = conversionUtil.formatScrollDistanceSync(selectedData.scrollUnits, context)
-            return "$value $unit"
+        if (index >= data.size) {
+            return ""
         }
-        return ""
+        val selectedData = data[index]
+        val (value, unit) = conversionUtil.formatScrollDistanceSync(selectedData.scrollUnits)
+        return "$value $unit"
     }
 
     fun handleTap(tapOffset: Offset, canvasSize: Size) {
@@ -156,9 +161,7 @@ fun rememberChartState(
     }
 
     LaunchedEffect(periodType, data) {
-        if (periodType == ChartPeriodType.DAILY) {
-            state.resetSelection()
-        }
+        state.resetSelection()
     }
 
     return state

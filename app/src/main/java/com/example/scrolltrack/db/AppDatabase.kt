@@ -22,7 +22,7 @@ import com.example.scrolltrack.db.ScrollSessionDao
         DailyAppUsageRecord::class,
         NotificationRecord::class
     ],
-    version = 16,
+    version = 17,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

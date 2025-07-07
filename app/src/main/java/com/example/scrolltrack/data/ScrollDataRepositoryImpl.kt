@@ -33,6 +33,7 @@ import javax.inject.Singleton
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlin.math.abs
 
 @Singleton
 class ScrollDataRepositoryImpl @Inject constructor(
@@ -61,47 +62,17 @@ class ScrollDataRepositoryImpl @Inject constructor(
     }
 
     override suspend fun refreshDataOnAppOpen() = withContext(ioDispatcher) {
-        Timber.d("Smart refresh triggered.")
+        Timber.d("Smart refresh triggered on app open.")
 
-        // Step 1: Always sync latest events from the OS.
+        // Step 1: Always sync latest events from the OS to ensure we have the newest raw data.
         syncSystemEvents()
 
         // Step 2: Always re-process today's data for immediate dashboard freshness.
+        // The heavy lifting for historical data is now handled by DailyProcessingWorker.
         val today = DateUtil.getCurrentLocalDateString()
+        Timber.d("Processing today's data ($today) for UI freshness.")
         processAndSummarizeDate(today)
-
-        // Step 3: Implement the conditional check for historical data.
-        val lastReprocess = prefs.getLong(KEY_LAST_HISTORICAL_REPROCESS_TIMESTAMP, 0L)
-        val currentTime = System.currentTimeMillis()
-
-        if (currentTime - lastReprocess > HISTORICAL_REPROCESS_INTERVAL_MS) {
-            Timber.i("More than 6 hours since last historical re-process. Starting now.")
-            try {
-                coroutineScope {
-                    // Launch historical processing in parallel for efficiency
-                    val daysToProcess = (1..3).map { DateUtil.getPastDateString(it) }
-                    val jobs = daysToProcess.map { date ->
-                        async {
-                            try {
-                                Timber.d("Processing historical date: $date")
-                                processAndSummarizeDate(date)
-                            } catch (e: Exception) {
-                                Timber.e(e, "Error processing historical date: $date")
-                                // Continue even if one day fails
-                            }
-                        }
-                    }
-                    jobs.awaitAll() // Wait for all historical processing to complete
-                }
-                Timber.i("Parallel historical processing finished.")
-                // Only update the timestamp if the overall operation was successful
-                prefs.edit().putLong(KEY_LAST_HISTORICAL_REPROCESS_TIMESTAMP, currentTime).apply()
-            } catch (e: Exception) {
-                Timber.e(e, "A critical error occurred during parallel historical processing.")
-            }
-        } else {
-            Timber.d("Skipping historical re-process; not enough time has passed.")
-        }
+        Timber.d("Smart refresh finished.")
     }
 
     override suspend fun syncSystemEvents(): Boolean = withContext(ioDispatcher) {
@@ -186,7 +157,8 @@ class ScrollDataRepositoryImpl @Inject constructor(
         val scrollEvents = events
             .filter {
                 (it.eventType == RawAppEvent.EVENT_TYPE_SCROLL_MEASURED || it.eventType == RawAppEvent.EVENT_TYPE_SCROLL_INFERRED)
-                        && it.value != null && it.packageName !in filterSet
+                        && (it.scrollDeltaX != null || it.scrollDeltaY != null || it.value != null) // Include legacy 'value' for migration
+                        && it.packageName !in filterSet
             }
             .sortedBy { it.eventTimestamp }
 
@@ -198,12 +170,21 @@ class ScrollDataRepositoryImpl @Inject constructor(
         for (event in scrollEvents) {
             val eventDataType = if (event.eventType == RawAppEvent.EVENT_TYPE_SCROLL_MEASURED) "MEASURED" else "INFERRED"
 
+            // Prioritize new delta columns, fall back to 'value' for old events
+            val deltaX = event.scrollDeltaX ?: 0
+            val deltaY = event.scrollDeltaY ?: if (event.eventType == RawAppEvent.EVENT_TYPE_SCROLL_INFERRED) 0 else event.value?.toInt() ?: 0
+            val totalDelta = (abs(deltaX) + abs(deltaY)).toLong()
+
+            if (totalDelta == 0L) continue // Skip events with no effective scroll
+
             if (currentSession == null) {
                 currentSession = ScrollSessionRecord(
                     packageName = event.packageName,
                     sessionStartTime = event.eventTimestamp,
                     sessionEndTime = event.eventTimestamp,
-                    scrollAmount = event.value!!,
+                    scrollAmount = totalDelta,
+                    scrollAmountX = abs(deltaX).toLong(),
+                    scrollAmountY = abs(deltaY).toLong(),
                     dateString = event.eventDateString,
                     sessionEndReason = "PROCESSED",
                     dataType = eventDataType
@@ -215,7 +196,9 @@ class ScrollDataRepositoryImpl @Inject constructor(
                     timeDiff <= AppConstants.SESSION_MERGE_GAP_MS) {
                     currentSession = currentSession.copy(
                         sessionEndTime = event.eventTimestamp,
-                        scrollAmount = currentSession.scrollAmount + event.value!!
+                        scrollAmount = currentSession.scrollAmount + totalDelta,
+                        scrollAmountX = currentSession.scrollAmountX + abs(deltaX),
+                        scrollAmountY = currentSession.scrollAmountY + abs(deltaY)
                     )
                 } else {
                     mergedSessions.add(currentSession)
@@ -223,7 +206,9 @@ class ScrollDataRepositoryImpl @Inject constructor(
                         packageName = event.packageName,
                         sessionStartTime = event.eventTimestamp,
                         sessionEndTime = event.eventTimestamp,
-                        scrollAmount = event.value!!,
+                        scrollAmount = totalDelta,
+                        scrollAmountX = abs(deltaX).toLong(),
+                        scrollAmountY = abs(deltaY).toLong(),
                         dateString = event.eventDateString,
                         sessionEndReason = "PROCESSED",
                         dataType = eventDataType

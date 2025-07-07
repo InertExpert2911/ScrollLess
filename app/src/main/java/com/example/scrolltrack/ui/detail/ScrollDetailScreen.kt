@@ -147,7 +147,7 @@ fun ScrollDetailScreenContent(
                     items(items = scrollData, key = { it.id }) { appItem ->
                         var formattedDistance by remember { mutableStateOf("...") }
                         LaunchedEffect(appItem.totalScroll, conversionUtil) {
-                            val (value, unit) = conversionUtil.formatScrollDistance(appItem.totalScroll, context)
+                            val (value, unit) = conversionUtil.formatScrollDistance(appItem.totalScrollX, appItem.totalScrollY)
                             formattedDistance = "$value $unit"
                         }
 
@@ -274,17 +274,18 @@ private class FakeSettingsRepository : SettingsRepository {
     override suspend fun setSelectedTheme(theme: AppTheme) {}
     override val isDarkMode: Flow<Boolean> = flowOf(true)
     override suspend fun setIsDarkMode(isDark: Boolean) {}
-    override val calibrationFactor: Flow<Float?> = flowOf(null)
-    override suspend fun setCalibrationFactor(factor: Float?) {}
+    override val calibrationFactorX: Flow<Float?> = flowOf(null)
+    override val calibrationFactorY: Flow<Float?> = flowOf(null)
+    override suspend fun setCalibrationFactors(factorX: Float?, factorY: Float?) {}
 }
 
 @Preview(showBackground = true, name = "Scroll Detail Screen")
 @Composable
 fun ScrollDetailScreenPreview() {
     val dummyData = listOf(
-        AppScrollUiItem("1", "App One", null, 12000, "com.app1", "MEASURED"),
-        AppScrollUiItem("2", "App Two", null, 8500, "com.app2", "INFERRED"),
-        AppScrollUiItem("3", "Another Very Long App Name That Will Surely Overflow", null, 400, "com.app3", "MEASURED")
+        AppScrollUiItem("1", "App One", null, 12000, 6000, 6000, "com.app1", "MEASURED"),
+        AppScrollUiItem("2", "App Two", null, 8500, 0, 8500, "com.app2", "INFERRED"),
+        AppScrollUiItem("3", "Another Very Long App Name That Will Surely Overflow", null, 400, 300, 100, "com.app3", "MEASURED")
     )
     ScrollTrackTheme {
         ScrollDetailScreenContent(
@@ -293,7 +294,7 @@ fun ScrollDetailScreenPreview() {
             scrollData = dummyData,
             selectableDatesMillis = emptySet(),
             onDateSelected = {},
-            conversionUtil = ConversionUtil(FakeSettingsRepository())
+            conversionUtil = ConversionUtil(FakeSettingsRepository(), LocalContext.current)
         )
     }
 } 

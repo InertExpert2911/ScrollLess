@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Brightness2
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material.icons.filled.Straighten
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,13 +21,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import androidx.navigation.compose.rememberNavController
 import com.example.scrolltrack.R
 import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.theme.AppTheme
+import com.example.scrolltrack.ui.theme.ScrollTrackTheme
 import com.example.scrolltrack.ui.theme.getThemeColors
 import androidx.compose.material3.HorizontalDivider
 
@@ -38,6 +42,7 @@ fun SettingsScreen(
 ) {
     val selectedTheme by viewModel.selectedTheme.collectAsStateWithLifecycle()
     val isDarkMode by viewModel.isDarkMode.collectAsStateWithLifecycle()
+    val calibrationStatus by viewModel.calibrationStatusText.collectAsStateWithLifecycle()
     var showThemeDialog by remember { mutableStateOf(false) }
 
     if (showThemeDialog) {
@@ -106,8 +111,21 @@ fun SettingsScreen(
                     .clickable { navController.navigate(ScreenRoutes.CalibrationRoute.route) }
             ) {
                 Icon(
+                    imageVector = Icons.Filled.Straighten,
+                    contentDescription = "Calibration",
+                    modifier = Modifier.padding(end = 16.dp)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Scroll Calibration", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        calibrationStatus,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = "Navigate to Scroll Calibration"
+                    contentDescription = "Navigate to Calibration"
                 )
             }
             HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))

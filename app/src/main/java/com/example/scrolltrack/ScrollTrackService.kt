@@ -20,6 +20,12 @@ import javax.inject.Inject
 import kotlin.math.abs
 import com.example.scrolltrack.util.AppConstants
 import kotlin.math.sqrt
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.workDataOf
+import com.example.scrolltrack.services.InferredScrollWorker
+import java.util.concurrent.TimeUnit
 
 @AndroidEntryPoint
 class ScrollTrackService : AccessibilityService() {
@@ -31,9 +37,6 @@ class ScrollTrackService : AccessibilityService() {
 
     @Inject
     lateinit var rawAppEventDao: RawAppEventDao
-
-    private val inferredScrollCounters = ConcurrentHashMap<String, Int>()
-    private val inferredScrollJobs = ConcurrentHashMap<String, Job>()
 
     private var currentForegroundPackage: String? = null
 
@@ -81,7 +84,7 @@ class ScrollTrackService : AccessibilityService() {
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> handleWindowStateChange(event)
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> handleMeasuredScroll(event, packageName)
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> handleInferredScroll(event, packageName)
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> handleInferredScroll(packageName)
         }
     }
 
@@ -97,39 +100,33 @@ class ScrollTrackService : AccessibilityService() {
     private fun handleMeasuredScroll(event: AccessibilityEvent, packageName: String) {
         if (!isNodeScrollable(event.source)) return
 
-        val scrollDelta = (abs(event.scrollDeltaX) + abs(event.scrollDeltaY)).toLong()
-        if (scrollDelta == 0L) return
+        if (event.scrollDeltaX == 0 && event.scrollDeltaY == 0) return
 
         val activePackage = currentForegroundPackage ?: packageName
         logRawEvent(
             activePackage,
             event.className?.toString(),
             RawAppEvent.EVENT_TYPE_SCROLL_MEASURED,
-            scrollDelta
+            null, // The 'value' field is no longer needed for scroll
+            event.scrollDeltaX,
+            event.scrollDeltaY
         )
     }
 
-    private fun handleInferredScroll(event: AccessibilityEvent, packageName: String) {
-        if (!isNodeScrollable(event.source)) return
+    private fun handleInferredScroll(packageName: String) {
+        val workManager = WorkManager.getInstance(applicationContext)
+        val workName = "${InferredScrollWorker.WORK_NAME_PREFIX}$packageName"
 
-        val activePackage = currentForegroundPackage ?: return
-        inferredScrollCounters.merge(activePackage, 1, Int::plus)
+        val workRequest = OneTimeWorkRequestBuilder<InferredScrollWorker>()
+            .setInputData(workDataOf(InferredScrollWorker.KEY_PACKAGE_NAME to packageName))
+            .setInitialDelay(AppConstants.INFERRED_SCROLL_DEBOUNCE_MS, TimeUnit.MILLISECONDS)
+            .build()
 
-        inferredScrollJobs[activePackage]?.cancel()
-        inferredScrollJobs[activePackage] = serviceScope.launch {
-            delay(AppConstants.INFERRED_SCROLL_DEBOUNCE_MS)
-            val count = inferredScrollCounters.remove(activePackage) ?: 0
-            if (count > 0) {
-                val inferredValue = (sqrt(count.toDouble()) * AppConstants.INFERRED_SCROLL_MULTIPLIER).toLong()
-                logRawEvent(
-                    activePackage,
-                    event.className?.toString(),
-                    RawAppEvent.EVENT_TYPE_SCROLL_INFERRED,
-                    inferredValue
-                )
-            }
-            inferredScrollJobs.remove(activePackage)
-        }
+        workManager.enqueueUniqueWork(
+            workName,
+            ExistingWorkPolicy.REPLACE, // This is the key to debouncing
+            workRequest
+        )
     }
 
     private fun isNodeScrollable(node: AccessibilityNodeInfo?): Boolean {
@@ -148,7 +145,14 @@ class ScrollTrackService : AccessibilityService() {
         return false
     }
 
-    private fun logRawEvent(packageName: String, className: String?, eventType: Int, value: Long?) {
+    private fun logRawEvent(
+        packageName: String,
+        className: String?,
+        eventType: Int,
+        value: Long?,
+        scrollDeltaX: Int? = null,
+        scrollDeltaY: Int? = null
+    ) {
         serviceScope.launch {
             val eventToStore = RawAppEvent(
                 packageName = packageName,
@@ -157,7 +161,9 @@ class ScrollTrackService : AccessibilityService() {
                 eventTimestamp = System.currentTimeMillis(),
                 eventDateString = DateUtil.getCurrentLocalDateString(),
                 source = RawAppEvent.SOURCE_ACCESSIBILITY,
-                value = value
+                value = value,
+                scrollDeltaX = scrollDeltaX,
+                scrollDeltaY = scrollDeltaY
             )
             rawAppEventDao.insertEvent(eventToStore)
         }

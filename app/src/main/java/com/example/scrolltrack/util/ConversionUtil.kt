@@ -1,73 +1,77 @@
 package com.example.scrolltrack.util
 
 import android.content.Context
-import android.util.DisplayMetrics
 import android.util.Log
-import kotlin.math.roundToInt
-import java.text.NumberFormat
-import java.util.Locale
 import com.example.scrolltrack.data.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
+import java.text.NumberFormat
+import java.util.*
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.sqrt
 
 @Singleton
 class ConversionUtil @Inject constructor(
-    private val settingsRepository: SettingsRepository
+    private val settingsRepository: SettingsRepository,
+    @ApplicationContext private val context: Context
 ) {
     companion object {
         private const val INCHES_PER_METER = 39.3701
         private const val METERS_PER_KILOMETER = 1000.0
-        private const val INCHES_PER_MILE = 63360.0
-        private const val METERS_PER_MILE = 1609.34
+        private const val PHYSICAL_DISTANCE_CM = 5.0 // The reference distance used during calibration
     }
 
-    /**
-     * Converts scroll units (approximated as pixels) to estimated physical distance.
-     * This is the main suspend function that accounts for user calibration.
-     * @param scrollUnits The total accumulated scroll units.
-     * @param context Context to access display metrics.
-     * @return Pair<Formatted String, Unit String> e.g., ("1.23", "km")
-     */
-    suspend fun formatScrollDistance(scrollUnits: Long, context: Context): Pair<String, String> {
-        if (scrollUnits <= 0) return "0" to "m"
+    suspend fun formatScrollDistance(
+        scrollUnitsX: Long,
+        scrollUnitsY: Long,
+    ): Pair<String, String> {
+        if (scrollUnitsX <= 0 && scrollUnitsY <= 0) return "0" to "m"
 
-        val customFactor = settingsRepository.calibrationFactor.first()
-        val pixelsPerInch = if (customFactor != null && customFactor > 0) {
-            // The customFactor is stored as pixels per meter. We need pixels per inch.
-            customFactor / INCHES_PER_METER.toFloat()
+        val factorX = settingsRepository.calibrationFactorX.first()
+        val factorY = settingsRepository.calibrationFactorY.first()
+
+        val ydpi = context.resources.displayMetrics.ydpi
+        val xdpi = context.resources.displayMetrics.xdpi
+
+        val pixelsPerInchY = if (factorY != null && factorY > 0) {
+            factorY / PHYSICAL_DISTANCE_CM.toFloat() * 2.54f // pixels/cm -> pixels/inch
         } else {
-            context.resources.displayMetrics.ydpi
+            ydpi
         }
 
-        if (pixelsPerInch <= 0f) return "N/A" to "error"
+        val pixelsPerInchX = if (factorX != null && factorX > 0) {
+            factorX / PHYSICAL_DISTANCE_CM.toFloat() * 2.54f // pixels/cm -> pixels/inch
+        } else {
+            xdpi
+        }
 
-        return scrollUnitsToFormattedPair(scrollUnits, pixelsPerInch)
+        if (pixelsPerInchX <= 0f || pixelsPerInchY <= 0f) return "N/A" to "error"
+
+        val inchesScrolledY = scrollUnitsY.toDouble() / pixelsPerInchY
+        val inchesScrolledX = scrollUnitsX.toDouble() / pixelsPerInchX
+
+        // For now, we sum the distances. In the future, we could use hypotenuse if needed.
+        val totalInchesScrolled = inchesScrolledX + inchesScrolledY
+        val metersScrolled = totalInchesScrolled / INCHES_PER_METER
+
+        return metersToFormattedPair(metersScrolled)
     }
 
-    /**
-     * A synchronous version of formatScrollDistance that uses a default DPI.
-     * This is suitable for UI components like charts where context might not be available
-     * and a suspend function can't be used.
-     * @param scrollUnits The total accumulated scroll units.
-     * @param context Context to get resources.
-     * @return Pair<Formatted String, Unit String> e.g., ("1.23", "km")
-     */
-    fun formatScrollDistanceSync(scrollUnits: Long, context: Context): Pair<String, String> {
+
+    fun formatScrollDistanceSync(scrollUnits: Long): Pair<String, String> {
         if (scrollUnits <= 0) return "0" to "m"
-        val pixelsPerInch = context.resources.displayMetrics.ydpi
-        if (pixelsPerInch <= 0f) return "N/A" to "error"
-        return scrollUnitsToFormattedPair(scrollUnits, pixelsPerInch)
-    }
+        val ydpi = context.resources.displayMetrics.ydpi
+        if (ydpi <= 0f) return "N/A" to "error"
 
-    /**
-     * Core conversion and formatting logic, shared by both sync and async functions.
-     */
-    private fun scrollUnitsToFormattedPair(scrollUnits: Long, pixelsPerInch: Float): Pair<String, String> {
-        val inchesScrolled = scrollUnits.toDouble() / pixelsPerInch
+        val inchesScrolled = scrollUnits.toDouble() / ydpi
         val metersScrolled = inchesScrolled / INCHES_PER_METER
 
+        return metersToFormattedPair(metersScrolled)
+    }
+
+
+    private fun metersToFormattedPair(metersScrolled: Double): Pair<String, String> {
         val numberFormat = NumberFormat.getNumberInstance(Locale.getDefault())
 
         return when {
@@ -76,41 +80,14 @@ class ConversionUtil @Inject constructor(
                 val km = metersScrolled / METERS_PER_KILOMETER
                 numberFormat.format(km) to "km"
             }
-            else -> { // Less than 1 km, always show in meters
+            else -> {
                 if (metersScrolled < 1.0 && metersScrolled > 0) {
-                    numberFormat.maximumFractionDigits = 2 // e.g., "0.75 m"
+                    numberFormat.maximumFractionDigits = 2
                 } else {
-                    numberFormat.maximumFractionDigits = 0 // e.g., "123 m"
+                    numberFormat.maximumFractionDigits = 0
                 }
                 numberFormat.format(metersScrolled) to "m"
             }
         }
-    }
-
-    /**
-     * Converts scroll units (approximated as pixels) to estimated physical distance in kilometers.
-     * This version attempts to use a 'standard' or 'average' DPI if context is not available
-     * or as a fallback, though using actual DPI from context is preferred for accuracy.
-     * For chart data, we might not have context readily available for every data point processing.
-     *
-     * @param scrollUnits The total accumulated scroll units.
-     * @param dpi Device's Dots Per Inch (preferably ydpi for vertical scroll). If null, a default is used.
-     * @return Kilometers as Float.
-     */
-    fun scrollUnitsToKilometersValue(scrollUnits: Long, dpi: Float? = null): Float {
-        if (scrollUnits <= 0) return 0.0f
-
-        val effectiveDpi = dpi ?: 160f // Default DPI (mdpi), adjust as needed or make it a settable default
-
-        if (effectiveDpi <= 0f) {
-            Log.w("ConversionUtil", "Invalid DPI ($effectiveDpi) for scrollUnitsToKilometersValue. Returning 0km.")
-            return 0.0f
-        }
-
-        val inchesScrolled = scrollUnits.toDouble() / effectiveDpi
-        val metersScrolled = inchesScrolled / INCHES_PER_METER
-        val kilometers = metersScrolled / METERS_PER_KILOMETER
-
-        return kilometers.toFloat()
     }
 }

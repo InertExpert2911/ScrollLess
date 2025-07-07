@@ -24,7 +24,11 @@ interface ScrollSessionDao {
     fun getTotalScrollForDate(date: String): Flow<Long?>
 
     @Query("""
-        SELECT package_name as packageName, SUM(scroll_amount) as totalScroll, dataType
+        SELECT package_name as packageName, 
+               SUM(scroll_amount) as totalScroll, 
+               SUM(scroll_amount_x) as totalScrollX,
+               SUM(scroll_amount_y) as totalScrollY,
+               dataType
         FROM scroll_sessions
         WHERE date_string = :dateString
         GROUP BY package_name, dataType
@@ -32,7 +36,7 @@ interface ScrollSessionDao {
     fun getScrollDataForDate(dateString: String): Flow<List<AppScrollData>>
 
     @Query("""
-        SELECT date_string as dateString, SUM(scroll_amount) as totalScroll
+        SELECT date_string as dateString, SUM(scroll_amount) as totalScroll, SUM(scroll_amount_x) as totalScrollX, SUM(scroll_amount_y) as totalScrollY
         FROM scroll_sessions
         WHERE package_name = :packageName AND date_string IN (:dateStrings)
         GROUP BY date_string
@@ -46,6 +50,8 @@ interface ScrollSessionDao {
 // New data class to hold scroll data along with its date, as AppScrollData only has packageName and totalScroll
 data class AppScrollDataPerDate(
     val dateString: String, // YYYY-MM-DD
-    val totalScroll: Long
+    val totalScroll: Long,
+    val totalScrollX: Long,
+    val totalScrollY: Long
 )
 

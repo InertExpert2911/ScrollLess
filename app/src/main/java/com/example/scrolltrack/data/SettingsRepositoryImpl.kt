@@ -23,7 +23,8 @@ class SettingsRepositoryImpl @Inject constructor(@ApplicationContext context: Co
         val DEFAULT_THEME = AppTheme.CalmLavender.name
         const val KEY_IS_DARK_MODE = "is_dark_mode"
         const val DEFAULT_IS_DARK_MODE = true // Default to dark mode
-        const val KEY_CALIBRATION_FACTOR = "calibration_factor"
+        const val KEY_CALIBRATION_FACTOR_X = "calibration_factor_x"
+        const val KEY_CALIBRATION_FACTOR_Y = "calibration_factor_y"
     }
 
     init {
@@ -60,11 +61,11 @@ class SettingsRepositoryImpl @Inject constructor(@ApplicationContext context: Co
         awaitClose { appPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
-    override val calibrationFactor: Flow<Float?> = callbackFlow {
+    override val calibrationFactorX: Flow<Float?> = callbackFlow {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == KEY_CALIBRATION_FACTOR) {
-                if (appPrefs.contains(KEY_CALIBRATION_FACTOR)) {
-                    trySend(appPrefs.getFloat(KEY_CALIBRATION_FACTOR, -1f))
+            if (key == KEY_CALIBRATION_FACTOR_X) {
+                if (appPrefs.contains(KEY_CALIBRATION_FACTOR_X)) {
+                    trySend(appPrefs.getFloat(KEY_CALIBRATION_FACTOR_X, -1f))
                 } else {
                     trySend(null)
                 }
@@ -73,8 +74,30 @@ class SettingsRepositoryImpl @Inject constructor(@ApplicationContext context: Co
         appPrefs.registerOnSharedPreferenceChangeListener(listener)
 
         // Emit initial value
-        if (appPrefs.contains(KEY_CALIBRATION_FACTOR)) {
-            trySend(appPrefs.getFloat(KEY_CALIBRATION_FACTOR, -1f))
+        if (appPrefs.contains(KEY_CALIBRATION_FACTOR_X)) {
+            trySend(appPrefs.getFloat(KEY_CALIBRATION_FACTOR_X, -1f))
+        } else {
+            trySend(null)
+        }
+
+        awaitClose { appPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    override val calibrationFactorY: Flow<Float?> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_CALIBRATION_FACTOR_Y) {
+                if (appPrefs.contains(KEY_CALIBRATION_FACTOR_Y)) {
+                    trySend(appPrefs.getFloat(KEY_CALIBRATION_FACTOR_Y, -1f))
+                } else {
+                    trySend(null)
+                }
+            }
+        }
+        appPrefs.registerOnSharedPreferenceChangeListener(listener)
+
+        // Emit initial value
+        if (appPrefs.contains(KEY_CALIBRATION_FACTOR_Y)) {
+            trySend(appPrefs.getFloat(KEY_CALIBRATION_FACTOR_Y, -1f))
         } else {
             trySend(null)
         }
@@ -94,12 +117,17 @@ class SettingsRepositoryImpl @Inject constructor(@ApplicationContext context: Co
         }
     }
 
-    override suspend fun setCalibrationFactor(factor: Float?) {
+    override suspend fun setCalibrationFactors(factorX: Float?, factorY: Float?) {
         appPrefs.edit {
-            if (factor != null) {
-                putFloat(KEY_CALIBRATION_FACTOR, factor)
+            if (factorX != null) {
+                putFloat(KEY_CALIBRATION_FACTOR_X, factorX)
             } else {
-                remove(KEY_CALIBRATION_FACTOR)
+                remove(KEY_CALIBRATION_FACTOR_X)
+            }
+            if (factorY != null) {
+                putFloat(KEY_CALIBRATION_FACTOR_Y, factorY)
+            } else {
+                remove(KEY_CALIBRATION_FACTOR_Y)
             }
         }
     }

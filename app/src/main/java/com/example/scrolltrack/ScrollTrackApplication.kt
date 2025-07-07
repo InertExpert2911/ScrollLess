@@ -24,6 +24,8 @@ import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import com.example.scrolltrack.BuildConfig
+import com.example.scrolltrack.services.FlushInferredScrollWorker
+import com.example.scrolltrack.services.DailyProcessingWorker
 
 @HiltAndroidApp
 class ScrollTrackApplication : Application(), Configuration.Provider {
@@ -80,6 +82,8 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
 
     private fun setupWorkers() {
         setupUsageStatsWorker()
+        setupFlushInferredScrollWorker()
+        setupDailyProcessingWorker()
     }
 
     private fun createNotificationChannel() {
@@ -94,6 +98,32 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
                 getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
         }
+    }
+
+    private fun setupDailyProcessingWorker() {
+        val repeatingRequest = PeriodicWorkRequestBuilder<DailyProcessingWorker>(4, TimeUnit.HOURS)
+            .setConstraints(Constraints.Builder().build()) // Can run even if not idle
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            DailyProcessingWorker.WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            repeatingRequest
+        )
+        Timber.d("DailyProcessingWorker scheduled.")
+    }
+
+    private fun setupFlushInferredScrollWorker() {
+        val repeatingRequest = PeriodicWorkRequestBuilder<FlushInferredScrollWorker>(15, TimeUnit.MINUTES)
+            .setConstraints(Constraints.Builder().build()) // No special constraints
+            .build()
+
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            FlushInferredScrollWorker.WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            repeatingRequest
+        )
+        Timber.d("FlushInferredScrollWorker scheduled.")
     }
 
     private fun setupUsageStatsWorker() {
