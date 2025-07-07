@@ -7,6 +7,7 @@ import com.example.scrolltrack.data.AppScrollData
 import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.ui.model.AppUsageUiItem
+import com.example.scrolltrack.ui.model.AppOpenUiItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -36,6 +37,19 @@ class AppUiModelMapper @Inject constructor(
                 val fallbackAppName = record.packageName.substringAfterLast('.', record.packageName)
                 AppUsageUiItem(record.packageName, fallbackAppName, null, record.usageTimeMillis, record.packageName)
             }
+        }
+    }
+
+    suspend fun mapToAppOpenUiItem(record: DailyAppUsageRecord): AppOpenUiItem {
+        return withContext(Dispatchers.IO) {
+            val metadata = appMetadataRepository.getAppMetadata(record.packageName)
+            val iconFile = appMetadataRepository.getIconFile(record.packageName)
+            AppOpenUiItem(
+                packageName = record.packageName,
+                appName = metadata?.appName ?: record.packageName.substringAfterLast('.', record.packageName),
+                icon = iconFile,
+                openCount = record.appOpenCount
+            )
         }
     }
 
