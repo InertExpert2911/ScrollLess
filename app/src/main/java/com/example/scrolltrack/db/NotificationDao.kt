@@ -54,4 +54,14 @@ interface NotificationDao {
 
     @Query("UPDATE notifications SET removal_reason = :reason WHERE package_name = :packageName AND post_time_utc = :postTimeUTC")
     suspend fun updateRemovalReason(packageName: String, postTimeUTC: Long, reason: Int)
+
+    @Query("""
+        SELECT
+            package_name as packageName,
+            COUNT(id) as count
+        FROM notifications
+        WHERE date_string = :dateString
+        GROUP BY package_name
+    """)
+    suspend fun getNotificationCountsPerAppForDate(dateString: String): List<NotificationCountPerApp>
 } 

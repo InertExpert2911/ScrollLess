@@ -226,8 +226,15 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
         val usageAggregates = aggregateUsage(filteredEvents, endTime)
         val appOpens = calculateAppOpens(filteredEvents)
-        val notifications = calculateAccurateNotificationCounts(filteredEvents)
-        val totalNotifications = notifications.values.sum()
+
+        // --- ACCURATE NOTIFICATION COUNTING ---
+        // We now fetch from the de-duplicated notifications table instead of raw events.
+        val notificationsByPackage = notificationDao.getNotificationCountsPerAppForDate(dateString)
+            .filter { it.packageName !in filterSet } // Apply the same filterSet for consistency
+            .associate { it.packageName to it.count }
+        val totalNotifications = notificationsByPackage.values.sum()
+        // --- END OF ACCURATE NOTIFICATION COUNTING ---
+
 
         // --- DEBOUNCED UNLOCK CALCULATION ---
         val rawUnlockEvents = filteredEvents
@@ -252,17 +259,17 @@ class ScrollDataRepositoryImpl @Inject constructor(
         val lastUnlockTime = debouncedUnlockEvents.maxOfOrNull { it.eventTimestamp }
         // --- END OF DEBOUNCED UNLOCK CALCULATION ---
 
-        val allPackages = usageAggregates.keys.union(appOpens.keys).union(notifications.keys)
+        val allPackages = usageAggregates.keys.union(appOpens.keys).union(notificationsByPackage.keys)
         val usageRecords = allPackages.mapNotNull { pkg ->
             val (usage, active) = usageAggregates[pkg] ?: (0L to 0L)
-            if (usage < AppConstants.MINIMUM_SIGNIFICANT_SESSION_DURATION_MS) null
+            if (usage < AppConstants.MINIMUM_SIGNIFICANT_SESSION_DURATION_MS && (notificationsByPackage[pkg] ?: 0) == 0) null
             else DailyAppUsageRecord(
                 packageName = pkg,
                 dateString = dateString,
                 usageTimeMillis = usage,
                 activeTimeMillis = active,
                 appOpenCount = appOpens.getOrDefault(pkg, 0),
-                notificationCount = notifications.getOrDefault(pkg, 0),
+                notificationCount = notificationsByPackage.getOrDefault(pkg, 0),
                 lastUpdatedTimestamp = System.currentTimeMillis()
             )
         }
@@ -330,6 +337,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
     }
 
     private fun calculateAccurateNotificationCounts(events: List<RawAppEvent>): Map<String, Int> {
+        // THIS FUNCTION IS NO LONGER USED and can be removed.
         val notificationEvents = events.filter { it.eventType == RawAppEvent.EVENT_TYPE_NOTIFICATION_POSTED }
         return notificationEvents.groupingBy { it.packageName }.eachCount()
     }

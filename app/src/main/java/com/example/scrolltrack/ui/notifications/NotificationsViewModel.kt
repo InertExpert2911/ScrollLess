@@ -66,18 +66,21 @@ class NotificationsViewModel @Inject constructor(
             }
 
             val appNotificationCounts = repository.getNotificationCountPerAppForPeriod(startDate, endDate).first()
-            val totalCount = appNotificationCounts.sumOf { it.count }
 
             val notificationItems = withContext(Dispatchers.Default) {
                 appNotificationCounts
                     .mapNotNull { countPerApp ->
                         appMetadataRepository.getAppMetadata(countPerApp.packageName)?.let { metadata ->
+                            // Hides apps that are not installed or marked as not user-visible
                             if (!metadata.isUserVisible || !metadata.isInstalled) return@mapNotNull null
                             metadata to countPerApp.count
                         }
                     }
                     .sortedByDescending { it.second }
             }
+
+            // The total count is now calculated AFTER filtering the list.
+            val totalCount = notificationItems.sumOf { it.second }
 
             emit(NotificationsUiState.Success(notificationItems, period, title, totalCount))
         }
