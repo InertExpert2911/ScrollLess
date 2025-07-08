@@ -409,35 +409,50 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
         val aggregator = mutableMapOf<String, Pair<Long, Long>>()
         val interactionEventsByPackage = allEvents
-            .filter { RawAppEvent.isAccessibilityEvent(it.eventType) }
+            .filter { RawAppEvent.isAccessibilityEvent(it.eventType) || it.eventType == RawAppEvent.EVENT_TYPE_USER_INTERACTION }
             .groupBy { it.packageName }
 
         sessions.forEach { session ->
             val usageTime = session.endTime - session.startTime
-            val sessionInteractionTimestamps = interactionEventsByPackage[session.pkg]
-                ?.map { it.eventTimestamp }
-                ?.filter { it in session.startTime..session.endTime }
-                ?.sorted() ?: emptyList()
+            val sessionInteractionEvents = interactionEventsByPackage[session.pkg]
+                ?.filter { it.eventTimestamp in session.startTime..session.endTime }
+                ?.sortedBy { it.eventTimestamp }
+                ?: emptyList()
 
-            val activeTime = calculateActiveTimeFromInteractions(sessionInteractionTimestamps, session.startTime, session.endTime)
+            val activeTime = calculateActiveTimeFromInteractions(sessionInteractionEvents, session.startTime, session.endTime)
             val (currentUsage, currentActive) = aggregator.getOrDefault(session.pkg, 0L to 0L)
             aggregator[session.pkg] = (currentUsage + usageTime) to (currentActive + activeTime)
         }
         return aggregator
     }
 
-    private fun calculateActiveTimeFromInteractions(timestamps: List<Long>, sessionStart: Long, sessionEnd: Long): Long {
-        if (timestamps.isEmpty()) return 0L
-        val intervals = timestamps.map { it to it + AppConstants.ACTIVE_TIME_INTERACTION_WINDOW_MS }
+    private fun calculateActiveTimeFromInteractions(events: List<RawAppEvent>, sessionStart: Long, sessionEnd: Long): Long {
+        if (events.isEmpty()) return 0L
+
+        val intervals = events.map { event ->
+            val window = when (event.eventType) {
+                RawAppEvent.EVENT_TYPE_SCROLL_INFERRED, RawAppEvent.EVENT_TYPE_SCROLL_MEASURED -> AppConstants.ACTIVE_TIME_SCROLL_WINDOW_MS
+                RawAppEvent.EVENT_TYPE_ACCESSIBILITY_TYPING -> AppConstants.ACTIVE_TIME_TYPE_WINDOW_MS
+                RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_FOCUSED -> AppConstants.ACTIVE_TIME_TAP_WINDOW_MS
+                RawAppEvent.EVENT_TYPE_USER_INTERACTION -> AppConstants.ACTIVE_TIME_INTERACTION_WINDOW_MS // Fallback for general interaction
+                else -> 0L
+            }
+            event.eventTimestamp to event.eventTimestamp + window
+        }.filter { it.second > it.first }
+
+        if (intervals.isEmpty()) return 0L
+
+        val sortedIntervals = intervals.sortedBy { it.first }
         val merged = mutableListOf<Pair<Long, Long>>()
-        merged.add(intervals.first())
-        for (i in 1 until intervals.size) {
+        merged.add(sortedIntervals.first())
+
+        for (i in 1 until sortedIntervals.size) {
             val (lastStart, lastEnd) = merged.last()
-            val (currentStart, currentEnd) = intervals[i]
+            val (currentStart, currentEnd) = sortedIntervals[i]
             if (currentStart < lastEnd) {
                 merged[merged.size - 1] = lastStart to maxOf(lastEnd, currentEnd)
             } else {
-                merged.add(intervals[i])
+                merged.add(sortedIntervals[i])
             }
         }
         return merged.sumOf { (start, end) ->

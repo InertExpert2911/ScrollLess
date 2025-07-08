@@ -42,6 +42,8 @@ class ScrollTrackService : AccessibilityService() {
     lateinit var rawAppEventDao: RawAppEventDao
 
     private var currentForegroundPackage: String? = null
+    private val lastTypingEventTimestamp = ConcurrentHashMap<String, Long>()
+    private val TYPING_DEBOUNCE_MS = 3000L // 3 seconds
 
     private val unlockReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -88,7 +90,10 @@ class ScrollTrackService : AccessibilityService() {
         val info = AccessibilityServiceInfo().apply {
             eventTypes = AccessibilityEvent.TYPE_VIEW_SCROLLED or
                     AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                    AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                    AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
+                    AccessibilityEvent.TYPE_VIEW_CLICKED or
+                    AccessibilityEvent.TYPE_VIEW_FOCUSED or
+                    AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             notificationTimeout = 100 // ms
         }
@@ -104,6 +109,9 @@ class ScrollTrackService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> handleWindowStateChange(event)
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> handleMeasuredScroll(event, packageName)
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> handleInferredScroll(packageName)
+            AccessibilityEvent.TYPE_VIEW_CLICKED -> handleGenericEvent(event, RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, packageName)
+            AccessibilityEvent.TYPE_VIEW_FOCUSED -> handleGenericEvent(event, RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_FOCUSED, packageName)
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> handleTypingEvent(event, packageName)
         }
     }
 
@@ -129,6 +137,32 @@ class ScrollTrackService : AccessibilityService() {
             null, // The 'value' field is no longer needed for scroll
             event.scrollDeltaX,
             event.scrollDeltaY
+        )
+    }
+
+    private fun handleTypingEvent(event: AccessibilityEvent, packageName: String) {
+        val currentTime = System.currentTimeMillis()
+        val lastTime = lastTypingEventTimestamp[packageName] ?: 0L
+
+        if (currentTime - lastTime > TYPING_DEBOUNCE_MS) {
+            val activePackage = currentForegroundPackage ?: packageName
+            logRawEvent(
+                activePackage,
+                event.className?.toString(),
+                RawAppEvent.EVENT_TYPE_ACCESSIBILITY_TYPING,
+                null
+            )
+            lastTypingEventTimestamp[packageName] = currentTime
+        }
+    }
+
+    private fun handleGenericEvent(event: AccessibilityEvent, eventType: Int, packageName: String) {
+        val activePackage = currentForegroundPackage ?: packageName
+        logRawEvent(
+            activePackage,
+            event.className?.toString(),
+            eventType,
+            null
         )
     }
 

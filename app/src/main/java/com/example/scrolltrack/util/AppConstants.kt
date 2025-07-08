@@ -4,13 +4,6 @@ import java.util.concurrent.TimeUnit
 
 object AppConstants {
     /**
-     * The time window in milliseconds to consider an interaction as part of the same "active" session.
-     * For example, if a user clicks and then clicks again 4 seconds later, this is considered
-     * continuous active time. A 31-second gap would result in two separate active blocks.
-     */
-    val ACTIVE_TIME_INTERACTION_WINDOW_MS = TimeUnit.SECONDS.toMillis(30)
-
-    /**
      * The minimum duration for a foreground session to be considered significant enough to
      * be saved in the database. Helps filter out brief flashes of apps.
      */
@@ -37,7 +30,15 @@ object AppConstants {
     /**
      * The window over which to batch content change events for a single inferred scroll calculation.
      */
-    const val INFERRED_SCROLL_DEBOUNCE_MS = 1500L
+    const val INFERRED_SCROLL_DEBOUNCE_MS = 1000L // 1 second
+    const val FLUSH_INFERRED_SCROLL_INTERVAL_MINUTES = 15L
+    const val UNLOCK_EVENT_FOLLOW_WINDOW_MS = 2000L // 2 seconds
+
+    // --- Active Time Calculation ---
+    const val ACTIVE_TIME_INTERACTION_WINDOW_MS = 5000L // 5 seconds, now a fallback
+    const val ACTIVE_TIME_TAP_WINDOW_MS = 2000L      // Short window for simple taps/clicks
+    const val ACTIVE_TIME_TYPE_WINDOW_MS = 8000L     // Medium window for typing
+    const val ACTIVE_TIME_SCROLL_WINDOW_MS = 3000L   // Short-to-medium window for scroll
 
     // --- Aggregation Logic ---
     const val QUICK_SWITCH_THRESHOLD_MS = 2000L // Not currently in use, but kept for future logic refinement
@@ -48,7 +49,6 @@ object AppConstants {
 
     // --- Event Processing ---
     const val NOTIFICATION_DEBOUNCE_WINDOW_MS = 30000L // 30 seconds
-    const val UNLOCK_EVENT_FOLLOW_WINDOW_MS = 2000L // 2 seconds
 
     // --- Legacy/Unused ---
     // These were part of an older, more complex aggregation strategy and are not currently used
