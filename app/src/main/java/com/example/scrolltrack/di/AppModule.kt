@@ -77,6 +77,10 @@ abstract class AppModule {
         fun provideAppMetadataDao(db: AppDatabase): AppMetadataDao = db.appMetadataDao()
 
         @Provides
+        @Singleton
+        fun provideUnlockSessionDao(db: AppDatabase): UnlockSessionDao = db.unlockSessionDao()
+
+        @Provides
         @IoDispatcher
         fun provideIoDispatcher(): CoroutineDispatcher = Dispatchers.IO
     }

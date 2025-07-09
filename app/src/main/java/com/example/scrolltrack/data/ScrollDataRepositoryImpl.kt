@@ -16,6 +16,8 @@ import com.example.scrolltrack.db.DailyDeviceSummary
 import com.example.scrolltrack.db.RawAppEvent
 import com.example.scrolltrack.db.ScrollSessionRecord
 import com.example.scrolltrack.db.AppScrollDataPerDate
+import com.example.scrolltrack.db.UnlockSessionDao
+import com.example.scrolltrack.db.UnlockSessionRecord
 import com.example.scrolltrack.di.IoDispatcher
 import com.example.scrolltrack.util.AppConstants
 import com.example.scrolltrack.util.DateUtil
@@ -24,6 +26,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -44,6 +47,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
     private val rawAppEventDao: RawAppEventDao,
     private val notificationDao: NotificationDao,
     private val dailyDeviceSummaryDao: DailyDeviceSummaryDao,
+    private val unlockSessionDao: UnlockSessionDao,
     @ApplicationContext private val context: Context,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ScrollDataRepository {
@@ -127,19 +131,25 @@ class ScrollDataRepositoryImpl @Inject constructor(
         }
 
         val filterSet = buildFilterSet()
-        val scrollSessions = processScrollEvents(events, filterSet)
-        val (usageRecords, deviceSummary) = processUsageAndDeviceSummary(events, filterSet, dateString)
 
         appDatabase.withTransaction {
+            // Clear out old processed data for this date
             dailyAppUsageDao.deleteUsageForDate(dateString)
             scrollSessionDao.deleteSessionsForDate(dateString)
             dailyDeviceSummaryDao.deleteSummaryForDate(dateString)
+            unlockSessionDao.deleteSessionsForDate(dateString)
 
+            // Process and insert new data
+            val scrollSessions = processScrollEvents(events, filterSet)
             if (scrollSessions.isNotEmpty()) scrollSessionDao.insertSessions(scrollSessions)
+
+            processUnlockSessions(events, dateString)
+
+            val (usageRecords, deviceSummary) = processUsageAndDeviceSummary(events, filterSet, dateString)
             if (usageRecords.isNotEmpty()) dailyAppUsageDao.insertAllUsage(usageRecords)
             deviceSummary?.let { dailyDeviceSummaryDao.insertOrUpdate(it) }
         }
-        Timber.i("Finished processing for date: $dateString. Saved ${scrollSessions.size} scroll sessions, ${usageRecords.size} usage records.")
+        Timber.i("Finished processing for date: $dateString.")
     }
 
     private suspend fun buildFilterSet(): Set<String> {
@@ -220,25 +230,10 @@ class ScrollDataRepositoryImpl @Inject constructor(
         return mergedSessions
     }
 
-    private suspend fun processUsageAndDeviceSummary(events: List<RawAppEvent>, filterSet: Set<String>, dateString: String): Pair<List<DailyAppUsageRecord>, DailyDeviceSummary?> {
-        val endTime = DateUtil.getEndOfDayUtcMillis(dateString)
-        val filteredEvents = events.filter { it.packageName !in filterSet }
-
-        val usageAggregates = aggregateUsage(filteredEvents, endTime)
-        val appOpens = calculateAppOpens(filteredEvents)
-
-        // --- ACCURATE NOTIFICATION COUNTING ---
-        // We now fetch from the de-duplicated notifications table instead of raw events.
-        val notificationsByPackage = notificationDao.getNotificationCountsPerAppForDate(dateString)
-            .filter { it.packageName !in filterSet } // Apply the same filterSet for consistency
-            .associate { it.packageName to it.count }
-        val totalNotifications = notificationsByPackage.values.sum()
-        // --- END OF ACCURATE NOTIFICATION COUNTING ---
-
-
-        // --- DEBOUNCED UNLOCK CALCULATION ---
-        val rawUnlockEvents = filteredEvents
-            .filter { it.eventType == RawAppEvent.EVENT_TYPE_USER_UNLOCKED || it.eventType == RawAppEvent.EVENT_TYPE_USER_PRESENT || it.eventType == RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN }
+    private suspend fun processUnlockSessions(events: List<RawAppEvent>, dateString: String) {
+        // Debounce unlock events first to handle rapid sequences
+        val rawUnlockEvents = events
+            .filter { it.eventType in setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED, RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN, RawAppEvent.EVENT_TYPE_USER_PRESENT) }
             .sortedBy { it.eventTimestamp }
 
         val debouncedUnlockEvents = mutableListOf<RawAppEvent>()
@@ -254,10 +249,61 @@ class ScrollDataRepositoryImpl @Inject constructor(
                 }
             }
         }
-        val totalUnlocks = debouncedUnlockEvents.size
-        val firstUnlockTime = debouncedUnlockEvents.minOfOrNull { it.eventTimestamp }
-        val lastUnlockTime = debouncedUnlockEvents.maxOfOrNull { it.eventTimestamp }
-        // --- END OF DEBOUNCED UNLOCK CALCULATION ---
+
+        val allEventsSorted = events.sortedBy { it.eventTimestamp }
+
+        for (unlockEvent in debouncedUnlockEvents) {
+            val session = UnlockSessionRecord(
+                unlockTimestamp = unlockEvent.eventTimestamp,
+                dateString = dateString,
+                unlockEventType = unlockEvent.eventType.toString()
+            )
+            unlockSessionDao.insert(session)
+        }
+
+        val lockEvents = allEventsSorted.filter { it.eventType == RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE }
+        for(lockEvent in lockEvents) {
+            val lastOpenSession = unlockSessionDao.getLastOpenSession()
+            if (lastOpenSession != null && lastOpenSession.unlockTimestamp < lockEvent.eventTimestamp) {
+                val duration = lockEvent.eventTimestamp - lastOpenSession.unlockTimestamp
+
+                // Find first app opened after this unlock
+                val firstAppEvent = allEventsSorted.find {
+                    it.eventTimestamp > lastOpenSession.unlockTimestamp &&
+                            it.eventTimestamp < lockEvent.eventTimestamp &&
+                            it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED
+                }
+
+                unlockSessionDao.closeSession(
+                    sessionId = lastOpenSession.id,
+                    lockTimestamp = lockEvent.eventTimestamp,
+                    duration = duration,
+                    firstAppPackage = firstAppEvent?.packageName,
+                    notificationKey = null // TODO: Implement notification trigger heuristic
+                )
+            }
+        }
+    }
+
+    private suspend fun processUsageAndDeviceSummary(events: List<RawAppEvent>, filterSet: Set<String>, dateString: String): Pair<List<DailyAppUsageRecord>, DailyDeviceSummary?> {
+        val endTime = DateUtil.getEndOfDayUtcMillis(dateString)
+        val filteredEvents = events.filter { it.packageName !in filterSet }
+
+        val usageAggregates = aggregateUsage(filteredEvents, endTime)
+        val appOpens = calculateAppOpens(filteredEvents)
+
+        val notificationsByPackage = notificationDao.getNotificationCountsPerAppForDate(dateString)
+            .filter { it.packageName !in filterSet }
+            .associate { it.packageName to it.count }
+        val totalNotifications = notificationsByPackage.values.sum()
+
+        // --- UNLOCK DATA FROM NEW TABLE ---
+        val unlockSessionsForDay = unlockSessionDao.getUnlockCountForDate(dateString).first()
+        val allUnlockTimestamps = unlockSessionDao.getUnlockTimestampsForDate(dateString)
+        val totalUnlocks = unlockSessionsForDay
+        val firstUnlockTime = allUnlockTimestamps.minOrNull()
+        val lastUnlockTime = allUnlockTimestamps.maxOrNull()
+        // --- END UNLOCK DATA ---
 
         val allPackages = usageAggregates.keys.union(appOpens.keys).union(notificationsByPackage.keys)
         val usageRecords = allPackages.mapNotNull { pkg ->
@@ -303,7 +349,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
     override suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord> = dailyAppUsageDao.getUsageForPackageAndDates(packageName, dateStrings)
     override suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate> = scrollSessionDao.getAggregatedScrollForPackageAndDates(packageName, dateStrings)
     override fun getAllDistinctUsageDateStrings(): Flow<List<String>> = dailyAppUsageDao.getAllDistinctUsageDateStrings()
-    override fun getTotalUnlockCountForDate(dateString: String): Flow<Int> = dailyDeviceSummaryDao.getUnlockCountForDate(dateString).map { it ?: 0 }
+    override fun getTotalUnlockCountForDate(dateString: String): Flow<Int> = unlockSessionDao.getUnlockCountForDate(dateString).map { it ?: 0 }
     override fun getTotalNotificationCountForDate(dateString: String): Flow<Int> = dailyDeviceSummaryDao.getNotificationCountForDate(dateString).map { it ?: 0 }
     override fun getDeviceSummaryForDate(dateString: String): Flow<DailyDeviceSummary?> = dailyDeviceSummaryDao.getSummaryForDate(dateString)
     override fun getScrollDataForDate(dateString: String): Flow<List<AppScrollData>> = scrollSessionDao.getScrollDataForDate(dateString)
