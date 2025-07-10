@@ -41,6 +41,10 @@ class ScrollTrackService : AccessibilityService() {
     @Inject
     lateinit var rawAppEventDao: RawAppEventDao
 
+    // Allow injecting WorkManager for testing
+    @Inject
+    lateinit var workManager: WorkManager
+
     private var currentForegroundPackage: String? = null
     private val lastTypingEventTimestamp = ConcurrentHashMap<String, Long>()
     private val TYPING_DEBOUNCE_MS = 3000L // 3 seconds
@@ -167,7 +171,6 @@ class ScrollTrackService : AccessibilityService() {
     }
 
     private fun handleInferredScroll(packageName: String) {
-        val workManager = WorkManager.getInstance(applicationContext)
         val workName = "${InferredScrollWorker.WORK_NAME_PREFIX}$packageName"
 
         val workRequest = OneTimeWorkRequestBuilder<InferredScrollWorker>()
@@ -182,7 +185,7 @@ class ScrollTrackService : AccessibilityService() {
         )
     }
 
-    private fun isNodeScrollable(node: AccessibilityNodeInfo?): Boolean {
+    internal fun isNodeScrollable(node: AccessibilityNodeInfo?): Boolean {
         var currentNode = node
         var depth = 0
         while (currentNode != null && depth < 10) {

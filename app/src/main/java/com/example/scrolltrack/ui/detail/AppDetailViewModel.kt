@@ -33,6 +33,8 @@ import java.time.format.FormatStyle
 import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 import kotlin.math.abs
+import kotlinx.coroutines.CoroutineDispatcher
+import com.example.scrolltrack.di.MainDispatcher
 
 
 enum class ChartPeriodType {
@@ -55,7 +57,8 @@ class AppDetailViewModel @Inject constructor(
     private val appMetadataRepository: AppMetadataRepository,
     internal val conversionUtil: ConversionUtil,
     savedStateHandle: SavedStateHandle,
-    @param:ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    @MainDispatcher private val mainDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private val packageName: String = savedStateHandle.get<String>("packageName")!!
@@ -116,12 +119,12 @@ class AppDetailViewModel @Inject constructor(
     }
 
     // Methods for App Detail Screen
-    private fun loadAppDetailsInfo() {
+    internal fun loadAppDetailsInfo() {
         // Since packageName is from SavedStateHandle, it's final. No need to check for changes.
         _currentChartPeriodType.value = ChartPeriodType.DAILY
         _currentChartReferenceDate.value = DateUtil.getCurrentLocalDateString()
 
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(mainDispatcher) {
             val metadata = appMetadataRepository.getAppMetadata(packageName)
             if (metadata != null) {
                 _appDetailAppName.value = metadata.appName
@@ -137,7 +140,7 @@ class AppDetailViewModel @Inject constructor(
     }
 
     private fun loadAppDetailChartData(packageName: String, period: ChartPeriodType, referenceDateStr: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(mainDispatcher) {
             _appDetailChartData.value = emptyList()
             _appDetailFocusedUsageDisplay.value = "..."
             _appDetailFocusedPeriodDisplay.value = "..."
@@ -292,8 +295,8 @@ class AppDetailViewModel @Inject constructor(
         return data.sumOf { it.usageTimeMillis } / data.size
     }
 
-    private fun updateComparisonText(currentAvg: Long, previousAvg: Long, periodName: String) {
-        val currentAvgFormatted = DateUtil.formatDuration(currentAvg)
+    internal fun updateComparisonText(currentAvg: Long, previousAvg: Long, periodName: String) {
+        val currentAvgFormatted = DateUtil.formatDurationWithSeconds(currentAvg)
 
         if (previousAvg == 0L) {
             if (currentAvg == 0L) {

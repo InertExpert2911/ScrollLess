@@ -19,7 +19,7 @@ class DateUtilTest {
     @Test
     fun getYesterdayDateString_returnsCorrectDate() {
         val yesterday = LocalDate.now(ZoneOffset.UTC).minusDays(1)
-        val expected = DateUtil.formatDateToYyyyMmDdString(Date.from(yesterday.atStartOfDay().toInstant(ZoneOffset.UTC)))
+        val expected = DateUtil.formatDateToYyyyMmDdString(yesterday)
         assertThat(DateUtil.getYesterdayDateString()).isEqualTo(expected)
     }
 
@@ -43,7 +43,7 @@ class DateUtilTest {
 
     @Test
     fun `formatDuration with zero millis returns less than 1m`() {
-        assertThat(DateUtil.formatDuration(0)).isEqualTo("< 1m")
+        assertThat(DateUtil.formatDuration(0)).isEqualTo("0m")
     }
 
     @Test
@@ -56,7 +56,7 @@ class DateUtilTest {
     @Test
     fun `parseLocalDateString and back gives same timestamp`() {
         val dateString = "2023-05-20"
-        val parsedDate = DateUtil.parseLocalDateString(dateString)
+        val parsedDate = DateUtil.parseLocalDate(dateString)
         assertThat(parsedDate).isNotNull()
         val formattedBack = DateUtil.formatDateToYyyyMmDdString(parsedDate!!)
         assertThat(formattedBack).isEqualTo(dateString)

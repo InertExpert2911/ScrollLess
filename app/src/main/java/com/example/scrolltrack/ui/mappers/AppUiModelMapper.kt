@@ -40,6 +40,14 @@ class AppUiModelMapper @Inject constructor(
         }
     }
 
+    suspend fun mapToAppUsageUiItems(records: List<DailyAppUsageRecord>): List<AppUsageUiItem> {
+        return withContext(Dispatchers.IO) {
+            records.map { record ->
+                mapToAppUsageUiItem(record)
+            }
+        }
+    }
+
     suspend fun mapToAppOpenUiItem(record: DailyAppUsageRecord): AppOpenUiItem {
         return withContext(Dispatchers.IO) {
             val metadata = appMetadataRepository.getAppMetadata(record.packageName)

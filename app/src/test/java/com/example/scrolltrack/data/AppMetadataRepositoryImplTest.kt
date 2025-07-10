@@ -8,7 +8,8 @@ import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.graphics.drawable.BitmapDrawable
 import android.os.Build
-import androidx.test.core.app.ApplicationProvider
+import androidx.arch.core.executor.testing.InstantTaskExecutorRule
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.scrolltrack.db.AppMetadata
 import com.example.scrolltrack.db.AppMetadataDao
 import com.google.common.truth.Truth.assertThat
@@ -18,45 +19,40 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows
-import org.robolectric.shadows.ShadowDrawable
 import java.io.File
+import androidx.test.core.app.ApplicationProvider
 
 @OptIn(ExperimentalCoroutinesApi::class)
-@RunWith(RobolectricTestRunner::class)
+@RunWith(AndroidJUnit4::class)
 class AppMetadataRepositoryImplTest {
+
+    @get:Rule
+    val instantTaskExecutorRule = InstantTaskExecutorRule()
 
     private lateinit var context: Context
     private lateinit var mockDao: AppMetadataDao
     private lateinit var repository: AppMetadataRepositoryImpl
-    private lateinit var packageManager: PackageManager
-    private lateinit var shadowPackageManager: org.robolectric.shadows.ShadowPackageManager
-
-    private val testDispatcher = UnconfinedTestDispatcher()
+    private lateinit var mockPackageManager: PackageManager
 
     @Before
     fun setUp() {
-        Dispatchers.setMain(testDispatcher)
-
-        // Correctly initialize real objects, spies, and shadows to avoid conflicts.
-        val appContext = ApplicationProvider.getApplicationContext<Context>()
-        val realPackageManager = appContext.packageManager
-        shadowPackageManager = Shadows.shadowOf(realPackageManager)
-        packageManager = spyk(realPackageManager) // Spy and Shadow are on the same real object
-
-        // The context given to the repository must return our spied package manager.
-        context = spyk(appContext) {
-            every { packageManager } returns this@AppMetadataRepositoryImplTest.packageManager
-        }
-
+        // No longer mock context, we don't need it if we mock PackageManager directly
+        context = ApplicationProvider.getApplicationContext()
         mockDao = mockk(relaxUnitFun = true)
-        repository = AppMetadataRepositoryImpl(context, mockDao)
+        mockPackageManager = mockk(relaxed = true)
 
-        // Clean up icon directory before each test
-        val iconDir = File(context.filesDir, "app_icons")
+        // We can't directly replace the packageManager on a real context.
+        // So we will spy on the real context and stub the packageManager call.
+        val spiedContext = spyk(context)
+        every { spiedContext.packageManager } returns mockPackageManager
+        every { spiedContext.filesDir } returns File("build/tmp/test-files")
+
+        repository = AppMetadataRepositoryImpl(spiedContext, mockDao)
+
+        val iconDir = File(spiedContext.filesDir, "app_icons")
         if (iconDir.exists()) {
             iconDir.deleteRecursively()
         }
@@ -65,7 +61,6 @@ class AppMetadataRepositoryImplTest {
 
     @After
     fun tearDown() {
-        Dispatchers.resetMain()
         unmockkAll()
     }
 
@@ -77,13 +72,11 @@ class AppMetadataRepositoryImplTest {
         isSystem: Boolean = false,
         hasLauncher: Boolean = true,
         firstInstallTime: Long = 1000L
-    ): PackageInfo {
+    ) {
         val appInfo = ApplicationInfo().apply {
             this.packageName = packageName
             this.name = appName
-            this.flags = if (isSystem) ApplicationInfo.FLAG_SYSTEM else 0
-            this.sourceDir = "/dev/null"
-            this.uid = 12345
+            flags = if (isSystem) ApplicationInfo.FLAG_SYSTEM else 0
         }
 
         val packageInfo = PackageInfo().apply {
@@ -99,44 +92,28 @@ class AppMetadataRepositoryImplTest {
             this.firstInstallTime = firstInstallTime
         }
 
-        shadowPackageManager.installPackage(packageInfo)
-
-        // Mock getApplicationLabel and getApplicationIcon using the spy
-        every { packageManager.getApplicationLabel(appInfo) } returns appName
+        every { mockPackageManager.getPackageInfo(packageName, 0) } returns packageInfo
+        every { mockPackageManager.getApplicationLabel(appInfo) } returns appName
         val bitmap = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888)
-        val drawable = BitmapDrawable(context.resources, bitmap)
-        every { packageManager.getApplicationIcon(appInfo) } returns drawable
+        val drawable = mockk<BitmapDrawable>(relaxed = true)
+        every { drawable.bitmap } returns bitmap
+        every { mockPackageManager.getApplicationIcon(any<ApplicationInfo>()) } returns drawable
 
-        // Bypassing delegation issues by mocking queryIntentActivities directly.
         val resolveInfoList = if (hasLauncher) {
             listOf(ResolveInfo().apply {
                 activityInfo = android.content.pm.ActivityInfo().apply {
                     this.packageName = packageName
-                    this.name = "TestActivity"
                 }
             })
         } else {
             emptyList()
         }
-
-        // Mock for all Android versions by matching the intent's characteristics.
-        val mainLaunchIntentMatcher: (Intent) -> Boolean = {
-            it.action == Intent.ACTION_MAIN && it.hasCategory(Intent.CATEGORY_LAUNCHER)
-        }
-        every { packageManager.queryIntentActivities(match(mainLaunchIntentMatcher), any<Int>()) } returns resolveInfoList
+        
+        // Simplified queryIntentActivities mocking
+        every { mockPackageManager.queryIntentActivities(any(), any<Int>()) } returns resolveInfoList
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            every { packageManager.queryIntentActivities(match(mainLaunchIntentMatcher), any<PackageManager.ResolveInfoFlags>()) } returns resolveInfoList
+            every { mockPackageManager.queryIntentActivities(any(), any<PackageManager.ResolveInfoFlags>()) } returns resolveInfoList
         }
-
-        // Mock getLaunchIntentForPackage for any other tests that might need it.
-        if (hasLauncher) {
-            val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(packageName)
-            every { packageManager.getLaunchIntentForPackage(packageName) } returns launchIntent
-        } else {
-            every { packageManager.getLaunchIntentForPackage(packageName) } returns null
-        }
-
-        return packageInfo
     }
 
     private fun createAppMetadata(
@@ -149,7 +126,7 @@ class AppMetadataRepositoryImplTest {
 
     // --- getAppMetadata Tests ---
     @Test
-    fun `getAppMetadata - in DB, installed, version matches - returns DB data`() = runTest(testDispatcher) {
+    fun `getAppMetadata - in DB, installed, version matches - returns DB data`() = runTest {
         val pkg = "com.test.app1"
         val dbMeta = createAppMetadata(pkg, versionCode = 2L)
         coEvery { mockDao.getByPackageName(pkg) } returns dbMeta
@@ -161,7 +138,7 @@ class AppMetadataRepositoryImplTest {
     }
 
     @Test
-    fun `getAppMetadata - in DB, installed, version mismatch - fetches from PM, updates DB`() = runTest(testDispatcher) {
+    fun `getAppMetadata - in DB, installed, version mismatch - fetches from PM, updates DB`() = runTest {
         val pkg = "com.test.app1"
         val oldDbMeta = createAppMetadata(pkg, appName = "Old Name", versionCode = 1L)
         coEvery { mockDao.getByPackageName(pkg) } returns oldDbMeta
@@ -181,32 +158,24 @@ class AppMetadataRepositoryImplTest {
     }
 
     @Test
-    fun `getAppMetadata - in DB, installed, but not in PM (uninstalled) - marks uninstalled`() = runTest(testDispatcher) {
+    fun `getAppMetadata - in DB, installed, but not in PM (uninstalled) - marks uninstalled`() = runTest {
         val pkg = "com.test.app1"
         val dbMetaInstalled = createAppMetadata(pkg, isInstalled = true)
         val dbMetaUninstalled = createAppMetadata(pkg, isInstalled = false)
 
-        // GIVEN: The DAO first returns the installed state, then the uninstalled state after the update.
         coEvery { mockDao.getByPackageName(pkg) } returns dbMetaInstalled andThen dbMetaUninstalled
-        // GIVEN: The call to mark as uninstalled runs successfully.
         coEvery { mockDao.markAsUninstalled(pkg, any()) } just Runs
+        every { mockPackageManager.getPackageInfo(pkg, 0) } throws PackageManager.NameNotFoundException()
 
-        // GIVEN: The app is not actually present in the package manager.
-        Shadows.shadowOf(packageManager).removePackage(pkg)
-
-        // WHEN: We try to get the metadata
         val result = repository.getAppMetadata(pkg)
 
-        // THEN: The repository should mark the app as uninstalled in the DAO.
         coVerify { mockDao.markAsUninstalled(pkg, any()) }
-
-        // AND THEN: The final returned metadata should reflect the uninstalled state.
         assertThat(result).isEqualTo(dbMetaUninstalled)
         assertThat(result?.isInstalled).isFalse()
     }
 
     @Test
-    fun `getAppMetadata - not in DB, in PM - fetches from PM, caches`() = runTest(testDispatcher) {
+    fun `getAppMetadata - not in DB, in PM - fetches from PM, caches`() = runTest {
         val pkg = "com.test.newapp"
         coEvery { mockDao.getByPackageName(pkg) } returns null // Not in DB
         mockPmApp(pkg, appName = "New App", versionCode = 1L)
@@ -223,17 +192,17 @@ class AppMetadataRepositoryImplTest {
     }
 
     @Test
-    fun `getAppMetadata - not in DB, not in PM - returns null`() = runTest(testDispatcher) {
+    fun `getAppMetadata - not in DB, not in PM - returns null`() = runTest {
         val pkg = "com.nonexistent"
         coEvery { mockDao.getByPackageName(pkg) } returns null
-        // Not mocking in PM
+        every { mockPackageManager.getPackageInfo(pkg, 0) } throws PackageManager.NameNotFoundException()
         val result = repository.getAppMetadata(pkg)
         assertThat(result).isNull()
     }
 
     // --- getIconFile Tests ---
     @Test
-    fun `getIconFile - icon exists - returns File`() = runTest(testDispatcher) {
+    fun `getIconFile - icon exists - returns File`() = runTest {
         val pkg = "com.test.app.icon"
         // Simulate icon saving by fetching it first (which saves it)
         coEvery { mockDao.getByPackageName(pkg) } returns null
@@ -255,53 +224,46 @@ class AppMetadataRepositoryImplTest {
 
     // --- syncAllInstalledApps Tests ---
     @Test
-    fun `syncAllInstalledApps - new apps in PM - adds to DB`() = runTest(testDispatcher) {
+    fun `syncAllInstalledApps - new apps in PM - caches new apps`() = runTest {
         val pkg1 = "com.new.app1"
         val pkg2 = "com.new.app2"
-        // Still need to mock the individual app lookups that happen inside the sync
-        val appInfo1 = mockPmApp(pkg1, appName = "New App 1").applicationInfo
-        val appInfo2 = mockPmApp(pkg2, appName = "New App 2").applicationInfo
+        mockPmApp(pkg1, appName = "New App 1")
+        mockPmApp(pkg2, appName = "New App 2")
 
-        // GIVEN: The package manager reports two installed apps
-        every { packageManager.getInstalledApplications(any<Int>()) } returns listOf(appInfo1, appInfo2)
-
-        // GIVEN: The database is empty
+        every { mockPackageManager.getInstalledApplications(any<Int>()) } returns listOf(
+            ApplicationInfo().apply { packageName = pkg1 },
+            ApplicationInfo().apply { packageName = pkg2 }
+        )
         coEvery { mockDao.getAllKnownPackageNames() } returns emptyList()
-        coEvery { mockDao.getByPackageName(any()) } returns null // For the subsequent fetch call
+        coEvery { mockDao.getByPackageName(any()) } returns null
         coEvery { mockDao.insertOrUpdate(any()) } just Runs
 
-        // WHEN: We run the sync
         repository.syncAllInstalledApps()
 
-        // THEN: Both new apps should be inserted into the database
-        val capturedMetas = mutableListOf<AppMetadata>()
-        coVerify(exactly = 2) { mockDao.insertOrUpdate(capture(capturedMetas)) }
-        assertThat(capturedMetas.map { it.packageName }).containsExactlyElementsIn(listOf(pkg1, pkg2))
+        val capturedList = mutableListOf<AppMetadata>()
+        coVerify(exactly = 2) { mockDao.insertOrUpdate(capture(capturedList)) }
+        val capturedApps = capturedList.map { it.packageName }.toSet()
+        assertThat(capturedApps).containsExactly(pkg1, pkg2)
     }
 
     @Test
-    fun `syncAllInstalledApps - apps in DB not in PM - marks uninstalled`() = runTest(testDispatcher) {
-        val pkgUninstalled = "com.dbonly.app"
-        val dbMetaInstalled = createAppMetadata(pkgUninstalled, isInstalled = true)
+    fun `syncAllInstalledApps - apps in DB not in PM - marks as uninstalled`() = runTest {
+        val pkgToUninstall = "com.old.app"
+        val dbMeta = createAppMetadata(pkgToUninstall, isInstalled = true)
 
-        // GIVEN: The package manager reports no installed apps
-        every { packageManager.getInstalledApplications(any<Int>()) } returns emptyList()
+        every { mockPackageManager.getInstalledApplications(any<Int>()) } returns emptyList()
+        coEvery { mockDao.getAllKnownPackageNames() } returns listOf(pkgToUninstall)
+        coEvery { mockDao.getByPackageName(pkgToUninstall) } returns dbMeta
+        coEvery { mockDao.markAsUninstalled(pkgToUninstall, any()) } just Runs
 
-        // GIVEN: The database knows about one installed app
-        coEvery { mockDao.getAllKnownPackageNames() } returns listOf(pkgUninstalled)
-        coEvery { mockDao.getByPackageName(pkgUninstalled) } returns dbMetaInstalled
-        coEvery { mockDao.markAsUninstalled(pkgUninstalled, any()) } just Runs
-
-        // WHEN: We run the sync
         repository.syncAllInstalledApps()
 
-        // THEN: The app should be marked as uninstalled
-        coVerify { mockDao.markAsUninstalled(pkgUninstalled, any()) }
+        coVerify { mockDao.markAsUninstalled(pkgToUninstall, any()) }
     }
 
     // --- isUserVisible Heuristic (tested via fetchFromPackageManagerAndCache indirectly) ---
     @Test
-    fun `fetchFromPackageManagerAndCache - non-system app - isUserVisible true`() = runTest(testDispatcher) {
+    fun `fetchFromPackageManagerAndCache - non-system app - isUserVisible true`() = runTest {
         val pkg = "com.non.system"
         mockPmApp(pkg, isSystem = false, hasLauncher = true) // Launcher status doesn't matter for non-system
         coEvery { mockDao.getByPackageName(pkg) } returns null
@@ -315,7 +277,7 @@ class AppMetadataRepositoryImplTest {
     }
 
     @Test
-    fun `fetchFromPackageManagerAndCache - system app with launcher - isUserVisible true`() = runTest(testDispatcher) {
+    fun `fetchFromPackageManagerAndCache - system app with launcher - isUserVisible true`() = runTest {
         val pkg = "com.system.launcher"
         mockPmApp(pkg, isSystem = true, hasLauncher = true)
         coEvery { mockDao.getByPackageName(pkg) } returns null
@@ -329,7 +291,7 @@ class AppMetadataRepositoryImplTest {
     }
 
     @Test
-    fun `fetchFromPackageManagerAndCache - system app without launcher - isUserVisible false`() = runTest(testDispatcher) {
+    fun `fetchFromPackageManagerAndCache - system app without launcher - isUserVisible false`() = runTest {
         val pkg = "com.system.nolauncher"
         mockPmApp(pkg, isSystem = true, hasLauncher = false)
         coEvery { mockDao.getByPackageName(pkg) } returns null

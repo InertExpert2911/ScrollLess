@@ -4,21 +4,20 @@ import android.content.Context
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
-import junit.framework.TestCase.assertEquals
-import junit.framework.TestCase.assertNull
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.cash.turbine.test
+import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
 
 @ExperimentalCoroutinesApi
-@RunWith(RobolectricTestRunner::class)
-@Config(sdk = [33])
+@RunWith(AndroidJUnit4::class)
 class RawAppEventDaoTest {
 
     @get:Rule
@@ -26,6 +25,12 @@ class RawAppEventDaoTest {
 
     private lateinit var database: AppDatabase
     private lateinit var dao: RawAppEventDao
+
+    private val event1 = RawAppEvent(packageName = "com.app.one", className = "c1", eventType = 1, eventTimestamp = 1698314400000, eventDateString = "2023-10-26", source = "TEST") // 10:00:00
+    private val event2 = RawAppEvent(packageName = "com.app.one", className = "c1", eventType = 2, eventTimestamp = 1698318000000, eventDateString = "2023-10-26", source = "TEST") // 11:00:00
+    private val event3 = RawAppEvent(packageName = "com.app.two", className = "c2", eventType = 1, eventTimestamp = 1698393600000, eventDateString = "2023-10-27", source = "TEST") // 08:00:00
+    private val event4 = RawAppEvent(packageName = "com.app.two", className = "c2", eventType = 2, eventTimestamp = 1698400800000, eventDateString = "2023-10-27", source = "TEST") // 10:00:00
+    private val allEvents = listOf(event1, event2, event3, event4)
 
     @Before
     fun setUp() {
@@ -42,57 +47,115 @@ class RawAppEventDaoTest {
     }
 
     @Test
-    fun insertEvents_and_getEventsForPeriod_retrievesCorrectEvents() = runTest {
-        // Timestamps for day "2023-10-26"
-        val event1 = RawAppEvent(packageName = "com.app.one", className = "c1", eventType = 1, eventTimestamp = 1698314400000, eventDateString = "2023-10-26") // 10:00:00
-        val event2 = RawAppEvent(packageName = "com.app.one", className = "c1", eventType = 2, eventTimestamp = 1698318000000, eventDateString = "2023-10-26") // 11:00:00
-        // Timestamps for day "2023-10-27"
-        val event3 = RawAppEvent(packageName = "com.app.two", className = "c2", eventType = 1, eventTimestamp = 1698393600000, eventDateString = "2023-10-27") // 08:00:00
-        val event4 = RawAppEvent(packageName = "com.app.two", className = "c2", eventType = 2, eventTimestamp = 1698400800000, eventDateString = "2023-10-27") // 10:00:00
-
-        dao.insertEvents(listOf(event1, event2, event3, event4))
+    fun `insertEvents and getEventsForPeriod retrieves correct events`() = runTest {
+        dao.insertEvents(allEvents)
 
         // Retrieve events for the first day
-        val startTime1 = 1698314400000 // 10:00:00
-        val endTime1 = 1698318000001   // 11:00:01 (exclusive in query)
-        val result1 = dao.getEventsForPeriod(startTime1, endTime1)
-
-        assertEquals(2, result1.size)
-        assertEquals(event1.eventTimestamp, result1[0].eventTimestamp)
-        assertEquals(event2.eventTimestamp, result1[1].eventTimestamp)
+        val result1 = dao.getEventsForPeriod(1698314400000, 1698318000000)
+        assertThat(result1).hasSize(2)
+        assertThat(result1.map { it.eventTimestamp }).containsExactly(event1.eventTimestamp, event2.eventTimestamp)
 
         // Retrieve events for the second day, but only the first event
-        val startTime2 = 1698393600000 // 08:00:00
-        val endTime2 = 1698397200000   // 09:00:00
-        val result2 = dao.getEventsForPeriod(startTime2, endTime2)
-        assertEquals(1, result2.size)
-        assertEquals(event3.eventTimestamp, result2[0].eventTimestamp)
+        val result2 = dao.getEventsForPeriod(1698393600000, 1698397200000)
+        assertThat(result2).hasSize(1)
+        assertThat(result2.first().eventTimestamp).isEqualTo(event3.eventTimestamp)
     }
 
     @Test
-    fun getLatestEventTimestampForDate_returnsCorrectTimestamp() = runTest {
-        val date = "2023-10-28"
-        val event1 = RawAppEvent(packageName = "com.app.one", className = "c1", eventType = 1, eventTimestamp = 1698483600000, eventDateString = date) // 10:00:00
-        val event2 = RawAppEvent(packageName = "com.app.one", className = "c1", eventType = 2, eventTimestamp = 1698487200000, eventDateString = date) // 11:00:00 (latest)
-        val event3 = RawAppEvent(packageName = "com.app.two", className = "c2", eventType = 1, eventTimestamp = 1698480000000, eventDateString = date) // 09:00:00
+    fun `getEventsForPeriodFlow emits correct events`() = runTest {
+        dao.insertEvents(allEvents)
 
-        dao.insertEvents(listOf(event1, event2, event3))
-
-        val latestTimestamp = dao.getLatestEventTimestampForDate(date)
-
-        assertEquals(event2.eventTimestamp, latestTimestamp)
+        dao.getEventsForPeriodFlow(1698314400000, 1698318000000).test {
+            val items = awaitItem()
+            assertThat(items).hasSize(2)
+            assertThat(items.map { it.eventTimestamp }).containsExactly(event1.eventTimestamp, event2.eventTimestamp)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
-    fun getLatestEventTimestampForDate_returnsNull_whenNoEventsForDate() = runTest {
-        val dateWithEvents = "2023-10-29"
-        val dateWithoutEvents = "2023-10-30"
-        val event1 = RawAppEvent(packageName = "com.app.one", className = "c1", eventType = 1, eventTimestamp = 1698570000000, eventDateString = dateWithEvents) // 10:00:00
+    fun `getEventsForDate retrieves all events for a given date string`() = runTest {
+        dao.insertEvents(allEvents)
+        val result = dao.getEventsForDate("2023-10-26")
+        assertThat(result).hasSize(2)
+        assertThat(result.map { it.eventTimestamp }).containsExactly(event1.eventTimestamp, event2.eventTimestamp)
+    }
 
-        dao.insertEvent(event1)
+    @Test
+    fun `getEventsOfTypeForPeriod retrieves correct events`() = runTest {
+        dao.insertEvents(allEvents)
+        val result = dao.getEventsOfTypeForPeriod(1, 1698300000000, 1698400000000)
+        assertThat(result).hasSize(2)
+        assertThat(result.map { it.eventTimestamp }).containsExactly(event1.eventTimestamp, event3.eventTimestamp)
+    }
 
-        val latestTimestamp = dao.getLatestEventTimestampForDate(dateWithoutEvents)
+    @Test
+    fun `countEventsOfTypeForDate counts correctly`() = runTest {
+        dao.insertEvents(allEvents)
+        dao.countEventsOfTypeForDate("2023-10-27", 2).test {
+            assertThat(awaitItem()).isEqualTo(1)
+            cancelAndIgnoreRemainingEvents()
+        }
+        dao.countEventsOfTypeForDate("2023-10-27", 99).test {
+            assertThat(awaitItem()).isEqualTo(0)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
 
-        assertNull(latestTimestamp)
+    @Test
+    fun `getFirstEventTimestampOfTypeForDate gets correct timestamp`() = runTest {
+        dao.insertEvents(allEvents)
+        dao.getFirstEventTimestampOfTypeForDate("2023-10-27", 1).test {
+            assertThat(awaitItem()).isEqualTo(event3.eventTimestamp)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `getEventsOfTypeForDate gets correct events`() = runTest {
+        dao.insertEvents(allEvents)
+        dao.getEventsOfTypeForDate("2023-10-27", 1).test {
+            val items = awaitItem()
+            assertThat(items).hasSize(1)
+            assertThat(items.first().eventTimestamp).isEqualTo(event3.eventTimestamp)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `getLatestEventTimestampForDate returns correct timestamp`() = runTest {
+        dao.insertEvents(allEvents)
+        val latestTimestamp = dao.getLatestEventTimestampForDate("2023-10-26")
+        assertThat(latestTimestamp).isEqualTo(event2.eventTimestamp)
+    }
+
+    @Test
+    fun `getLatestEventTimestampForDate returns null when no events for date`() = runTest {
+        dao.insertEvents(allEvents)
+        val latestTimestamp = dao.getLatestEventTimestampForDate("2023-10-30")
+        assertThat(latestTimestamp).isNull()
+    }
+
+    @Test
+    fun `getLatestEventTimestamp returns overall latest timestamp`() = runTest {
+        dao.insertEvents(allEvents)
+        val latestTimestamp = dao.getLatestEventTimestamp()
+        assertThat(latestTimestamp).isEqualTo(event4.eventTimestamp)
+    }
+
+    @Test
+    fun `getLatestEventTimestamp returns null when database is empty`() = runTest {
+        val latestTimestamp = dao.getLatestEventTimestamp()
+        assertThat(latestTimestamp).isNull()
+    }
+
+    @Test
+    fun `deleteEventsBefore removes old events`() = runTest {
+        dao.insertEvents(allEvents)
+        // Delete everything before event3
+        dao.deleteEventsBefore(event3.eventTimestamp)
+        val remainingEvents = dao.getEventsForPeriod(0, Long.MAX_VALUE)
+        assertThat(remainingEvents).hasSize(2)
+        assertThat(remainingEvents.map { it.eventTimestamp }).containsExactly(event3.eventTimestamp, event4.eventTimestamp)
     }
 } 

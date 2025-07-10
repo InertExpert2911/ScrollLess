@@ -2,6 +2,7 @@ package com.example.scrolltrack.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.work.WorkManager
 import com.example.scrolltrack.data.*
 import com.example.scrolltrack.db.*
 import dagger.Binds
@@ -81,7 +82,8 @@ abstract class AppModule {
         fun provideUnlockSessionDao(db: AppDatabase): UnlockSessionDao = db.unlockSessionDao()
 
         @Provides
-        @IoDispatcher
-        fun provideIoDispatcher(): CoroutineDispatcher = Dispatchers.IO
+        @Singleton
+        fun provideWorkManager(@ApplicationContext context: Context): WorkManager =
+            WorkManager.getInstance(context)
     }
 }

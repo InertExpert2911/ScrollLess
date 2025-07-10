@@ -129,4 +129,10 @@ dependencies {
 
     // Lottie for animated icons
     implementation(libs.lottie.compose)
+
+    // Hilt testing dependencies
+    testImplementation(libs.hilt.android.testing)
+
+    // Robolectric for providing Android framework classes in local tests
+    testImplementation(libs.robolectric)
 }

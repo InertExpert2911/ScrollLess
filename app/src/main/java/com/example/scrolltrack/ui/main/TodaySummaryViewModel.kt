@@ -16,6 +16,10 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import com.example.scrolltrack.db.DailyAppUsageRecord
@@ -65,9 +69,9 @@ class TodaySummaryViewModel @Inject constructor(
     val isDarkMode: StateFlow<Boolean> = settingsRepository.isDarkMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
-    val isAccessibilityServiceEnabled = isAccessibilityServiceEnabledFlow(context)
+    var isAccessibilityServiceEnabled = isAccessibilityServiceEnabledFlow(context)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), false)
-    val isUsagePermissionGranted = isUsageStatsPermissionGrantedFlow(context)
+    var isUsagePermissionGranted = isUsageStatsPermissionGrantedFlow(context)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), false)
     val isNotificationListenerEnabled = isNotificationListenerEnabledFlow(context)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), false)
@@ -197,6 +201,19 @@ class TodaySummaryViewModel @Inject constructor(
         performRefresh() // Then trigger the refresh
     }
 
+    fun performHistoricalUsageDataBackfill(numberOfDays: Int, onComplete: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            if (isUsagePermissionGranted.value) {
+                Timber.i("Starting historical usage data backfill for $numberOfDays days.")
+                val success = repository.backfillHistoricalAppUsageData(numberOfDays)
+                onComplete(success)
+            } else {
+                Timber.w("Cannot perform backfill, usage stats permission not granted.")
+                onComplete(false)
+            }
+        }
+    }
+
     private fun checkAllPermissions() {
         val currentState = PermissionState(
             accessibility = isAccessibilityServiceEnabled.value,
@@ -221,13 +238,6 @@ class TodaySummaryViewModel @Inject constructor(
     fun updateThemePalette(theme: AppTheme) {
         viewModelScope.launch {
             settingsRepository.setSelectedTheme(theme)
-        }
-    }
-
-    fun performHistoricalUsageDataBackfill(days: Int, onComplete: (Boolean) -> Unit) {
-        viewModelScope.launch {
-            val success = repository.backfillHistoricalAppUsageData(days)
-            onComplete(success)
         }
     }
 } 

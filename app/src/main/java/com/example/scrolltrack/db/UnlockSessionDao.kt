@@ -10,8 +10,8 @@ interface UnlockSessionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(unlockSession: UnlockSessionRecord)
 
-    @Query("SELECT * FROM unlock_sessions WHERE lock_timestamp IS NULL ORDER BY unlock_timestamp DESC LIMIT 1")
-    suspend fun getLastOpenSession(): UnlockSessionRecord?
+    @Query("SELECT * FROM unlock_sessions WHERE lock_timestamp IS NULL AND unlock_timestamp < :beforeTimestamp ORDER BY unlock_timestamp DESC LIMIT 1")
+    suspend fun getOpenSessionBefore(beforeTimestamp: Long): UnlockSessionRecord?
 
     @Query("UPDATE unlock_sessions SET lock_timestamp = :lockTimestamp, duration_millis = :duration, first_app_package_name = :firstAppPackage, triggering_notification_key = :notificationKey WHERE id = :sessionId")
     suspend fun closeSession(sessionId: Long, lockTimestamp: Long, duration: Long, firstAppPackage: String?, notificationKey: String?)

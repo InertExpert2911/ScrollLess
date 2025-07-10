@@ -72,11 +72,30 @@ object DateUtil {
 
     fun formatDuration(millis: Long): String {
         if (millis < 0) return "N/A"
-        val totalMinutes = TimeUnit.MILLISECONDS.toMinutes(millis)
-        if (totalMinutes < 1) return "< 1m"
-        val hours = totalMinutes / 60
-        val minutes = totalMinutes % 60
-        return if (hours > 0) String.format("%dh %02dm", hours, minutes) else "${minutes}m"
+        if (millis == 0L) return "0m"
+        if (millis < 60000) return "< 1m" // 60,000 ms = 1 minute
+
+        val hours = TimeUnit.MILLISECONDS.toHours(millis)
+        val minutes = TimeUnit.MILLISECONDS.toMinutes(millis) - TimeUnit.HOURS.toMinutes(hours)
+
+        return when {
+            hours > 0 -> String.format(Locale.US, "%dh %dm", hours, minutes)
+            else -> String.format(Locale.US, "%dm", minutes)
+        }
+    }
+
+    fun formatDurationWithSeconds(millis: Long): String {
+        if (millis < 0) return "0s"
+        if (millis < 1000) return "0s"
+        val hours = TimeUnit.MILLISECONDS.toHours(millis)
+        val minutes = TimeUnit.MILLISECONDS.toMinutes(millis) % 60
+        val seconds = TimeUnit.MILLISECONDS.toSeconds(millis) % 60
+
+        return when {
+            hours > 0 -> String.format(Locale.US, "%dh %dm", hours, minutes)
+            minutes > 0 -> String.format(Locale.US, "%dm %ds", minutes, seconds)
+            else -> String.format(Locale.US, "%ds", seconds)
+        }
     }
 
     fun getWeekOfYear(date: LocalDate): Int {

@@ -47,7 +47,7 @@ class HistoricalViewModel @Inject constructor(
         selectedDateForHistory.flatMapLatest { dateString ->
             repository.getAppUsageForDate(dateString)
                 .map { dailyUsageRecords ->
-                    dailyUsageRecords.map { mapper.mapToAppUsageUiItem(it) }
+                    mapper.mapToAppUsageUiItems(dailyUsageRecords)
                         .sortedByDescending { it.usageTimeMillis }
                 }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
