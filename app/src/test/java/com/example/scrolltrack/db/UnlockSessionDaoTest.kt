@@ -47,21 +47,21 @@ class UnlockSessionDaoTest {
     @Test
     fun `insert and getOpenSessionBefore work correctly`() = runTest {
         dao.insert(unlock1)
-        var lastOpen = dao.getOpenSessionBefore(1500L)
+        var lastOpen = dao.getOpenSessionBefore("2024-01-01", 1500L)
         assertThat(lastOpen?.unlockTimestamp).isEqualTo(1000L)
 
         dao.insert(unlock2)
-        lastOpen = dao.getOpenSessionBefore(2500L)
+        lastOpen = dao.getOpenSessionBefore("2024-01-01", 2500L)
         assertThat(lastOpen?.unlockTimestamp).isEqualTo(2000L)
 
-        val shouldBeNull = dao.getOpenSessionBefore(1000L)
+        val shouldBeNull = dao.getOpenSessionBefore("2024-01-01", 1000L)
         assertThat(shouldBeNull).isNull()
     }
 
     @Test
     fun `closeSession updates the correct session`() = runTest {
         dao.insert(unlock1)
-        val inserted = dao.getOpenSessionBefore(1100L)
+        val inserted = dao.getOpenSessionBefore("2024-01-01", 1100L)
         assertThat(inserted).isNotNull()
         
         val lockTime = 1500L
@@ -71,7 +71,7 @@ class UnlockSessionDaoTest {
         dao.closeSession(inserted.id, lockTime, duration, pkg, null)
         
         // Check that it is indeed closed and not returned as an open session
-        val closedSession = dao.getOpenSessionBefore(1600L)
+        val closedSession = dao.getOpenSessionBefore("2024-01-01", 1600L)
         assertThat(closedSession).isNull()
 
         val unlockCount = dao.getUnlockCountForDate("2024-01-01").first()

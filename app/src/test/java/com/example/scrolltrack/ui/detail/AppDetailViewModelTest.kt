@@ -6,6 +6,8 @@ import app.cash.turbine.test
 import com.example.scrolltrack.data.AppMetadataRepository
 import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.db.AppMetadata
+import com.example.scrolltrack.db.AppScrollDataPerDate
+import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
 import com.google.common.truth.Truth.assertThat
@@ -14,6 +16,7 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Assert.assertNotEquals
@@ -38,6 +41,11 @@ class AppDetailViewModelTest {
         coEvery { appMetadataRepository.getAppMetadata(packageName) } returns AppMetadata(packageName, "App One", "1.0", 1, false, true, true, 0, true, null, 0, 0)
         coEvery { appMetadataRepository.getIconFile(packageName) } returns null
         coEvery { conversionUtil.formatScrollDistance(any(), any()) } returns ("0" to "m")
+
+        // Default empty returns for suspend functions
+        coEvery { scrollDataRepository.getUsageForPackageAndDates(any(), any()) } returns emptyList()
+        coEvery { scrollDataRepository.getAggregatedScrollForPackageAndDates(any(), any()) } returns emptyList()
+
         viewModel = AppDetailViewModel(scrollDataRepository, appMetadataRepository, conversionUtil, savedStateHandle, context, testDispatcher)
     }
 
@@ -49,23 +57,27 @@ class AppDetailViewModelTest {
     @Test
     fun `when viewmodel initializes, it loads app info and daily data`() = runTest {
         testDispatcher.scheduler.advanceUntilIdle()
-        viewModel.appDetailAppName.test {
-            assertThat(awaitItem()).isEqualTo("App One")
-        }
+
         coVerify { scrollDataRepository.getUsageForPackageAndDates(eq(packageName), any()) }
         coVerify { scrollDataRepository.getAggregatedScrollForPackageAndDates(eq(packageName), any()) }
+
+        viewModel.appDetailAppName.test {
+            assertThat(awaitItem()).isEqualTo("App One")
+            cancelAndConsumeRemainingEvents()
+        }
     }
+
 
     @Test
     fun `when chart period changes, data is reloaded`() = runTest {
         viewModel.changeChartPeriod(ChartPeriodType.WEEKLY)
         testDispatcher.scheduler.advanceUntilIdle()
-        coVerify { scrollDataRepository.getUsageForPackageAndDates(eq(packageName), any()) }
+        coVerify(atLeast = 2) { scrollDataRepository.getUsageForPackageAndDates(eq(packageName), any()) }
         assertThat(viewModel.currentChartPeriodType.value).isEqualTo(ChartPeriodType.WEEKLY)
 
         viewModel.changeChartPeriod(ChartPeriodType.MONTHLY)
         testDispatcher.scheduler.advanceUntilIdle()
-        coVerify { scrollDataRepository.getUsageForPackageAndDates(eq(packageName), any()) }
+        coVerify(atLeast = 3) { scrollDataRepository.getUsageForPackageAndDates(eq(packageName), any()) }
         assertThat(viewModel.currentChartPeriodType.value).isEqualTo(ChartPeriodType.MONTHLY)
     }
 
@@ -84,11 +96,45 @@ class AppDetailViewModelTest {
     @Test
     fun `when no data, summary shows zero`() = runTest {
         testDispatcher.scheduler.advanceUntilIdle()
-        viewModel.appDetailFocusedUsageDisplay.test {
-            assertThat(awaitItem()).isEqualTo("0m")
+        assertThat(viewModel.appDetailFocusedUsageDisplay.value).isEqualTo("0m")
+        assertThat(viewModel.appDetailFocusedScrollDisplay.value).isEqualTo("0 m")
+    }
+
+    @Test
+    fun `loadAppDetailChartData combines usage and scroll data correctly`() = runTest {
+        val date = DateUtil.getPastDateString(2) // A date within the default weekly view
+        val referenceDate = DateUtil.getCurrentLocalDateString()
+        val weeklyDates = DateUtil.getStartOfWeek(DateUtil.parseLocalDate(referenceDate)!!).let { start ->
+            (0..6).map { start.plusDays(it.toLong()).toString() }
         }
-        viewModel.appDetailFocusedScrollDisplay.test {
-            assertThat(awaitItem()).isEqualTo("0 m")
-        }
+
+        coEvery {
+            scrollDataRepository.getUsageForPackageAndDates(eq(packageName), eq(weeklyDates))
+        } returns listOf(
+            DailyAppUsageRecord(packageName = packageName, dateString = date, usageTimeMillis = 3600000, activeTimeMillis = 1800000, appOpenCount = 5)
+        )
+        coEvery {
+            scrollDataRepository.getAggregatedScrollForPackageAndDates(eq(packageName), eq(weeklyDates))
+        } returns listOf(
+            AppScrollDataPerDate(dateString = date, totalScroll = 1500, totalScrollX = 500, totalScrollY = 1000)
+        )
+        coEvery { conversionUtil.formatScrollDistance(500, 1000) } returns ("1.23" to "m")
+
+        viewModel.changeChartPeriod(ChartPeriodType.WEEKLY) // Trigger a reload with the correct period
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val chartData = viewModel.appDetailChartData.value
+        assertThat(chartData).hasSize(7) // Weekly view has 7 days
+        val dayData = chartData.find { it.date == date }
+        assertThat(dayData).isNotNull()
+        assertThat(dayData!!.usageTimeMillis).isEqualTo(3600000)
+        assertThat(dayData.activeTimeMillis).isEqualTo(1800000)
+        assertThat(dayData.scrollUnits).isEqualTo(1500)
+        assertThat(dayData.openCount).isEqualTo(5)
+
+        // The summary now reflects an average, not the single day's data
+        // Let's test the individual focused day instead.
+        viewModel.setFocusedDate(date)
+        testDispatcher.scheduler.advanceUntilIdle()
     }
 } 

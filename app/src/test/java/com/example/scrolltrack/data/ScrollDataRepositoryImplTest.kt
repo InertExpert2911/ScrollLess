@@ -32,6 +32,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import com.example.scrolltrack.util.AppConstants
+import com.example.scrolltrack.db.UnlockSessionRecord
 
 @ExperimentalCoroutinesApi
 @RunWith(AndroidJUnit4::class)
@@ -248,67 +249,414 @@ class ScrollDataRepositoryImplTest {
         val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
         val app1 = "com.app.one"
 
+        val unlockTimestamp = startOfDay + 1000
+        val lockTimestamp = startOfDay + 5000
         val events = listOf(
-            // Unlock 1
-            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfDay + 1000),
-            createRawEvent(app1, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 2000),
-            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, startOfDay + 5000), // Lock 1
-
-            // Unlock 2 (no associated lock in this list)
-            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_PRESENT, startOfDay + 10000)
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_PRESENT, unlockTimestamp),
+            createRawEvent(app1, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, unlockTimestamp + 500),
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, lockTimestamp)
         )
 
-        repository.processUnlockSessions(events, date)
+        repository.processUnlockSessions(events, emptyList(), date, emptySet())
 
-        // Check Unlock 1 was created and closed
-        val closedSession = unlockSessionDao.getOpenSessionBefore(startOfDay + 6000) // Look for open sessions before lock
-        assertThat(closedSession).isNull() // It should be closed, so no open session found
-
-        val allSessions = db.unlockSessionDao().getUnlockTimestampsForDate(date)
-        assertThat(allSessions).hasSize(2)
-
-        // We can't easily get the closed one back without a new DAO method,
-        // but we can infer its creation by the fact that there are 2 sessions and one is still open.
-        val openSession = unlockSessionDao.getOpenSessionBefore(startOfDay + 11000)
-        assertThat(openSession).isNotNull()
-        assertThat(openSession?.unlockTimestamp).isEqualTo(startOfDay + 10000)
+        val sessions = unlockSessionDao.getUnlockSessionsForDate(date)
+        assertThat(sessions).hasSize(1)
+        val session = sessions.first()
+        assertThat(session.unlockTimestamp).isEqualTo(unlockTimestamp)
+        assertThat(session.lockTimestamp).isEqualTo(lockTimestamp)
+        assertThat(session.durationMillis).isEqualTo(4000)
+        assertThat(session.firstAppPackageName).isEqualTo(app1)
     }
 
     @Test
-    fun `aggregateUsage - calculates usage and active time correctly`() = runTest {
-        val app1 = "com.app.one"
-        val app2 = "com.app.two"
-        val periodEnd = 20000L
+    fun `processUnlockSessions - debounces multiple unlock events`() = runTest {
+        val date = "2024-01-23"
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
+        val unlockTime = startOfDay + 1000
 
         val events = listOf(
-            // App 1 session: 5 seconds total, 2 seconds active
-            createRawEvent(app1, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 1000L),
-            createRawEvent(app1, RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 2000L, scrollDeltaY = 10), // a 1s window
-            createRawEvent(app1, RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, 3000L), // a 1s window
-            createRawEvent(app1, RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, 6000L),
-
-            // App 2 session: 4 seconds total, interrupted by screen off
-            createRawEvent(app2, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 10000L),
-            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, 14000L),
-
-            // App 1 second session: open until end of period
-            createRawEvent(app1, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 15000L)
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_INTERACTIVE, unlockTime),
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_PRESENT, unlockTime + 50), // Should be ignored
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, unlockTime + 100), // Should be the one recorded
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, unlockTime + 5000)
         )
 
-        val result = repository.aggregateUsage(events, periodEnd)
+        repository.processUnlockSessions(events, emptyList(), date, emptySet())
 
-        assertThat(result).hasSize(2)
-        
-        val app1Usage = result[app1]
-        assertThat(app1Usage).isNotNull()
-        assertThat(app1Usage?.first).isEqualTo(10000L) // (6k-1k) + (20k-15k)
-        // Active time: scroll event [2k, 2k+scroll_window], tap event [3k, 3k+tap_window]
-        // Assuming windows are 1s, and they overlap, total active time is around 2-4s. We'll check it's > 0
-        assertThat(app1Usage?.second).isGreaterThan(0L)
-        
-        val app2Usage = result[app2]
-        assertThat(app2Usage).isNotNull()
-        assertThat(app2Usage?.first).isEqualTo(4000L) // 14k - 10k
-        assertThat(app2Usage?.second).isEqualTo(0L) // No interaction events for app2
+        val sessions = unlockSessionDao.getUnlockSessionsForDate(date)
+        assertThat(sessions).hasSize(1)
+        assertThat(sessions.first().unlockEventType).isEqualTo(RawAppEvent.EVENT_TYPE_USER_UNLOCKED.toString())
     }
+
+    @Test
+    fun `processUnlockSessions - handles smart lock unlock (no KEYGUARD_HIDDEN)`() = runTest {
+        val date = "2024-01-24"
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
+        val unlockTime = startOfDay + 1000
+
+        // Smart lock: SCREEN_INTERACTIVE -> USER_PRESENT, but no explicit unlock/keyguard events
+        val events = listOf(
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_INTERACTIVE, unlockTime),
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_PRESENT, unlockTime + 100),
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, unlockTime + 5000)
+        )
+
+        repository.processUnlockSessions(events, emptyList(), date, emptySet())
+
+        val sessions = unlockSessionDao.getUnlockSessionsForDate(date)
+        assertThat(sessions).hasSize(1)
+        // We expect it to be recorded, likely as USER_PRESENT since it's higher priority
+        assertThat(sessions.first().unlockEventType).isEqualTo(RawAppEvent.EVENT_TYPE_USER_PRESENT.toString())
+        assertThat(sessions.first().lockTimestamp).isNotNull()
+    }
+
+    @Test
+    fun `processUnlockSessions - ignores lock screen peek (INTERACTIVE then KEYGUARD_SHOWN)`() = runTest {
+        val date = "2024-01-25"
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
+        val peekTime = startOfDay + 1000
+
+        val events = listOf(
+            // User peeks at lock screen, it becomes interactive
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_INTERACTIVE, peekTime),
+            // But then the keyguard is shown again, meaning they didn't unlock
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN, peekTime + 200),
+            // A real unlock happens later
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, peekTime + 10000),
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, peekTime + 20000)
+        )
+
+        repository.processUnlockSessions(events, emptyList(), date, emptySet())
+
+        val sessions = unlockSessionDao.getUnlockSessionsForDate(date)
+        assertThat(sessions).hasSize(1)
+        assertThat(sessions.first().unlockTimestamp).isEqualTo(peekTime + 10000) // Only the real unlock is counted
+    }
+
+    @Test
+    fun `processUnlockSessions - only closes most recent open session`() = runTest {
+        val date = "2024-01-26"
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
+        val session1UnlockTime = startOfDay + 1000
+        val session2UnlockTime = startOfDay + 2000 // A second unlock before the first one is locked
+        val lockTime = startOfDay + 5000
+
+        // 1. Manually insert two open sessions
+        unlockSessionDao.insert(UnlockSessionRecord(unlockTimestamp = session1UnlockTime, dateString = date, unlockEventType = "MANUAL"))
+        unlockSessionDao.insert(UnlockSessionRecord(unlockTimestamp = session2UnlockTime, dateString = date, unlockEventType = "MANUAL"))
+
+        // 2. Process a single lock event
+        val events = listOf(
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, lockTime)
+        )
+        repository.processUnlockSessions(events, emptyList(), date, emptySet())
+
+
+        // 3. Assert that the second (most recent) session is closed
+        val closedSession = unlockSessionDao.getUnlockSessionsForDate(date).find { it.unlockTimestamp == session2UnlockTime }
+        assertThat(closedSession).isNotNull()
+        assertThat(closedSession?.lockTimestamp).isEqualTo(lockTime)
+
+        // 4. Assert that the first session remains open
+        val stillOpenSession = unlockSessionDao.getUnlockSessionsForDate(date).find { it.unlockTimestamp == session1UnlockTime }
+        assertThat(stillOpenSession).isNotNull()
+        assertThat(stillOpenSession?.lockTimestamp).isNull()
+    }
+
+    @Test
+    fun `processUnlockSessions - ignores lock event with no prior open session`() = runTest {
+        val date = "2024-01-26"
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
+        val lockTime = startOfDay + 5000
+
+        val events = listOf(
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, lockTime)
+        )
+
+        repository.processUnlockSessions(events, emptyList(), date, emptySet())
+
+        val sessions = unlockSessionDao.getUnlockSessionsForDate(date)
+        assertThat(sessions).isEmpty() // No session should be created or closed
+    }
+
+    @Test
+    fun `processUnlockSessions - associates unlock with recent notification`() = runTest {
+        val date = "2024-01-27"
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
+        val app1 = "com.app.one"
+        val notificationTime = startOfDay + 500
+        val unlockTime = startOfDay + 1000 // 500ms after notification
+        val lockTime = startOfDay + 10000
+
+        val events = listOf(
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, unlockTime),
+            createRawEvent(app1, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, unlockTime + 500),
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, lockTime)
+        )
+        val notifications = listOf(
+            NotificationRecord(
+                notificationKey = "test_key_1",
+                packageName = app1,
+                postTimeUTC = notificationTime,
+                dateString = date, title = "t", text = "t", category = "c"
+            )
+        )
+
+        repository.processUnlockSessions(events, notifications, date, emptySet())
+
+        val sessions = unlockSessionDao.getUnlockSessionsForDate(date)
+        assertThat(sessions).hasSize(1)
+        val session = sessions.first()
+        assertThat(session.triggeringNotificationKey).isEqualTo("test_key_1")
+        assertThat(session.firstAppPackageName).isEqualTo(app1)
+    }
+
+    @Test
+    fun `processUnlockSessions - does not associate unlock with old notification`() = runTest {
+        val date = "2024-01-28"
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
+        val app1 = "com.app.one"
+        // Notification is well outside the association window
+        val notificationTime = startOfDay + 500
+        val unlockTime = startOfDay + 500 + AppConstants.NOTIFICATION_UNLOCK_WINDOW_MS + 1000
+        val lockTime = unlockTime + 5000
+
+        val events = listOf(
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, unlockTime),
+            createRawEvent(app1, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, unlockTime + 500),
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, lockTime)
+        )
+        val notifications = listOf(
+            NotificationRecord(
+                notificationKey = "test_key_old",
+                packageName = app1,
+                postTimeUTC = notificationTime,
+                dateString = date, title = "t", text = "t", category = "c"
+            )
+        )
+
+        repository.processUnlockSessions(events, notifications, date, emptySet())
+
+        val sessions = unlockSessionDao.getUnlockSessionsForDate(date)
+        assertThat(sessions).hasSize(1)
+        assertThat(sessions.first().triggeringNotificationKey).isNull()
+    }
+
+    @Test
+    fun `backfill - processes multiple days without duplicating unlock counts`() = runTest {
+        val today = "2024-02-02"
+        val yesterday = "2024-02-01"
+        val startOfToday = DateUtil.getStartOfDayUtcMillis(today)
+        val startOfYesterday = DateUtil.getStartOfDayUtcMillis(yesterday)
+
+        // Events for yesterday
+        val eventsYesterday = mutableListOf(
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfYesterday + 1000), // Unlock 1
+            createRawEvent("com.app.one", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfYesterday + 2000),
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, startOfYesterday + 5000) // Lock 1
+        )
+        // Events for today - includes an open session that carries over midnight
+        val eventsToday = mutableListOf(
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfToday - 5000), // Unlock 2 (yesterday's session)
+            createRawEvent("com.app.two", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfToday - 4000),
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, startOfToday + 1000), // Lock 2 (closes yesterday's session)
+
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfToday + 2000), // Unlock 3 (today)
+            createRawEvent("com.app.one", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfToday + 3000),
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, startOfToday + 6000) // Lock 3
+        )
+
+        // Simulate backfill: insert all events, then process day by day (past to present)
+        rawAppEventDao.insertEvents(eventsYesterday + eventsToday)
+
+        // Process yesterday first
+        repository.processAndSummarizeDate(yesterday)
+        var yesterdaySummary = dailyDeviceSummaryDao.getSummaryForDate(yesterday).first()
+        // Should have 2 unlocks: the one fully within yesterday, and the one that started yesterday and ended today
+        assertThat(yesterdaySummary?.totalUnlockCount).isEqualTo(2)
+
+
+        // Now process today
+        repository.processAndSummarizeDate(today)
+        var todaySummary = dailyDeviceSummaryDao.getSummaryForDate(today).first()
+        assertThat(todaySummary?.totalUnlockCount).isEqualTo(1)
+
+        // Re-process yesterday and check for data corruption
+        repository.processAndSummarizeDate(yesterday)
+        yesterdaySummary = dailyDeviceSummaryDao.getSummaryForDate(yesterday).first()
+        assertThat(yesterdaySummary?.totalUnlockCount).isEqualTo(2) // This should NOT change
+    }
+
+    private fun createNotificationRecord(pkg: String, key: String, timestamp: Long): NotificationRecord {
+        return NotificationRecord(
+            notificationKey = key,
+            packageName = pkg,
+            postTimeUTC = timestamp,
+            title = "Test Title",
+            text = "Test text",
+            category = "social",
+            dateString = DateUtil.formatUtcTimestampToLocalDateString(timestamp)
+        )
+    }
+
+    // --- Tests for processScrollEvents ---
+
+    @Test
+    fun `processScrollEvents - single measured scroll event`() {
+        val event = RawAppEvent(
+            id = 1,
+            packageName = "com.app.one",
+            className = "Test",
+            eventType = RawAppEvent.EVENT_TYPE_SCROLL_MEASURED,
+            eventTimestamp = 1000L,
+            eventDateString = "2024-01-01",
+            source = RawAppEvent.SOURCE_ACCESSIBILITY,
+            scrollDeltaX = 50,
+            scrollDeltaY = 100
+        )
+        val result = repository.processScrollEvents(listOf(event), emptySet())
+        assertThat(result).hasSize(1)
+        with(result.first()) {
+            assertThat(packageName).isEqualTo("com.app.one")
+            assertThat(scrollAmount).isEqualTo(150L) // 50 + 100
+            assertThat(scrollAmountX).isEqualTo(50L)
+            assertThat(scrollAmountY).isEqualTo(100L)
+            assertThat(dataType).isEqualTo("MEASURED")
+        }
+    }
+
+    @Test
+    fun `processScrollEvents - single inferred scroll event`() {
+        val event = RawAppEvent(
+            id = 1,
+            packageName = "com.app.one",
+            className = null,
+            eventType = RawAppEvent.EVENT_TYPE_SCROLL_INFERRED,
+            eventTimestamp = 1000L,
+            eventDateString = "2024-01-01",
+            source = RawAppEvent.SOURCE_ACCESSIBILITY,
+            value = 250 // Inferred events use 'value'
+        )
+        val result = repository.processScrollEvents(listOf(event), emptySet())
+        assertThat(result).hasSize(1)
+        with(result.first()) {
+            assertThat(packageName).isEqualTo("com.app.one")
+            assertThat(scrollAmount).isEqualTo(250L)
+            assertThat(scrollAmountX).isEqualTo(0L) // Inferred is Y-only for now
+            assertThat(scrollAmountY).isEqualTo(250L)
+            assertThat(dataType).isEqualTo("INFERRED")
+        }
+    }
+
+    @Test
+    fun `processScrollEvents - merges multiple measured events`() {
+        val events = listOf(
+            RawAppEvent(1, "com.app.one", "Test", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 1000L, "2024-01-01", RawAppEvent.SOURCE_ACCESSIBILITY, null, 10, 20),
+            RawAppEvent(2, "com.app.one", "Test", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 2000L, "2024-01-01", RawAppEvent.SOURCE_ACCESSIBILITY, null, 30, 40)
+        )
+        val result = repository.processScrollEvents(events, emptySet())
+        assertThat(result).hasSize(1)
+        with(result.first()) {
+            assertThat(scrollAmount).isEqualTo(100L) // (10+20) + (30+40)
+            assertThat(scrollAmountX).isEqualTo(40L)
+            assertThat(scrollAmountY).isEqualTo(60L)
+            assertThat(sessionStartTime).isEqualTo(1000L)
+            assertThat(sessionEndTime).isEqualTo(2000L)
+        }
+    }
+
+    @Test
+    fun `processScrollEvents - merges multiple inferred events`() {
+        val events = listOf(
+            RawAppEvent(1, "com.app.one", null, RawAppEvent.EVENT_TYPE_SCROLL_INFERRED, 1000L, "2024-01-01", RawAppEvent.SOURCE_ACCESSIBILITY, 100),
+            RawAppEvent(2, "com.app.one", null, RawAppEvent.EVENT_TYPE_SCROLL_INFERRED, 2000L, "2024-01-01", RawAppEvent.SOURCE_ACCESSIBILITY, 150)
+        )
+        val result = repository.processScrollEvents(events, emptySet())
+        assertThat(result).hasSize(1)
+        with(result.first()) {
+            assertThat(scrollAmount).isEqualTo(250L)
+            assertThat(dataType).isEqualTo("INFERRED")
+        }
+    }
+
+    @Test
+    fun `processScrollEvents - does not merge different packages`() {
+        val events = listOf(
+            RawAppEvent(1, "com.app.one", "Test", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 1000L, "2024-01-01", RawAppEvent.SOURCE_ACCESSIBILITY, null, 10, 20),
+            RawAppEvent(2, "com.app.two", "Test", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 2000L, "2024-01-01", RawAppEvent.SOURCE_ACCESSIBILITY, null, 30, 40)
+        )
+        val result = repository.processScrollEvents(events, emptySet())
+        assertThat(result).hasSize(2)
+    }
+
+    @Test
+    fun `processScrollEvents - does not merge different data types`() {
+        val events = listOf(
+            RawAppEvent(1, "com.app.one", "Test", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 1000L, "2024-01-01", RawAppEvent.SOURCE_ACCESSIBILITY, null, 10, 20),
+            RawAppEvent(2, "com.app.one", null, RawAppEvent.EVENT_TYPE_SCROLL_INFERRED, 2000L, "2024-01-01", RawAppEvent.SOURCE_ACCESSIBILITY, 100)
+        )
+        val result = repository.processScrollEvents(events, emptySet())
+        assertThat(result).hasSize(2)
+    }
+
+    @Test
+    fun `processScrollEvents - does not merge if time gap is too large`() {
+        val events = listOf(
+            RawAppEvent(1, "com.app.one", "Test", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 1000L, "2024-01-01", RawAppEvent.SOURCE_ACCESSIBILITY, null, 10, 20),
+            RawAppEvent(2, "com.app.one", "Test", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 1000L + AppConstants.SESSION_MERGE_GAP_MS + 1, "2024-01-01", RawAppEvent.SOURCE_ACCESSIBILITY, null, 30, 40)
+        )
+        val result = repository.processScrollEvents(events, emptySet())
+        assertThat(result).hasSize(2)
+    }
+
+    @Test
+    fun `processScrollEvents - ignores events with no scroll delta`() {
+        val event = RawAppEvent(
+            id = 1,
+            packageName = "com.app.one",
+            className = "Test",
+            eventType = RawAppEvent.EVENT_TYPE_SCROLL_MEASURED,
+            eventTimestamp = 1000L,
+            eventDateString = "2024-01-01",
+            source = RawAppEvent.SOURCE_ACCESSIBILITY,
+            scrollDeltaX = 0,
+            scrollDeltaY = 0
+        )
+        val result = repository.processScrollEvents(listOf(event), emptySet())
+        assertThat(result).isEmpty()
+    }
+
+    @Test
+    fun `processScrollEvents - complex scenario`() {
+        val events = listOf(
+            // App one measured session
+            RawAppEvent(1, "com.app.one", "Test", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 1000L, "2024-01-01", RawAppEvent.SOURCE_ACCESSIBILITY, null, 10, 20), // 30
+            RawAppEvent(2, "com.app.one", "Test", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 2000L, "2024-01-01", RawAppEvent.SOURCE_ACCESSIBILITY, null, 30, 40), // 70 -> total 100
+            // App one inferred session (should not merge)
+            RawAppEvent(3, "com.app.one", null, RawAppEvent.EVENT_TYPE_SCROLL_INFERRED, 3000L, "2024-01-01", RawAppEvent.SOURCE_ACCESSIBILITY, 100),
+            // App two measured session
+            RawAppEvent(4, "com.app.two", "Test", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 4000L, "2024-01-01", RawAppEvent.SOURCE_ACCESSIBILITY, null, 50, 50), // 100
+            // App one measured again, but after long gap
+            RawAppEvent(5, "com.app.one", "Test", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 4000L + AppConstants.SESSION_MERGE_GAP_MS, "2024-01-01", RawAppEvent.SOURCE_ACCESSIBILITY, null, 5, 5) // 10
+        )
+        val result = repository.processScrollEvents(events, emptySet())
+        assertThat(result).hasSize(4)
+
+        val appOneMeasured1 = result.find { it.packageName == "com.app.one" && it.dataType == "MEASURED" && it.sessionStartTime == 1000L }
+        assertThat(appOneMeasured1).isNotNull()
+        assertThat(appOneMeasured1!!.scrollAmount).isEqualTo(100L)
+
+        val appOneInferred = result.find { it.packageName == "com.app.one" && it.dataType == "INFERRED" }
+        assertThat(appOneInferred).isNotNull()
+        assertThat(appOneInferred!!.scrollAmount).isEqualTo(100L)
+
+        val appTwoMeasured = result.find { it.packageName == "com.app.two" && it.dataType == "MEASURED" }
+        assertThat(appTwoMeasured).isNotNull()
+        assertThat(appTwoMeasured!!.scrollAmount).isEqualTo(100L)
+
+        val appOneMeasured2 = result.find { it.packageName == "com.app.one" && it.dataType == "MEASURED" && it.sessionStartTime > 4000L }
+        assertThat(appOneMeasured2).isNotNull()
+        assertThat(appOneMeasured2!!.scrollAmount).isEqualTo(10L)
+    }
+
 }

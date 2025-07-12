@@ -94,14 +94,21 @@ dependencies {
 
     // Hilt for Dependency Injection
     implementation(libs.hilt.android)
-    ksp(libs.hilt.android.compiler)
     ksp(libs.hilt.compiler)
-    implementation(libs.androidx.hilt.navigation.compose)
+
+    // Hilt testing dependencies
+    testImplementation(libs.hilt.android.testing)
+    kspTest(libs.hilt.android.compiler)
+    androidTestImplementation(libs.hilt.android.testing)
+    kspAndroidTest(libs.hilt.android.compiler)
 
     // WorkManager for background tasks
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.hilt.work)
     ksp(libs.hilt.work.compiler)
+    testImplementation(libs.androidx.work.testing)
+
+    implementation(libs.androidx.hilt.navigation.compose)
 
     // Coil for image loading
     implementation(libs.coil.compose)
@@ -129,9 +136,6 @@ dependencies {
 
     // Lottie for animated icons
     implementation(libs.lottie.compose)
-
-    // Hilt testing dependencies
-    testImplementation(libs.hilt.android.testing)
 
     // Robolectric for providing Android framework classes in local tests
     testImplementation(libs.robolectric)

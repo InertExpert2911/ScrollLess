@@ -18,6 +18,7 @@ import com.example.scrolltrack.db.ScrollSessionRecord
 import com.example.scrolltrack.db.AppScrollDataPerDate
 import com.example.scrolltrack.db.UnlockSessionDao
 import com.example.scrolltrack.db.UnlockSessionRecord
+import com.example.scrolltrack.db.NotificationRecord
 import com.example.scrolltrack.di.IoDispatcher
 import com.example.scrolltrack.util.AppConstants
 import com.example.scrolltrack.util.DateUtil
@@ -124,6 +125,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
         val startTime = DateUtil.getStartOfDayUtcMillis(dateString)
         val endTime = DateUtil.getEndOfDayUtcMillis(dateString)
         val events = rawAppEventDao.getEventsForPeriod(startTime, endTime)
+        val notifications = notificationDao.getNotificationsForDateList(dateString)
 
         appDatabase.withTransaction {
             // Always clear out old processed data for this date first.
@@ -138,12 +140,16 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
                 // Process and insert new data
                 val scrollSessions = processScrollEvents(events, filterSet)
-                if (scrollSessions.isNotEmpty()) scrollSessionDao.insertSessions(scrollSessions)
+                if (scrollSessions.isNotEmpty()) {
+                    scrollSessionDao.insertSessions(scrollSessions)
+                }
 
-                processUnlockSessions(events, dateString)
+                processUnlockSessions(events, notifications, dateString, filterSet)
 
                 val (usageRecords, deviceSummary) = processUsageAndDeviceSummary(events, filterSet, dateString)
-                if (usageRecords.isNotEmpty()) dailyAppUsageDao.insertAllUsage(usageRecords)
+                if (usageRecords.isNotEmpty()) {
+                    dailyAppUsageDao.insertAllUsage(usageRecords)
+                }
                 deviceSummary?.let { dailyDeviceSummaryDao.insertOrUpdate(it) }
             } else {
                 Timber.i("No new events to process for $dateString. Existing data has been cleared.")
@@ -182,7 +188,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
             // Prioritize new delta columns, fall back to 'value' for old events
             val deltaX = event.scrollDeltaX ?: 0
-            val deltaY = event.scrollDeltaY ?: if (event.eventType == RawAppEvent.EVENT_TYPE_SCROLL_INFERRED) 0 else event.value?.toInt() ?: 0
+            val deltaY = event.scrollDeltaY ?: if (event.eventType == RawAppEvent.EVENT_TYPE_SCROLL_INFERRED) event.value?.toInt() ?: 0 else event.value?.toInt() ?: 0
             val totalDelta = (abs(deltaX) + abs(deltaY)).toLong()
 
             if (totalDelta == 0L) continue // Skip events with no effective scroll
@@ -230,29 +236,78 @@ class ScrollDataRepositoryImpl @Inject constructor(
         return mergedSessions
     }
 
-    internal suspend fun processUnlockSessions(events: List<RawAppEvent>, dateString: String) {
-        // Debounce unlock events first to handle rapid sequences
-        val rawUnlockEvents = events
-            .filter { it.eventType in setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED, RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN, RawAppEvent.EVENT_TYPE_USER_PRESENT) }
+    internal suspend fun processUnlockSessions(
+        events: List<RawAppEvent>,
+        notifications: List<NotificationRecord>,
+        dateString: String,
+        filterSet: Set<String>
+    ) {
+        // Filter for all events that could potentially signify an unlock.
+        val potentialUnlockEvents = events
+            .filter {
+                it.eventType in setOf(
+                    RawAppEvent.EVENT_TYPE_USER_UNLOCKED,
+                    RawAppEvent.EVENT_TYPE_USER_PRESENT,
+                    RawAppEvent.EVENT_TYPE_SCREEN_INTERACTIVE
+                )
+            }
             .sortedBy { it.eventTimestamp }
 
-        val debouncedUnlockEvents = mutableListOf<RawAppEvent>()
-        if (rawUnlockEvents.isNotEmpty()) {
-            var lastUnlockTimestamp = rawUnlockEvents.first().eventTimestamp
-            debouncedUnlockEvents.add(rawUnlockEvents.first())
+        // --- Prioritized Event Windowing ---
+        // This logic identifies a single, high-fidelity unlock event from a cluster of related system events.
+        // It's more accurate than simple debouncing because it prioritizes better events within a time window.
+        val trueUnlockEvents = mutableListOf<RawAppEvent>()
+        var currentIndex = 0
+        while (currentIndex < potentialUnlockEvents.size) {
+            val windowStartEvent = potentialUnlockEvents[currentIndex]
+            // Define a 2-second window to look for better events
+            val windowEndTime = windowStartEvent.eventTimestamp + AppConstants.UNLOCK_EVENT_FOLLOW_WINDOW_MS
 
-            for (i in 1 until rawUnlockEvents.size) {
-                val currentEvent = rawUnlockEvents[i]
-                if (currentEvent.eventTimestamp - lastUnlockTimestamp > AppConstants.UNLOCK_EVENT_FOLLOW_WINDOW_MS) {
-                    debouncedUnlockEvents.add(currentEvent)
-                    lastUnlockTimestamp = currentEvent.eventTimestamp
+            // Find all events within this window
+            val windowIndices = mutableListOf<Int>()
+            for (i in currentIndex until potentialUnlockEvents.size) {
+                if (potentialUnlockEvents[i].eventTimestamp <= windowEndTime) {
+                    windowIndices.add(i)
+                } else {
+                    break // Events are sorted, so we can stop
                 }
             }
+
+            val eventsInWindow = windowIndices.map { potentialUnlockEvents[it] }
+
+            // Prioritize and select the best event from the window based on accuracy.
+            // 1. USER_UNLOCKED is the most accurate.
+            // 2. USER_PRESENT is the next best.
+            // 3. SCREEN_INTERACTIVE is least accurate and must be validated.
+            val bestEvent = eventsInWindow.find { it.eventType == RawAppEvent.EVENT_TYPE_USER_UNLOCKED }
+                ?: eventsInWindow.find { it.eventType == RawAppEvent.EVENT_TYPE_USER_PRESENT }
+                ?: eventsInWindow.find { event ->
+                    // Validate SCREEN_INTERACTIVE to ensure it's not a "lock screen peek"
+                    if (event.eventType == RawAppEvent.EVENT_TYPE_SCREEN_INTERACTIVE) {
+                        val isPeek = events.any {
+                            it.eventType == RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN &&
+                                    it.eventTimestamp > event.eventTimestamp &&
+                                    (it.eventTimestamp - event.eventTimestamp) < AppConstants.UNLOCK_EVENT_FOLLOW_WINDOW_MS
+                        }
+                        !isPeek // It's a valid unlock if it's not a peek
+                    } else {
+                        false
+                    }
+                }
+
+            bestEvent?.let {
+                trueUnlockEvents.add(it)
+            }
+
+            // Move index past the processed window to avoid recounting events.
+            currentIndex = windowIndices.lastOrNull()?.let { it + 1 } ?: (currentIndex + 1)
         }
+        // --- End of Prioritized Event Windowing ---
 
         val allEventsSorted = events.sortedBy { it.eventTimestamp }
+        val sortedNotifications = notifications.sortedBy { it.postTimeUTC }
 
-        for (unlockEvent in debouncedUnlockEvents) {
+        for (unlockEvent in trueUnlockEvents) {
             val session = UnlockSessionRecord(
                 unlockTimestamp = unlockEvent.eventTimestamp,
                 dateString = dateString,
@@ -262,8 +317,8 @@ class ScrollDataRepositoryImpl @Inject constructor(
         }
 
         val lockEvents = allEventsSorted.filter { it.eventType == RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE }
-        for(lockEvent in lockEvents) {
-            val lastOpenSession = unlockSessionDao.getOpenSessionBefore(lockEvent.eventTimestamp)
+        for (lockEvent in lockEvents) {
+            val lastOpenSession = unlockSessionDao.getOpenSessionBefore(dateString, lockEvent.eventTimestamp)
             if (lastOpenSession != null) {
                 val duration = lockEvent.eventTimestamp - lastOpenSession.unlockTimestamp
 
@@ -271,7 +326,14 @@ class ScrollDataRepositoryImpl @Inject constructor(
                 val firstAppEvent = allEventsSorted.find {
                     it.eventTimestamp > lastOpenSession.unlockTimestamp &&
                             it.eventTimestamp < lockEvent.eventTimestamp &&
-                            it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED
+                            it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED &&
+                            it.packageName !in filterSet
+                }
+
+                // Find most recent notification that could have triggered this unlock
+                val recentNotification = sortedNotifications.lastOrNull {
+                    lastOpenSession.unlockTimestamp > it.postTimeUTC &&
+                            (lastOpenSession.unlockTimestamp - it.postTimeUTC) < AppConstants.NOTIFICATION_UNLOCK_WINDOW_MS
                 }
 
                 unlockSessionDao.closeSession(
@@ -279,7 +341,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
                     lockTimestamp = lockEvent.eventTimestamp,
                     duration = duration,
                     firstAppPackage = firstAppEvent?.packageName,
-                    notificationKey = null // TODO: Implement notification trigger heuristic
+                    notificationKey = recentNotification?.notificationKey
                 )
             }
         }
@@ -298,9 +360,8 @@ class ScrollDataRepositoryImpl @Inject constructor(
         val totalNotifications = notificationsByPackage.values.sum()
 
         // --- UNLOCK DATA FROM NEW TABLE ---
-        val unlockSessionsForDay = unlockSessionDao.getUnlockCountForDate(dateString).first()
         val allUnlockTimestamps = unlockSessionDao.getUnlockTimestampsForDate(dateString)
-        val totalUnlocks = unlockSessionsForDay
+        val totalUnlocks = allUnlockTimestamps.size
         val firstUnlockTime = allUnlockTimestamps.minOrNull()
         val lastUnlockTime = allUnlockTimestamps.maxOrNull()
         // --- END UNLOCK DATA ---
@@ -456,7 +517,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
         val aggregator = mutableMapOf<String, Pair<Long, Long>>()
         val interactionEventsByPackage = allEvents
-            .filter { RawAppEvent.isAccessibilityEvent(it.eventType) || it.eventType == RawAppEvent.EVENT_TYPE_USER_INTERACTION }
+            .filter { RawAppEvent.isAccessibilityEvent(it.eventType) }
             .groupBy { it.packageName }
 
         sessions.forEach { session ->
@@ -514,8 +575,10 @@ class ScrollDataRepositoryImpl @Inject constructor(
         }
         Timber.i("Starting historical backfill for $numberOfDays days.")
 
-        for (i in 0..numberOfDays) { // Start from 0 to include today
-            val date = DateUtil.getPastDateString(i)
+        val allDatesToProcess = (0..numberOfDays).map { DateUtil.getPastDateString(it) }.toSet()
+        val allEventsToInsert = mutableSetOf<RawAppEvent>() // Use a Set to handle duplicates from overlapping queries
+
+        for (date in allDatesToProcess) {
             Timber.d("Backfilling date: $date")
             try {
                 // Step 1: Fetch historical system events for the day
@@ -523,27 +586,35 @@ class ScrollDataRepositoryImpl @Inject constructor(
                 val endTime = DateUtil.getEndOfDayUtcMillis(date)
 
                 val usageEvents = usageStatsManager.queryEvents(startTime, endTime)
-                val eventsToInsert = mutableListOf<RawAppEvent>()
                 val event = UsageEvents.Event()
 
                 while (usageEvents.hasNextEvent()) {
                     usageEvents.getNextEvent(event)
-                    mapUsageEventToRawAppEvent(event)?.let { eventsToInsert.add(it) }
+                    // Add ALL events returned by the query. The Set will handle duplicates
+                    // and the per-day processing will correctly query by timestamp later.
+                    mapUsageEventToRawAppEvent(event)?.let { allEventsToInsert.add(it) }
                 }
-
-                if (eventsToInsert.isNotEmpty()) {
-                    rawAppEventDao.insertEvents(eventsToInsert)
-                    Timber.d("Inserted ${eventsToInsert.size} historical events for $date.")
-                }
-
-                // Step 2: Process the newly fetched events for that day
-                processAndSummarizeDate(date)
-
             } catch (e: Exception) {
-                Timber.e(e, "Error during backfill for date: $date")
-                // We continue to the next day even if one day fails
+                Timber.e(e, "Error fetching historical events for date: $date")
             }
         }
+
+        if (allEventsToInsert.isNotEmpty()) {
+            rawAppEventDao.insertEvents(allEventsToInsert.toList())
+            Timber.d("Inserted ${allEventsToInsert.size} total unique historical events across all days.")
+        }
+
+        // Step 2: Now that ALL events are in the DB, process each day.
+        // This prevents the double-counting issue because processAndSummarizeDate queries
+        // for a precise time window from our clean database.
+        for (date in allDatesToProcess.sortedDescending()) {
+            try {
+                processAndSummarizeDate(date)
+            } catch (e: Exception) {
+                Timber.e(e, "Error processing backfilled data for date: $date")
+            }
+        }
+
         Timber.i("Historical backfill completed.")
         true
     }

@@ -25,7 +25,7 @@ object AppConstants {
     /**
      * The multiplier used in the square root model for calculating inferred scroll distance.
      */
-    const val INFERRED_SCROLL_MULTIPLIER = 50.0
+    const val INFERRED_SCROLL_MULTIPLIER = 20.0
 
     /**
      * The window over which to batch content change events for a single inferred scroll calculation.
@@ -33,6 +33,7 @@ object AppConstants {
     const val INFERRED_SCROLL_DEBOUNCE_MS = 1000L // 1 second
     const val FLUSH_INFERRED_SCROLL_INTERVAL_MINUTES = 15L
     const val UNLOCK_EVENT_FOLLOW_WINDOW_MS = 2000L // 2 seconds
+    const val NOTIFICATION_UNLOCK_WINDOW_MS = 30_000L // 30 seconds
 
     // --- Active Time Calculation ---
     const val ACTIVE_TIME_INTERACTION_WINDOW_MS = 5000L // 5 seconds, now a fallback
