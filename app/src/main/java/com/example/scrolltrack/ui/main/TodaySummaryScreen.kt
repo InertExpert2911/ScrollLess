@@ -63,8 +63,6 @@ fun TodaySummaryScreen(
     scrollDistanceMeters: String,
     totalUnlocks: Int,
     totalNotifications: Int,
-    firstUnlockTime: String = "N/A",
-    lastUnlockTime: String = "N/A",
     onNavigateToHistoricalUsage: () -> Unit,
     onNavigateToUnlocks: () -> Unit,
     onNavigateToNotifications: () -> Unit,
@@ -208,7 +206,7 @@ fun TodaySummaryScreen(
                 ) {
                     StatCard(
                         modifier = Modifier.weight(1f),
-                        label = "Screen Unlocks",
+                        label = "Unlocks",
                         value = totalUnlocks.toString(),
                         icon = Icons.Filled.LockOpen,
                         onCardClick = onNavigateToUnlocks
@@ -219,31 +217,6 @@ fun TodaySummaryScreen(
                         value = totalNotifications.toString(),
                         icon = Icons.Filled.Notifications,
                         onCardClick = onNavigateToNotifications
-                    )
-                }
-            }
-
-            item {
-                Row(
-                    Modifier
-                        .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    StatCard(
-                        modifier = Modifier.weight(1f),
-                        label = "First Unlock",
-                        value = firstUnlockTime,
-                        icon = Icons.Filled.HourglassTop,
-                        subValue = "Since ${firstUnlockTime}",
-                        onCardClick = {} // No action on click
-                    )
-                    StatCard(
-                        modifier = Modifier.weight(1f),
-                        label = "Last Unlock",
-                        value = lastUnlockTime,
-                        icon = Icons.Filled.PhoneLocked,
-                        subValue = if (lastUnlockTime != "N/A") "Today" else "",
-                        onCardClick = {} // No action on click
                     )
                 }
             }

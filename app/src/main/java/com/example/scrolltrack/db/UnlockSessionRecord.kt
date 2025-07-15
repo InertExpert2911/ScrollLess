@@ -35,5 +35,11 @@ data class UnlockSessionRecord(
     val triggeringNotificationKey: String? = null,
 
     @ColumnInfo(name = "unlock_event_type")
-    val unlockEventType: String
-) 
+    val unlockEventType: String,
+
+    @ColumnInfo(name = "session_type")
+    val sessionType: String? = null, // e.g., "Glance", "Intentional"
+
+    @ColumnInfo(name = "session_end_reason")
+    val sessionEndReason: String? = null // e.g., "LOCKED", "GHOST"
+)

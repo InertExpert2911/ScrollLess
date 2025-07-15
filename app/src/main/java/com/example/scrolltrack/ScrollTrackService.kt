@@ -120,12 +120,12 @@ class ScrollTrackService : AccessibilityService() {
     }
 
     private fun handleWindowStateChange(event: AccessibilityEvent) {
-        val sourceNode = event.source
-        if (sourceNode != null && sourceNode.isFocused) {
-            currentForegroundPackage = sourceNode.packageName?.toString()
-            Log.d(TAG, "Foreground package updated to: $currentForegroundPackage")
+        val packageName = event.packageName?.toString()
+        if (!packageName.isNullOrEmpty()) {
+            currentForegroundPackage = packageName
+            Log.d(TAG, "Foreground package updated to: $currentForegroundPackage from window state change.")
         }
-        sourceNode?.recycle()
+        event.source?.recycle()
     }
 
     private fun handleMeasuredScroll(event: AccessibilityEvent, packageName: String) {

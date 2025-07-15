@@ -17,8 +17,8 @@ data class DailyDeviceSummary(
     @ColumnInfo(name = "total_usage_time_millis", defaultValue = "0")
     val totalUsageTimeMillis: Long = 0L,
 
-    @ColumnInfo(name = "total_active_time_millis", defaultValue = "0")
-    val totalActiveTimeMillis: Long = 0L,
+    @ColumnInfo(name = "total_unlocked_duration_millis", defaultValue = "0")
+    val totalUnlockedDurationMillis: Long = 0L,
 
     @ColumnInfo(name = "total_unlock_count")
     val totalUnlockCount: Int = 0,
@@ -36,5 +36,11 @@ data class DailyDeviceSummary(
     val firstUnlockTimestampUtc: Long? = null,
 
     @ColumnInfo(name = "last_unlock_timestamp_utc", defaultValue = "NULL")
-    val lastUnlockTimestampUtc: Long? = null
+    val lastUnlockTimestampUtc: Long? = null,
+
+    @ColumnInfo(name = "intentional_unlock_count", defaultValue = "0")
+    val intentionalUnlockCount: Int = 0,
+
+    @ColumnInfo(name = "glance_unlock_count", defaultValue = "0")
+    val glanceUnlockCount: Int = 0
 )

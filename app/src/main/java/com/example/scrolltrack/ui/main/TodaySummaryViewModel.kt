@@ -117,6 +117,12 @@ class TodaySummaryViewModel @Inject constructor(
     val totalUnlocksToday: StateFlow<Int> = summaryData.map { it?.totalUnlockCount ?: 0 }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
 
+    val intentionalUnlocksToday: StateFlow<Int> = summaryData.map { it?.intentionalUnlockCount ?: 0 }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
+
+    val glanceUnlocksToday: StateFlow<Int> = summaryData.map { it?.glanceUnlockCount ?: 0 }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
+
     val totalNotificationsToday: StateFlow<Int> = summaryData.map { it?.totalNotificationCount ?: 0 }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
 
@@ -240,4 +246,4 @@ class TodaySummaryViewModel @Inject constructor(
             settingsRepository.setSelectedTheme(theme)
         }
     }
-} 
+}

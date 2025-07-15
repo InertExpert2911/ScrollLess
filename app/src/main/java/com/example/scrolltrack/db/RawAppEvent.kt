@@ -76,6 +76,7 @@ data class RawAppEvent(
 
         // --- Custom event types from our own logic ---
         const val EVENT_TYPE_CUSTOM_OFFSET = 3000
+        const val EVENT_TYPE_RETURN_TO_HOME = EVENT_TYPE_CUSTOM_OFFSET + 2 // Inferred
         @Deprecated("Use MEASURED or INFERRED specific types", ReplaceWith("EVENT_TYPE_SCROLL_MEASURED"))
         const val EVENT_TYPE_SCROLL = EVENT_TYPE_CUSTOM_OFFSET + 1 // Specific for scroll delta tracking
 

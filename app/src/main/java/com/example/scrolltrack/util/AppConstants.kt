@@ -17,6 +17,12 @@ object AppConstants {
     val CONTEXTUAL_APP_OPEN_DEBOUNCE_MS = TimeUnit.SECONDS.toMillis(15)
 
     /**
+     * The minimum duration for an unlock session to be considered "Intentional".
+     * Anything shorter is classified as a "Glance".
+     */
+    val MINIMUM_GLANCE_DURATION_MS = TimeUnit.SECONDS.toMillis(3)
+
+    /**
      * The maximum time gap in milliseconds between two scroll events for them to be considered
      * part of the same continuous scrolling session.
      */
@@ -56,4 +62,4 @@ object AppConstants {
     // in the simplified version but are kept for historical context or potential reuse.
     const val CONFIG_CHANGE_PEEK_AHEAD_MS = 1000L
     const val CONFIG_CHANGE_MERGE_THRESHOLD_MS = 3000L
-} 
+}

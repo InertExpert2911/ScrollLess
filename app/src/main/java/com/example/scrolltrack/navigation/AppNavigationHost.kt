@@ -22,6 +22,7 @@ import com.example.scrolltrack.ui.historical.HistoricalUsageScreen
 import com.example.scrolltrack.ui.historical.HistoricalViewModel
 import com.example.scrolltrack.ui.main.TodaySummaryScreen
 import com.example.scrolltrack.ui.main.TodaySummaryViewModel
+import com.example.scrolltrack.ui.insights.InsightsScreen
 import com.example.scrolltrack.ui.unlocks.UnlocksScreen
 import com.example.scrolltrack.ui.unlocks.UnlocksViewModel
 import com.example.scrolltrack.util.DateUtil
@@ -125,8 +126,6 @@ private fun NavGraphBuilder.addDashboardGraph(
             val totalNotifications by viewModel.totalNotificationsToday.collectAsStateWithLifecycle()
             val topWeeklyApp by viewModel.topWeeklyApp.collectAsStateWithLifecycle()
             val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
-            val firstUnlockTime by viewModel.firstUnlockTime.collectAsStateWithLifecycle()
-            val lastUnlockTime by viewModel.lastUnlockTime.collectAsStateWithLifecycle()
 
             TodaySummaryScreen(
                 navController = navController,
@@ -145,8 +144,6 @@ private fun NavGraphBuilder.addDashboardGraph(
                 scrollDistanceMeters = "${scrollDistanceFormatted.first} ${scrollDistanceFormatted.second}",
                 totalUnlocks = totalUnlocks,
                 totalNotifications = totalNotifications,
-                firstUnlockTime = firstUnlockTime,
-                lastUnlockTime = lastUnlockTime,
                 onNavigateToHistoricalUsage = { navController.navigate(ScreenRoutes.HistoricalUsageRoute.route) },
                 onNavigateToUnlocks = { navController.navigate(ScreenRoutes.UnlocksRoute.route) },
                 onNavigateToNotifications = { navController.navigate(ScreenRoutes.NotificationsRoute.route) },
@@ -223,10 +220,7 @@ private fun NavGraphBuilder.addInsightsGraph(navController: NavHostController) {
         route = INSIGHTS_GRAPH_ROUTE
     ) {
         composable(ScreenRoutes.Insights.route) {
-            // Placeholder for Insights Screen
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Insights Screen", style = MaterialTheme.typography.headlineMedium)
-            }
+            InsightsScreen(navController = navController)
         }
         // Add other destinations for the insights tab here
     }
