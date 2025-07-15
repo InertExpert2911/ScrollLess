@@ -123,4 +123,15 @@ object DateUtil {
     fun getPastDateString(daysAgo: Int): String {
         return LocalDate.now(UTC_ZONE_ID).minusDays(daysAgo.toLong()).format(YYYY_MM_DD_FORMATTER)
     }
+
+    fun getPastDateString(daysAgo: Int, fromDate: LocalDate?): String {
+        val date = fromDate ?: LocalDate.now(UTC_ZONE_ID)
+        return date.minusDays(daysAgo.toLong()).format(YYYY_MM_DD_FORMATTER)
+    }
+
+    fun getFormattedDate(): String {
+        val today = LocalDate.now()
+        val formatter = DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.getDefault())
+        return today.format(formatter)
+    }
 }

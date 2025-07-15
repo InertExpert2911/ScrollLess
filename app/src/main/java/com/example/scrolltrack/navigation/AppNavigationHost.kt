@@ -22,6 +22,7 @@ import com.example.scrolltrack.ui.historical.HistoricalUsageScreen
 import com.example.scrolltrack.ui.historical.HistoricalViewModel
 import com.example.scrolltrack.ui.main.TodaySummaryScreen
 import com.example.scrolltrack.ui.main.TodaySummaryViewModel
+import com.example.scrolltrack.ui.main.StatComparison
 import com.example.scrolltrack.ui.insights.InsightsScreen
 import com.example.scrolltrack.ui.unlocks.UnlocksScreen
 import com.example.scrolltrack.ui.unlocks.UnlocksViewModel
@@ -126,6 +127,11 @@ private fun NavGraphBuilder.addDashboardGraph(
             val totalNotifications by viewModel.totalNotificationsToday.collectAsStateWithLifecycle()
             val topWeeklyApp by viewModel.topWeeklyApp.collectAsStateWithLifecycle()
             val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
+            val snackbarMessage by viewModel.snackbarMessage.collectAsStateWithLifecycle()
+            val screenTimeComparison by viewModel.screenTimeComparison.collectAsStateWithLifecycle()
+            val unlocksComparison by viewModel.unlocksComparison.collectAsStateWithLifecycle()
+            val notificationsComparison by viewModel.notificationsComparison.collectAsStateWithLifecycle()
+            val scrollComparison by viewModel.scrollComparison.collectAsStateWithLifecycle()
 
             TodaySummaryScreen(
                 navController = navController,
@@ -144,6 +150,10 @@ private fun NavGraphBuilder.addDashboardGraph(
                 scrollDistanceMeters = "${scrollDistanceFormatted.first} ${scrollDistanceFormatted.second}",
                 totalUnlocks = totalUnlocks,
                 totalNotifications = totalNotifications,
+                screenTimeComparison = screenTimeComparison,
+                unlocksComparison = unlocksComparison,
+                notificationsComparison = notificationsComparison,
+                scrollComparison = scrollComparison,
                 onNavigateToHistoricalUsage = { navController.navigate(ScreenRoutes.HistoricalUsageRoute.route) },
                 onNavigateToUnlocks = { navController.navigate(ScreenRoutes.UnlocksRoute.route) },
                 onNavigateToNotifications = { navController.navigate(ScreenRoutes.NotificationsRoute.route) },
@@ -151,7 +161,9 @@ private fun NavGraphBuilder.addDashboardGraph(
                     navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(packageName))
                 },
                 isRefreshing = isRefreshing,
-                onRefresh = { viewModel.onPullToRefresh() }
+                onRefresh = { viewModel.onPullToRefresh() },
+                snackbarMessage = snackbarMessage,
+                onSnackbarDismiss = { viewModel.dismissSnackbar() }
             )
         }
         composable(ScreenRoutes.NotificationsRoute.route) {

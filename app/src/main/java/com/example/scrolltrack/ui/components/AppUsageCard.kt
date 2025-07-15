@@ -36,9 +36,9 @@ fun AppUsageCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "Today's App Usage",
+                text = "Top Apps Today",
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(bottom = 12.dp)
+                modifier = Modifier.padding(bottom = 16.dp)
             )
             if (apps.isEmpty()) {
                 Box(
@@ -75,9 +75,9 @@ private fun AppUsageRow(
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.medium)
             .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
+            .padding(vertical = 8.dp, horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Image(
             painter = rememberAsyncImagePainter(
@@ -89,13 +89,29 @@ private fun AppUsageRow(
                 .clip(CircleShape),
             contentScale = ContentScale.Fit
         )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = app.appName,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = app.appName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = DateUtil.formatDuration(app.usageTimeMillis),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
             val percentage = if (totalUsageMillis > 0) {
                 (app.usageTimeMillis.toFloat() / totalUsageMillis.toFloat())
             } else 0f
@@ -104,13 +120,9 @@ private fun AppUsageRow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(8.dp)
-                    .clip(CircleShape)
+                    .clip(CircleShape),
+                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
             )
         }
-        Text(
-            text = DateUtil.formatDuration(app.usageTimeMillis),
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold
-        )
     }
-} 
+}

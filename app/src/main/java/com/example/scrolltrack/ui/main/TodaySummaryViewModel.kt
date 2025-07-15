@@ -22,6 +22,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.delay
 import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.util.PermissionUtils.isAccessibilityServiceEnabledFlow
 import com.example.scrolltrack.util.PermissionUtils.isNotificationListenerEnabledFlow
@@ -34,6 +37,11 @@ sealed class UiState {
     object Refreshing : UiState()
     data class Error(val message: String) : UiState()
 }
+
+data class StatComparison(
+    val percentageChange: Float,
+    val isIncrease: Boolean
+)
 
 private data class PermissionState(
     val accessibility: Boolean,
@@ -62,6 +70,9 @@ class TodaySummaryViewModel @Inject constructor(
     val isRefreshing: StateFlow<Boolean> = _uiState.map { it is UiState.Refreshing }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), false)
 
+    private val _snackbarMessage = MutableStateFlow<String?>(null)
+    val snackbarMessage: StateFlow<String?> = _snackbarMessage.asStateFlow()
+
 
     val selectedThemePalette: StateFlow<AppTheme> = settingsRepository.selectedTheme
         .stateIn(viewModelScope, SharingStarted.Eagerly, AppTheme.CalmLavender)
@@ -83,6 +94,30 @@ class TodaySummaryViewModel @Inject constructor(
         repository.getDeviceSummaryForDate(date)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
+    private val yesterdaySummaryData: StateFlow<DailyDeviceSummary?> = _selectedDate.flatMapLatest { date ->
+        val yesterday = DateUtil.getPastDateString(1, DateUtil.parseLocalDate(date))
+        repository.getDeviceSummaryForDate(yesterday)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
+
+    val screenTimeComparison: StateFlow<StatComparison?> = combine(summaryData, yesterdaySummaryData) { today, yesterday ->
+        calculateComparison(today?.totalUsageTimeMillis, yesterday?.totalUsageTimeMillis)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
+
+    val unlocksComparison: StateFlow<StatComparison?> = combine(summaryData, yesterdaySummaryData) { today, yesterday ->
+        calculateComparison(today?.totalUnlockCount?.toLong(), yesterday?.totalUnlockCount?.toLong())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
+
+    val notificationsComparison: StateFlow<StatComparison?> = combine(summaryData, yesterdaySummaryData) { today, yesterday ->
+        calculateComparison(today?.totalNotificationCount?.toLong(), yesterday?.totalNotificationCount?.toLong())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
+
+    val yesterdayAggregatedScrollData: StateFlow<List<AppScrollUiItem>> =
+        _selectedDate.flatMapLatest { date ->
+            val yesterday = DateUtil.getPastDateString(1, DateUtil.parseLocalDate(date))
+            repository.getScrollDataForDate(yesterday)
+                .map { data -> data.map { mapper.mapToAppScrollUiItem(it) } }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
+
     val totalPhoneUsageTodayFormatted: StateFlow<String> =
         summaryData.map { DateUtil.formatDuration(it?.totalUsageTimeMillis ?: 0L) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "...")
@@ -102,6 +137,20 @@ class TodaySummaryViewModel @Inject constructor(
             repository.getScrollDataForDate(date)
                 .map { data -> data.map { mapper.mapToAppScrollUiItem(it) } }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
+
+    val totalScrollDistanceToday: StateFlow<Long> =
+        aggregatedScrollDataToday.map { list ->
+            list.sumOf { it.totalScroll }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
+
+    val totalScrollDistanceYesterday: StateFlow<Long> =
+        yesterdayAggregatedScrollData.map { list ->
+            list.sumOf { it.totalScroll }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
+
+    val scrollComparison: StateFlow<StatComparison?> = combine(totalScrollDistanceToday, totalScrollDistanceYesterday) { today, yesterday ->
+        calculateComparison(today, yesterday)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
     val totalScrollToday: StateFlow<Long> =
         aggregatedScrollDataToday.map { list -> list.sumOf { it.totalScroll } }
@@ -174,23 +223,26 @@ class TodaySummaryViewModel @Inject constructor(
         performRefresh(isInitialLoad = true)
     }
 
-    private fun performRefresh(isInitialLoad: Boolean = false) {
-        // Prevent multiple refreshes from running at the same time
+    private fun performRefresh(isInitialLoad: Boolean = false, showSnackbarOnCompletion: Boolean = false) {
         if (uiState.value is UiState.Refreshing || (isInitialLoad && uiState.value !is UiState.InitialLoading)) {
             Timber.d("Refresh already in progress or initial load already passed. Skipping.")
             return
         }
 
         _uiState.value = if (isInitialLoad) UiState.InitialLoading else UiState.Refreshing
+        _snackbarMessage.value = null // Clear previous snackbar messages
 
         viewModelScope.launch {
             try {
                 repository.refreshDataOnAppOpen()
+                if (showSnackbarOnCompletion) {
+                    _snackbarMessage.value = "Data refreshed successfully"
+                }
             } catch (e: Exception) {
                 Timber.e(e, "A critical error occurred during data refresh.")
+                _snackbarMessage.value = "Error refreshing data"
                 _uiState.value = UiState.Error("An unexpected error occurred.")
             } finally {
-                // No matter what, always transition back to Ready.
                 _uiState.value = UiState.Ready
             }
         }
@@ -198,13 +250,17 @@ class TodaySummaryViewModel @Inject constructor(
 
     fun onPullToRefresh() {
         Timber.d("Pull to refresh triggered.")
-        performRefresh()
+        performRefresh(showSnackbarOnCompletion = true)
+    }
+
+    fun dismissSnackbar() {
+        _snackbarMessage.value = null
     }
 
     fun onAppResumed() {
         Timber.d("onAppResumed called.")
-        checkAllPermissions() // Check for permission changes first
-        performRefresh() // Then trigger the refresh
+        checkAllPermissions()
+        performRefresh()
     }
 
     fun performHistoricalUsageDataBackfill(numberOfDays: Int, onComplete: (Boolean) -> Unit) {
@@ -245,5 +301,12 @@ class TodaySummaryViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.setSelectedTheme(theme)
         }
+    }
+
+    private fun calculateComparison(current: Long?, previous: Long?): StatComparison? {
+        if (current == null || previous == null || previous == 0L) return null
+        val diff = current - previous
+        val percentageChange = (diff.toFloat() / previous.toFloat()) * 100
+        return StatComparison(percentageChange, diff > 0)
     }
 }

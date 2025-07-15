@@ -20,7 +20,7 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LoadingIndicator
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,11 +38,13 @@ import coil.compose.rememberAsyncImagePainter
 import com.example.scrolltrack.R
 import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.components.AppUsageCard
+import com.example.scrolltrack.ui.components.DashboardCard
 import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.ui.theme.AppTheme
 import com.example.scrolltrack.ui.theme.getThemeColors
 import com.example.scrolltrack.util.DateUtil
 import java.io.File
+import kotlin.math.absoluteValue
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -63,21 +65,44 @@ fun TodaySummaryScreen(
     scrollDistanceMeters: String,
     totalUnlocks: Int,
     totalNotifications: Int,
+    screenTimeComparison: StatComparison?,
+    unlocksComparison: StatComparison?,
+    notificationsComparison: StatComparison?,
+    scrollComparison: StatComparison?,
     onNavigateToHistoricalUsage: () -> Unit,
     onNavigateToUnlocks: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToAppDetail: (String) -> Unit,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    snackbarMessage: String?,
+    onSnackbarDismiss: () -> Unit
 ) {
     val state = rememberPullToRefreshState()
-    PullToRefreshBox(
-        isRefreshing = isRefreshing,
-        onRefresh = onRefresh,
-        modifier = modifier.fillMaxSize(),
-        state = state,
-        indicator = {
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(snackbarMessage) {
+        if (snackbarMessage != null) {
+            val result = snackbarHostState.showSnackbar(
+                message = snackbarMessage,
+                duration = SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.Dismissed) {
+                onSnackbarDismiss()
+            }
+        }
+    }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { padding ->
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = onRefresh,
+            modifier = modifier.padding(padding).fillMaxSize(),
+            state = state,
+            indicator = {
             // Correctly access distanceFraction from the 'state' variable
             val scale = state.distanceFraction.coerceIn(0f, 1.5f)
             Box(
@@ -95,7 +120,6 @@ fun TodaySummaryScreen(
             }
         }
     ) {
-        // The rest of your LazyColumn content remains here...
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
@@ -114,14 +138,14 @@ fun TodaySummaryScreen(
                     ) {
                         Text(
                             text = greeting,
-                            style = MaterialTheme.typography.displaySmall,
+                            style = MaterialTheme.typography.headlineLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                     }
 
                     Text(
-                        text = stringResource(id = R.string.greeting_manage_habits),
-                        style = MaterialTheme.typography.titleMedium,
+                        text = DateUtil.getFormattedDate(),
+                        style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -166,6 +190,64 @@ fun TodaySummaryScreen(
                 }
             }
 
+            // Stats Grid
+            item {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    DashboardCard(
+                        modifier = Modifier.weight(1f),
+                        title = "Screen Time",
+                        value = totalUsageTime,
+                        unit = "",
+                        icon = Icons.Outlined.PhoneAndroid,
+                        comparison = screenTimeComparison,
+                        showComparisonText = true,
+                        onCardClick = onNavigateToHistoricalUsage
+                    )
+                    DashboardCard(
+                        modifier = Modifier.weight(1f),
+                        title = "Unlocks",
+                        value = totalUnlocks.toString(),
+                        unit = "times",
+                        icon = Icons.Filled.LockOpen,
+                        comparison = unlocksComparison,
+                        showComparisonText = true,
+                        onCardClick = onNavigateToUnlocks
+                    )
+                }
+            }
+
+            item {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    DashboardCard(
+                        modifier = Modifier.weight(1f),
+                        title = "Notifications",
+                        value = totalNotifications.toString(),
+                        unit = "received",
+                        icon = Icons.Filled.Notifications,
+                        comparison = notificationsComparison,
+                        onCardClick = onNavigateToNotifications
+                    )
+                    DashboardCard(
+                        modifier = Modifier.weight(1f),
+                        title = "Scrolled",
+                        value = scrollDistanceMeters.split(" ").firstOrNull() ?: "",
+                        unit = "meters",
+                        icon = Icons.AutoMirrored.Filled.TrendingUp,
+                        comparison = scrollComparison,
+                        onCardClick = {
+                            val todayDate = DateUtil.getCurrentLocalDateString()
+                            navController.navigate(ScreenRoutes.ScrollDetailRoute.createRoute(todayDate))
+                        }
+                    )
+                }
+            }
+            
             item {
                 AppUsageCard(
                     apps = todaysAppUsage,
@@ -174,67 +256,9 @@ fun TodaySummaryScreen(
                     modifier = Modifier
                 )
             }
-
-            // Stats Grid
-            item {
-                Row(
-                    Modifier
-                        .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    StatCard(
-                        modifier = Modifier.weight(1f),
-                        label = "Phone Usage Today",
-                        value = totalUsageTime,
-                        icon = Icons.Outlined.PhoneAndroid,
-                        subValue = "View Details",
-                        onCardClick = onNavigateToHistoricalUsage
-                    )
-                    TopAppCard(
-                        modifier = Modifier.weight(1f),
-                        topApp = topWeeklyApp,
-                        onClick = onNavigateToAppDetail
-                    )
-                }
-            }
-
-            item {
-                Row(
-                    Modifier
-                        .fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    StatCard(
-                        modifier = Modifier.weight(1f),
-                        label = "Unlocks",
-                        value = totalUnlocks.toString(),
-                        icon = Icons.Filled.LockOpen,
-                        onCardClick = onNavigateToUnlocks
-                    )
-                    StatCard(
-                        modifier = Modifier.weight(1f),
-                        label = "Notifications",
-                        value = totalNotifications.toString(),
-                        icon = Icons.Filled.Notifications,
-                        onCardClick = onNavigateToNotifications
-                    )
-                }
-            }
-
-            item {
-                ScrollStatsCard(
-                    modifier = Modifier
-                        .fillMaxWidth(),
-                    scrollDistanceMeters = scrollDistanceMeters,
-                    totalScrollUnits = totalScrollUnits,
-                    onClick = {
-                        val todayDate = DateUtil.getCurrentLocalDateString()
-                        navController.navigate(ScreenRoutes.ScrollDetailRoute.createRoute(todayDate))
-                    }
-                )
-            }
         }
     }
+}
 }
 
 // ... (The rest of the file remains unchanged)
@@ -339,204 +363,6 @@ private fun PermissionRequestCard(
                     Text(buttonText, style = MaterialTheme.typography.labelLarge)
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun StatCard(
-    modifier: Modifier = Modifier,
-    label: String,
-    value: String,
-    icon: ImageVector,
-    subValue: String? = null,
-    onCardClick: (() -> Unit)? = null
-) {
-    ElevatedCard(
-        modifier = modifier
-            .height(160.dp)
-            .clickable(enabled = onCardClick != null) { onCardClick?.invoke() },
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            contentColor = MaterialTheme.colorScheme.onSurface
-        ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier
-                    .size(32.dp)
-                    .padding(bottom = 8.dp)
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.titleSmall,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                modifier = Modifier.padding(bottom = 4.dp),
-                text = value,
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.primary,
-                textAlign = TextAlign.Center
-            )
-            if (subValue != null) {
-                Text(
-                    text = subValue,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun TopAppCard(
-    modifier: Modifier = Modifier,
-    topApp: AppUsageUiItem?,
-    onClick: (String) -> Unit
-) {
-    ElevatedCard(
-        modifier = modifier
-            .height(160.dp)
-            .clickable(enabled = topApp != null) { topApp?.packageName?.let(onClick) },
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            contentColor = MaterialTheme.colorScheme.onSurface
-        ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            if (topApp != null) {
-                Image(
-                    painter = rememberAsyncImagePainter(
-                        model = topApp.icon ?: R.mipmap.ic_launcher_round
-                    ),
-                    contentDescription = "${topApp.appName} icon",
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .padding(bottom = 8.dp),
-                    contentScale = ContentScale.Fit
-                )
-                Text(
-                    text = topApp.appName,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(bottom = 2.dp),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "${DateUtil.formatDuration(topApp.usageTimeMillis)} ${stringResource(id = R.string.suffix_last_7_days)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                Icon(
-                    Icons.Filled.HourglassEmpty,
-                    contentDescription = "No top app data",
-                    modifier = Modifier
-                        .size(32.dp)
-                        .padding(bottom = 8.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = stringResource(id = R.string.card_title_top_weekly_app),
-                    style = MaterialTheme.typography.titleMedium,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(bottom = 2.dp),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = stringResource(id = R.string.text_no_data_yet),
-                    style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun ScrollStatsCard(
-    modifier: Modifier = Modifier,
-    scrollDistanceMeters: String,
-    totalScrollUnits: Long,
-    onClick: () -> Unit
-) {
-    ElevatedCard(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            contentColor = MaterialTheme.colorScheme.onSurface
-        ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.AutoMirrored.Filled.TrendingUp,
-                    contentDescription = "Scroll Stats",
-                    tint = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .padding(end = 16.dp)
-                )
-                Column {
-                    Text(
-                        text = stringResource(id = R.string.card_title_scroll_stats_today),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "$totalScrollUnits units",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-            Text(
-                text = scrollDistanceMeters,
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.primary,
-                textAlign = TextAlign.End,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
         }
     }
 }

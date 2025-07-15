@@ -15,6 +15,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
+import com.example.scrolltrack.ui.components.DashboardCard
 
 @Composable
 fun InsightsScreen(
@@ -33,28 +34,39 @@ fun InsightsScreen(
     ) {
         item {
             Text(
-                text = "Unlock Insights",
+                text = "Insights for you",
                 style = MaterialTheme.typography.displaySmall,
                 color = MaterialTheme.colorScheme.onSurface
             )
         }
         item {
+            Text(
+                text = "Unlock Insights",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+        item {
             Row(
                 Modifier
                     .fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                StatCard(
+                DashboardCard(
                     modifier = Modifier.weight(1f),
-                    label = "Meaningful Unlocks",
+                    title = "Meaningful Unlocks",
                     value = intentionalUnlocks.toString(),
-                    icon = Icons.Filled.LockOpen
+                    unit = "times",
+                    icon = Icons.Filled.LockOpen,
+                    comparison = null
                 )
-                StatCard(
+                DashboardCard(
                     modifier = Modifier.weight(1f),
-                    label = "Quick Glances",
+                    title = "Quick Glances",
                     value = glanceUnlocks.toString(),
-                    icon = Icons.Filled.WbSunny
+                    unit = "times",
+                    icon = Icons.Filled.WbSunny,
+                    comparison = null
                 )
             }
         }
@@ -64,69 +76,23 @@ fun InsightsScreen(
                     .fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                StatCard(
+                DashboardCard(
                     modifier = Modifier.weight(1f),
-                    label = "First Unlock",
+                    title = "First Unlock",
                     value = firstUnlockTime,
-                    icon = Icons.Filled.HourglassTop
+                    unit = "",
+                    icon = Icons.Filled.HourglassTop,
+                    comparison = null
                 )
-                StatCard(
+                DashboardCard(
                     modifier = Modifier.weight(1f),
-                    label = "Last Unlock",
+                    title = "Last Unlock",
                     value = lastUnlockTime,
-                    icon = Icons.Filled.PhoneLocked
+                    unit = "",
+                    icon = Icons.Filled.PhoneLocked,
+                    comparison = null
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun StatCard(
-    modifier: Modifier = Modifier,
-    label: String,
-    value: String,
-    icon: ImageVector
-) {
-    ElevatedCard(
-        modifier = modifier
-            .height(160.dp),
-        shape = MaterialTheme.shapes.large,
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            contentColor = MaterialTheme.colorScheme.onSurface
-        ),
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                tint = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier
-                    .size(32.dp)
-                    .padding(bottom = 8.dp)
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.titleSmall,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                modifier = Modifier.padding(bottom = 4.dp),
-                text = value,
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.primary,
-                textAlign = TextAlign.Center
-            )
         }
     }
 }

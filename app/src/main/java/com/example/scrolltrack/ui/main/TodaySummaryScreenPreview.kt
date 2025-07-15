@@ -37,7 +37,13 @@ fun TodaySummaryScreenPreview() {
             onNavigateToNotifications = {},
             onNavigateToAppDetail = { _ -> },
             isRefreshing = false,
-            onRefresh = {}
+            onRefresh = {},
+            snackbarMessage = null,
+            onSnackbarDismiss = {},
+            screenTimeComparison = null,
+            unlocksComparison = null,
+            notificationsComparison = null,
+            scrollComparison = null
         )
     }
 }
@@ -73,7 +79,13 @@ fun TodaySummaryScreenDarkPreview() {
             onNavigateToNotifications = {},
             onNavigateToAppDetail = { _ -> },
             isRefreshing = false,
-            onRefresh = {}
+            onRefresh = {},
+            snackbarMessage = null,
+            onSnackbarDismiss = {},
+            screenTimeComparison = null,
+            unlocksComparison = null,
+            notificationsComparison = null,
+            scrollComparison = null
         )
     }
 }
@@ -108,7 +120,13 @@ fun TodaySummaryScreenWithPermissionsPreview() {
             onNavigateToNotifications = {},
             onNavigateToAppDetail = { _ -> },
             isRefreshing = false,
-            onRefresh = {}
+            onRefresh = {},
+            snackbarMessage = null,
+            onSnackbarDismiss = {},
+            screenTimeComparison = null,
+            unlocksComparison = null,
+            notificationsComparison = null,
+            scrollComparison = null
         )
     }
 }
