@@ -2,8 +2,9 @@ package com.example.scrolltrack.ui.components
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.TrendingDown
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -51,8 +52,11 @@ fun DashboardCard(
                     fontWeight = FontWeight.Medium
                 )
                 if (comparison != null) {
-                    val color = if (comparison.isIncrease) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                    val arrow = if (comparison.isIncrease) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward
+                    val (color, arrow) = when {
+                        comparison.percentageChange > 0 -> MaterialTheme.colorScheme.primary to Icons.Default.TrendingUp
+                        comparison.percentageChange < 0 -> MaterialTheme.colorScheme.error to Icons.Default.TrendingDown
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant to Icons.Default.Remove
+                    }
                     Card(
                         shape = MaterialTheme.shapes.small,
                         colors = CardDefaults.cardColors(
@@ -99,7 +103,11 @@ fun DashboardCard(
                     )
                 }
                 if (showComparisonText && comparison != null) {
-                    val text = if (comparison.isIncrease) "More than yesterday" else "Less than yesterday"
+                    val text = when {
+                        comparison.percentageChange > 0 -> "More than yesterday"
+                        comparison.percentageChange < 0 -> "Less than yesterday"
+                        else -> "Same as yesterday"
+                    }
                     Text(
                         text = text,
                         style = MaterialTheme.typography.bodySmall,

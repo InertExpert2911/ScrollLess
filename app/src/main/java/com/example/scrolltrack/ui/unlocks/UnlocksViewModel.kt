@@ -16,6 +16,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.temporal.WeekFields
 import java.util.*
@@ -32,7 +33,9 @@ data class UnlocksUiState(
     val heatmapData: Map<LocalDate, Int> = emptyMap(),
     val unlockStat: Int = 0,
     val appOpens: List<AppOpenUiItem> = emptyList(),
-    val periodDisplay: String = ""
+    val periodDisplay: String = "",
+    val currentMonth: YearMonth = YearMonth.now(),
+    val monthsWithData: List<YearMonth> = emptyList()
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -51,6 +54,8 @@ class UnlocksViewModel @Inject constructor(
         repository.getAllDeviceSummaries()
     ) { selectedDate: LocalDate, period: UnlockPeriod, allSummaries: List<DailyDeviceSummary> ->
         val heatmapData = allSummaries.associate { LocalDate.parse(it.dateString) to it.totalUnlockCount }
+        val monthsWithData = heatmapData.keys.map { YearMonth.from(it) }.distinct().sorted()
+        val currentMonth = monthsWithData.lastOrNull() ?: YearMonth.now()
 
         val (unlockStat, dateRange, periodDisplay) = when (period) {
             UnlockPeriod.Daily -> {
@@ -85,7 +90,9 @@ class UnlocksViewModel @Inject constructor(
                 period = period,
                 heatmapData = heatmapData,
                 unlockStat = unlockStat,
-                periodDisplay = periodDisplay
+                periodDisplay = periodDisplay,
+                currentMonth = currentMonth,
+                monthsWithData = monthsWithData
             ),
             dateRange
         )
@@ -138,4 +145,4 @@ class UnlocksViewModel @Inject constructor(
     fun onPeriodChanged(period: UnlockPeriod) {
         _period.value = period
     }
-} 
+}

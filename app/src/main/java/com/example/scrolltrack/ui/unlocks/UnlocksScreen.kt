@@ -4,6 +4,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -15,6 +17,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,10 +30,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -44,8 +52,10 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.*
+import kotlin.math.roundToInt
+import android.graphics.Paint
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun UnlocksScreen(
     navController: NavController,
@@ -56,7 +66,7 @@ fun UnlocksScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Unlocks & App Opens") },
+                title = { Text("Unlocks & App Opens", style = MaterialTheme.typography.headlineLarge) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -73,18 +83,18 @@ fun UnlocksScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(bottom = 16.dp)
+                .padding(innerPadding)
         ) {
             item {
                 InteractiveCalendarHeatmap(
                     heatmapData = uiState.heatmapData,
                     selectedDate = uiState.selectedDate,
                     onDateSelected = viewModel::onDateSelected,
+                    monthsWithData = uiState.monthsWithData,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(240.dp)
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .height(300.dp)
+                        .padding(horizontal = 16.dp)
                 )
             }
 
@@ -93,17 +103,37 @@ fun UnlocksScreen(
             }
 
             item {
-                SingleChoiceSegmentedButtonRow(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 16.dp)
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            item {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
                 ) {
-                    UnlockPeriod.entries.forEach { period ->
-                        SegmentedButton(
-                            shape = SegmentedButtonDefaults.itemShape(index = period.ordinal, count = UnlockPeriod.entries.size),
-                            onClick = { viewModel.onPeriodChanged(period) },
-                            selected = uiState.period == period,
+                    val options = UnlockPeriod.entries
+                    options.forEachIndexed { index, period ->
+                        ToggleButton(
+                            checked = uiState.period == period,
+                            onCheckedChange = { viewModel.onPeriodChanged(period) },
+                            modifier = Modifier.weight(1f),
+                            shapes =
+                            when (index) {
+                                0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                                options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                                else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                            },
                         ) {
+                            if (uiState.period == period) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
                             Text(period.name)
                         }
                     }
@@ -111,9 +141,13 @@ fun UnlocksScreen(
             }
 
             item {
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            item {
                 Text(
                     text = "For ${uiState.periodDisplay}",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(horizontal = 16.dp)
                 )
             }
@@ -121,8 +155,8 @@ fun UnlocksScreen(
             item {
                 val unlockLabel = when (uiState.period) {
                     UnlockPeriod.Daily -> "Total Unlocks"
-                    UnlockPeriod.Weekly -> "Weekly Average"
-                    UnlockPeriod.Monthly -> "Monthly Average"
+                    UnlockPeriod.Weekly -> "Avg. Unlocks per Day"
+                    UnlockPeriod.Monthly -> "Avg. Unlocks per Day"
                 }
                 Text(
                     text = "$unlockLabel: ${uiState.unlockStat}",
@@ -132,14 +166,12 @@ fun UnlocksScreen(
                 )
             }
 
-            item {
-                Divider(modifier = Modifier.padding(vertical = 16.dp))
-            }
 
             if (uiState.appOpens.isNotEmpty()) {
                 items(uiState.appOpens, key = { it.packageName }) { app ->
                     AppOpenRow(
                         app = app,
+                        period = uiState.period,
                         onClick = {
                             navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(app.packageName))
                         },
@@ -147,59 +179,41 @@ fun UnlocksScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                 }
-            } else {
-                item {
-                    Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No app opens recorded for this period.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
             }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun InteractiveCalendarHeatmap(
     heatmapData: Map<LocalDate, Int>,
     selectedDate: LocalDate,
     onDateSelected: (LocalDate) -> Unit,
+    monthsWithData: List<YearMonth>,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberLazyListState()
     val today = LocalDate.now()
 
-    val firstDateWithData = heatmapData.keys.minOrNull() ?: today
-    val startMonth = YearMonth.from(firstDateWithData)
-    val endMonth = YearMonth.from(today)
-    val months = remember(startMonth, endMonth) {
-        val list = mutableListOf<YearMonth>()
-        var current = startMonth
-        while (!current.isAfter(endMonth)) {
-            list.add(current)
-            current = current.plusMonths(1)
-        }
-        list
-    }
-
-    LaunchedEffect(months.size) {
-        if (months.isNotEmpty()) {
-            scrollState.scrollToItem(months.size - 1)
+    LaunchedEffect(monthsWithData.size) {
+        if (monthsWithData.isNotEmpty()) {
+            scrollState.scrollToItem(monthsWithData.size - 1)
         }
     }
 
     LazyRow(
         state = scrollState,
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(horizontal = 8.dp)
     ) {
-        items(months, key = { it.toString() }) { month ->
+        items(monthsWithData, key = { it.toString() }) { month ->
             MonthView(
                 month = month,
                 heatmapData = heatmapData,
                 selectedDate = selectedDate,
                 onDateSelected = onDateSelected,
-                modifier = Modifier.width(250.dp) // Reduced width
+                modifier = Modifier.width(300.dp)
             )
         }
     }
@@ -218,62 +232,79 @@ fun MonthView(
     val heatMapEndColor = MaterialTheme.colorScheme.primary
     val emptyColor = MaterialTheme.colorScheme.surfaceContainer
     val selectedBorderColor = MaterialTheme.colorScheme.secondary
+    val textColorOnPrimary = MaterialTheme.colorScheme.onPrimary
+    val textColorOnSurface = MaterialTheme.colorScheme.onSurface
 
     Column(modifier) {
         Text(
-            text = month.format(DateTimeFormatter.ofPattern("MMM yyyy")),
-            style = MaterialTheme.typography.titleSmall,
+            text = month.format(DateTimeFormatter.ofPattern("MMMM yyyy")),
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontFamily = MaterialTheme.typography.displayLarge.fontFamily
+            ),
+            fontWeight = FontWeight.Bold,
             modifier = Modifier
                 .padding(bottom = 8.dp)
                 .align(Alignment.CenterHorizontally),
             textAlign = TextAlign.Center
         )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-            val daysOfWeek = (0..6).map { DayOfWeek.SUNDAY.plus(it.toLong()).getDisplayName(TextStyle.NARROW, Locale.getDefault()) }
-            daysOfWeek.forEach {
-                Text(text = it, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) {
-                    detectTapGestures { offset ->
-                        val cellSize = size.width / 7f
-                        val col = (offset.x / cellSize)
-                            .toInt()
-                            .coerceIn(0, 6)
-                        val row = (offset.y / cellSize)
-                            .toInt()
-                            .coerceIn(0, 5)
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceAround
+                ) {
+                    val daysOfWeek = (0..6).map {
+                        DayOfWeek.SUNDAY.plus(it.toLong())
+                            .getDisplayName(TextStyle.NARROW, Locale.getDefault())
+                    }
+                    daysOfWeek.forEach {
+                        Text(
+                            text = it,
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                val cellSize = size.width / 7f
+                                val col = (offset.x / cellSize)
+                                    .toInt()
+                                    .coerceIn(0, 6)
+                                val row = (offset.y / cellSize)
+                                    .toInt()
+                                    .coerceIn(0, 5)
 
-                        val firstDayOfMonth = month.atDay(1)
-                        val firstDayOfWeekOfMonth = firstDayOfMonth.dayOfWeek.value % 7
-                        val dayIndex = row * 7 + col - firstDayOfWeekOfMonth
+                                val firstDayOfMonth = month.atDay(1)
+                                val firstDayOfWeekOfMonth = firstDayOfMonth.dayOfWeek.value % 7
+                                val dayIndex = row * 7 + col - firstDayOfWeekOfMonth
 
-                        if (dayIndex >= 0 && dayIndex < month.lengthOfMonth()) {
-                            onDateSelected(month.atDay(dayIndex + 1))
+                                if (dayIndex >= 0 && dayIndex < month.lengthOfMonth()) {
+                                    onDateSelected(month.atDay(dayIndex + 1))
+                                }
+                            }
                         }
-                    }
-                }
-        ) {
-            val cellSize = size.width / 7f
-            val firstDayOfMonth = month.atDay(1)
-            val firstDayOfWeekOfMonth = firstDayOfMonth.dayOfWeek.value % 7
+                ) {
+                    val cellSize = size.width / 7f
+                    val firstDayOfMonth = month.atDay(1)
+                    val firstDayOfWeekOfMonth = firstDayOfMonth.dayOfWeek.value % 7
 
-            for (day in 1..month.lengthOfMonth()) {
-                val date = month.atDay(day)
-                val dayOfWeek = date.dayOfWeek.value % 7
-                val weekOfMonth = (day + firstDayOfWeekOfMonth - 1) / 7
+                    for (day in 1..month.lengthOfMonth()) {
+                        val date = month.atDay(day)
+                        val dayOfWeek = date.dayOfWeek.value % 7
+                        val weekOfMonth = (day + firstDayOfWeekOfMonth - 1) / 7
 
-                val count = heatmapData[date] ?: 0
-                val color = when {
-                    count <= 0 -> emptyColor
-                    else -> {
-                        val ratio = (count / maxCount).coerceIn(0f, 1f)
-                        lerp(heatMapStartColor, heatMapEndColor, ratio)
-                    }
-                }
+                        val count = heatmapData[date] ?: 0
+                        val color = when {
+                            count <= 0 -> emptyColor
+                            else -> {
+                                val ratio = (count / maxCount).coerceIn(0f, 1f)
+                                lerp(heatMapStartColor, heatMapEndColor, ratio)
+                            }
+                        }
 
                 drawRoundRect(
                     color = color,
@@ -281,14 +312,34 @@ fun MonthView(
                     size = Size(cellSize - 4.dp.toPx(), cellSize - 4.dp.toPx()),
                     cornerRadius = CornerRadius(8.dp.toPx()) // More rounded
                 )
+
+                val textColor = if (color == emptyColor) {
+                    textColorOnSurface
+                } else {
+                    textColorOnPrimary
+                }
+
+                drawContext.canvas.nativeCanvas.drawText(
+                    day.toString(),
+                    (dayOfWeek * cellSize) + (cellSize / 2),
+                    (weekOfMonth * cellSize) + (cellSize / 2) + 5.dp.toPx(),
+                    Paint().apply {
+                        this.color = textColor.toArgb()
+                        this.textSize = 12.sp.toPx()
+                        this.textAlign = Paint.Align.CENTER
+                    }
+                )
+
                 if (date == selectedDate) {
-                    drawRoundRect(
-                        color = selectedBorderColor,
-                        topLeft = Offset(dayOfWeek * cellSize, weekOfMonth * cellSize),
-                        size = Size(cellSize - 4.dp.toPx(), cellSize - 4.dp.toPx()),
-                        cornerRadius = CornerRadius(8.dp.toPx()),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
-                    )
+                            drawRoundRect(
+                                color = selectedBorderColor,
+                                topLeft = Offset(dayOfWeek * cellSize, weekOfMonth * cellSize),
+                                size = Size(cellSize - 4.dp.toPx(), cellSize - 4.dp.toPx()),
+                                cornerRadius = CornerRadius(8.dp.toPx()),
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -296,7 +347,7 @@ fun MonthView(
 }
 
 @Composable
-fun AppOpenRow(app: AppOpenUiItem, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun AppOpenRow(app: AppOpenUiItem, period: UnlockPeriod, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -319,9 +370,18 @@ fun AppOpenRow(app: AppOpenUiItem, onClick: () -> Unit, modifier: Modifier = Mod
             )
             Column(modifier = Modifier.weight(1f)) {
                 Text(app.appName, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                Text(app.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(modifier = Modifier.height(4.dp))
+                val openText = when (period) {
+                    UnlockPeriod.Daily -> if (app.openCount == 1) "Opened 1 time" else "Opened ${app.openCount} times"
+                    UnlockPeriod.Weekly -> "Opened ${app.openCount} times on average"
+                    UnlockPeriod.Monthly -> "Opened ${app.openCount} times on average"
+                }
+                Text(
+                    text = openText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-            Text(app.openCount.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -351,4 +411,4 @@ fun HeatmapLegend(modifier: Modifier = Modifier) {
         Spacer(modifier = Modifier.width(4.dp))
         Text("More", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-} 
+}
