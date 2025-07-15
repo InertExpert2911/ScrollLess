@@ -53,8 +53,8 @@ fun DashboardCard(
                 )
                 if (comparison != null) {
                     val (color, arrow) = when {
-                        comparison.percentageChange > 0 -> MaterialTheme.colorScheme.primary to Icons.Default.TrendingUp
-                        comparison.percentageChange < 0 -> MaterialTheme.colorScheme.error to Icons.Default.TrendingDown
+                        comparison.percentageChange > 0 -> MaterialTheme.colorScheme.error to Icons.Default.TrendingUp
+                        comparison.percentageChange < 0 -> MaterialTheme.colorScheme.primary to Icons.Default.TrendingDown
                         else -> MaterialTheme.colorScheme.onSurfaceVariant to Icons.Default.Remove
                     }
                     Card(
