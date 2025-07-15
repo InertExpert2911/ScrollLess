@@ -421,6 +421,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
     override fun getNotificationSummaryForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationSummary>> = notificationDao.getNotificationSummaryForPeriod(startDateString, endDateString)
     override fun getNotificationCountPerAppForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationCountPerApp>> = notificationDao.getNotificationCountPerAppForPeriod(startDateString, endDateString)
+    override fun getAllNotificationSummaries(): Flow<List<NotificationSummary>> = notificationDao.getAllNotificationSummaries()
 
     internal suspend fun calculateAppOpens(events: List<RawAppEvent>): Map<String, Int> {
         val sortedEvents = events.sortedBy { it.eventTimestamp }

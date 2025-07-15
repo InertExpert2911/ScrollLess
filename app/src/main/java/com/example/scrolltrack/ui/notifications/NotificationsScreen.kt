@@ -33,8 +33,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import com.example.scrolltrack.ui.components.InteractiveCalendarHeatmap
+import com.example.scrolltrack.ui.components.HeatmapLegend
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun NotificationsScreen(
     navController: NavController,
@@ -45,7 +47,7 @@ fun NotificationsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Notification Heatmap") },
+                title = { Text("Notifications", style = MaterialTheme.typography.headlineLarge) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
@@ -60,84 +62,141 @@ fun NotificationsScreen(
             )
         }
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            when (val state = uiState) {
-                is NotificationsUiState.Loading -> {
+        when (val state = uiState) {
+            is NotificationsUiState.Loading -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
-                is NotificationsUiState.Success -> {
-                    PeriodSelector(
-                        selectedPeriod = state.selectedPeriod,
-                        onPeriodSelected = viewModel::selectPeriod
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = state.periodTitle,
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        text = "${state.totalCount} notifications",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    if (state.notificationCounts.isEmpty()) {
-                        Box(
-                            modifier = Modifier.fillMaxSize(),
-                            contentAlignment = Alignment.Center
+            }
+            is NotificationsUiState.Success -> {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    item {
+                        InteractiveCalendarHeatmap(
+                            heatmapData = state.heatmapData,
+                            selectedDate = state.selectedDate,
+                            onDateSelected = viewModel::onDateSelected,
+                            monthsWithData = state.heatmapData.keys.map { java.time.YearMonth.from(it) }.distinct().sorted(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(300.dp)
+                                .padding(horizontal = 16.dp)
+                        )
+                        HeatmapLegend(modifier = Modifier.padding(horizontal = 16.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
+                        ) {
+                            val options = NotificationPeriod.entries
+                            options.forEachIndexed { index, period ->
+                                ToggleButton(
+                                    checked = state.selectedPeriod == period,
+                                    onCheckedChange = { viewModel.selectPeriod(period) },
+                                    modifier = Modifier.weight(1f),
+                                    shapes =
+                                    when (index) {
+                                        0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                                        options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                                        else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                                    },
+                                ) {
+                                    if (state.selectedPeriod == period) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Selected",
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                    }
+                                    Text(period.name)
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                text = "No notifications for this period.",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                text = state.periodTitle,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            val totalLabel = when (state.selectedPeriod) {
+                                NotificationPeriod.Daily -> "Total Notifications"
+                                else -> "Avg. Daily Notifications"
+                            }
+                            Text(
+                                text = "$totalLabel: ${state.totalCount}",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(state.notificationCounts, key = { it.first.packageName }) { (metadata, count) ->
-                                var icon by remember { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
-                                LaunchedEffect(metadata.packageName) {
-                                    icon = viewModel.getIcon(metadata.packageName)
-                                }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
 
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+                    if (state.notificationCounts.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier.fillParentMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No notifications for this period.",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    } else {
+                        items(state.notificationCounts, key = { it.first.packageName }) { (metadata, count) ->
+                            var icon by remember { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
+                            LaunchedEffect(metadata.packageName) {
+                                icon = viewModel.getIcon(metadata.packageName)
+                            }
+
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                shape = MaterialTheme.shapes.large,
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Image(
-                                            painter = rememberAsyncImagePainter(
-                                                model = icon ?: R.mipmap.ic_launcher_round
-                                            ),
-                                            contentDescription = "${metadata.appName} icon",
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(CircleShape)
-                                        )
-                                        Spacer(modifier = Modifier.width(16.dp))
+                                    Image(
+                                        painter = rememberAsyncImagePainter(
+                                            model = icon ?: R.mipmap.ic_launcher_round
+                                        ),
+                                        contentDescription = "${metadata.appName} icon",
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                    )
+                                    Spacer(modifier = Modifier.width(16.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = metadata.appName,
                                             style = MaterialTheme.typography.bodyLarge,
-                                            modifier = Modifier.weight(1f)
+                                            fontWeight = FontWeight.SemiBold
                                         )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        val countText = when (state.selectedPeriod) {
+                                            NotificationPeriod.Daily -> if (count == 1) "1 notification" else "$count notifications"
+                                            else -> "$count notifications on average"
+                                        }
                                         Text(
-                                            text = count.toString(),
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
+                                            text = countText,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
@@ -150,41 +209,6 @@ fun NotificationsScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PeriodSelector(
-    selectedPeriod: NotificationPeriod,
-    onPeriodSelected: (NotificationPeriod) -> Unit
-) {
-    val options = NotificationPeriod.entries
-    val segmentedButtonColors = SegmentedButtonDefaults.colors(
-        activeContainerColor = MaterialTheme.colorScheme.primary,
-        activeContentColor = MaterialTheme.colorScheme.onPrimary,
-        inactiveContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-        inactiveContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-    )
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        options.forEachIndexed { index, period ->
-            SegmentedButton(
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                onClick = { onPeriodSelected(period) },
-                selected = period == selectedPeriod,
-                colors = segmentedButtonColors,
-                icon = {
-                    if (period == selectedPeriod) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = "Selected",
-                            modifier = Modifier.size(ButtonDefaults.IconSize)
-                        )
-                    }
-                }
-            ) {
-                Text(period.name)
-            }
-        }
-    }
-}
 
 /**
  * A simplified placeholder for the Treemap that arranges items in a FlowRow.
@@ -234,4 +258,4 @@ fun SimpleTreemap(
             }
         }
     }
-} 
+}

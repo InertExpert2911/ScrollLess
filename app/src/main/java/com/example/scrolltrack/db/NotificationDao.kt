@@ -27,10 +27,10 @@ interface NotificationDao {
     suspend fun getNotificationsForDateList(dateString: String): List<NotificationRecord>
 
     @Query("""
-        SELECT category, COUNT(*) as count
+        SELECT date_string as date, COUNT(*) as count
         FROM notifications
-        WHERE category IS NOT NULL AND date_string BETWEEN :startDateString AND :endDateString
-        GROUP BY category
+        WHERE date_string BETWEEN :startDateString AND :endDateString
+        GROUP BY date_string
         ORDER BY count DESC
     """)
     fun getNotificationSummaryForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationSummary>>
@@ -64,4 +64,11 @@ interface NotificationDao {
         GROUP BY package_name
     """)
     suspend fun getNotificationCountsPerAppForDate(dateString: String): List<NotificationCountPerApp>
-} 
+
+    @Query("""
+        SELECT date_string as date, COUNT(id) as count
+        FROM notifications
+        GROUP BY date_string
+    """)
+    fun getAllNotificationSummaries(): Flow<List<NotificationSummary>>
+}

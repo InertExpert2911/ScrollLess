@@ -60,7 +60,7 @@ class UnlocksViewModel @Inject constructor(
         val (unlockStat, dateRange, periodDisplay) = when (period) {
             UnlockPeriod.Daily -> {
                 val stat = allSummaries.find { it.dateString == selectedDate.toString() }?.totalUnlockCount ?: 0
-                Triple(stat, listOf(selectedDate.toString()), selectedDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")))
+                Triple(stat, listOf(selectedDate.toString()), selectedDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy")))
             }
             UnlockPeriod.Weekly -> {
                 val startOfWeek = DateUtil.getStartOfWeek(selectedDate)

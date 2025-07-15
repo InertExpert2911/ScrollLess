@@ -5,6 +5,6 @@ package com.example.scrolltrack.data
  * This is used by the DAO to return aggregated query results.
  */
 data class NotificationSummary(
-    val category: String,
+    val date: String?,
     val count: Int
-) 
+)

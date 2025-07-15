@@ -27,7 +27,9 @@ sealed interface NotificationsUiState {
         val notificationCounts: List<Pair<AppMetadata, Int>>,
         val selectedPeriod: NotificationPeriod,
         val periodTitle: String,
-        val totalCount: Int
+        val totalCount: Int,
+        val heatmapData: Map<LocalDate, Int> = emptyMap(),
+        val selectedDate: LocalDate = LocalDate.now()
     ) : NotificationsUiState
 }
 
@@ -38,65 +40,92 @@ class NotificationsViewModel @Inject constructor(
     private val appMetadataRepository: AppMetadataRepository
 ) : ViewModel() {
 
-    private val _selectedDate = MutableStateFlow(DateUtil.getCurrentLocalDateString())
-    private val _selectedPeriod = MutableStateFlow(NotificationPeriod.Weekly)
+    private data class PeriodDetails(val startDate: String, val endDate: String, val title: String, val dateRange: List<String>)
+
+    private val _selectedDate = MutableStateFlow(LocalDate.now())
+    private val _selectedPeriod = MutableStateFlow(NotificationPeriod.Daily)
 
     val uiState: StateFlow<NotificationsUiState> = combine(
         _selectedDate,
-        _selectedPeriod
-    ) { date, period ->
-        date to period
-    }.flatMapLatest { (date, period) ->
-        flow {
-            emit(NotificationsUiState.Loading)
+        _selectedPeriod,
+        repository.getAllNotificationSummaries()
+    ) { localDate, period, allSummaries ->
+        val heatmapData = allSummaries
+            .mapNotNull { summary -> summary.date?.let { LocalDate.parse(it) to summary.count } }
+            .toMap()
 
-            val localDate = LocalDate.parse(date)
-            val (startDate, endDate, title) = when (period) {
-                NotificationPeriod.Daily -> Triple(date, date, "For $date")
-                NotificationPeriod.Weekly -> {
-                    val start = DateUtil.getStartOfWeek(localDate)
-                    val end = DateUtil.getEndOfWeek(localDate)
-                    Triple(start.toString(), end.toString(), "Week of ${start.format(DateTimeFormatter.ofPattern("MMM d"))}")
-                }
-                NotificationPeriod.Monthly -> {
-                    val start = DateUtil.getStartOfMonth(localDate)
-                    val end = DateUtil.getEndOfMonth(localDate)
-                    Triple(start.toString(), end.toString(), localDate.format(DateTimeFormatter.ofPattern("MMMM yyyy")))
-                }
+        val periodDetails = when (period) {
+            NotificationPeriod.Daily -> {
+                val date = localDate.toString()
+                PeriodDetails(date, date, "For ${localDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))}", listOf(date))
             }
+            NotificationPeriod.Weekly -> {
+                val start = DateUtil.getStartOfWeek(localDate)
+                val end = DateUtil.getEndOfWeek(localDate)
+                val dates = (0..6).map { start.plusDays(it.toLong()).toString() }
+                PeriodDetails(start.toString(), end.toString(), "Week ${DateUtil.getWeekOfYear(localDate)} (${start.format(DateTimeFormatter.ofPattern("MMM d"))} - ${end.format(DateTimeFormatter.ofPattern("d, yyyy"))})", dates)
+            }
+            NotificationPeriod.Monthly -> {
+                val start = DateUtil.getStartOfMonth(localDate)
+                val dates = (0 until start.lengthOfMonth()).map { start.plusDays(it.toLong()).toString() }
+                PeriodDetails(start.toString(), dates.last(), localDate.format(DateTimeFormatter.ofPattern("MMMM yyyy")), dates)
+            }
+        }
 
-            val appNotificationCounts = repository.getNotificationCountPerAppForPeriod(startDate, endDate).first()
+        val appNotificationCounts = repository.getNotificationCountPerAppForPeriod(periodDetails.startDate, periodDetails.endDate).first()
 
-            val notificationItems = withContext(Dispatchers.Default) {
-                appNotificationCounts
-                    .mapNotNull { countPerApp ->
-                        appMetadataRepository.getAppMetadata(countPerApp.packageName)?.let { metadata ->
-                            // Hides apps that are not installed or marked as not user-visible
-                            if (!metadata.isUserVisible || !metadata.isInstalled) return@mapNotNull null
-                            metadata to countPerApp.count
+        val notificationItems = withContext(Dispatchers.Default) {
+            appNotificationCounts
+                .mapNotNull { countPerApp ->
+                    appMetadataRepository.getAppMetadata(countPerApp.packageName)?.let { metadata ->
+                        if (!metadata.isUserVisible || !metadata.isInstalled) return@mapNotNull null
+                        val avgCount = when (period) {
+                            NotificationPeriod.Daily -> countPerApp.count
+                            else -> (countPerApp.count.toDouble() / periodDetails.dateRange.size).toInt()
+                        }
+                        if (avgCount > 0) {
+                            metadata to avgCount
+                        } else {
+                            null
                         }
                     }
-                    .sortedByDescending { it.second }
-            }
-
-            // The total count is now calculated AFTER filtering the list.
-            val totalCount = notificationItems.sumOf { it.second }
-
-            emit(NotificationsUiState.Success(notificationItems, period, title, totalCount))
+                }
+                .sortedByDescending { it.second }
         }
+
+        val totalCount = when (period) {
+            NotificationPeriod.Daily -> notificationItems.sumOf { it.second }
+            else -> {
+                val total = appNotificationCounts.sumOf { it.count }
+                if (periodDetails.dateRange.isNotEmpty()) (total.toDouble() / periodDetails.dateRange.size).toInt() else 0
+            }
+        }
+
+        NotificationsUiState.Success(
+            notificationCounts = notificationItems,
+            selectedPeriod = period,
+            periodTitle = periodDetails.title,
+            totalCount = totalCount,
+            heatmapData = heatmapData,
+            selectedDate = localDate
+        )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = NotificationsUiState.Loading
     )
 
-    fun selectPeriod(period: NotificationPeriod) {
-        _selectedPeriod.value = period
-    }
+fun selectPeriod(period: NotificationPeriod) {
+    _selectedPeriod.value = period
+}
+
+fun onDateSelected(date: LocalDate) {
+    _selectedDate.value = date
+}
 
     suspend fun getIcon(packageName: String): Drawable? = withContext(Dispatchers.IO) {
         appMetadataRepository.getIconFile(packageName)?.let {
             Drawable.createFromPath(it.absolutePath)
         }
     }
-} 
+}

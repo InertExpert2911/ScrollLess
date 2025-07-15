@@ -40,4 +40,5 @@ interface ScrollDataRepository {
     // --- Notification Data Access ---
     fun getNotificationSummaryForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationSummary>>
     fun getNotificationCountPerAppForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationCountPerApp>>
+    fun getAllNotificationSummaries(): Flow<List<NotificationSummary>>
 }
