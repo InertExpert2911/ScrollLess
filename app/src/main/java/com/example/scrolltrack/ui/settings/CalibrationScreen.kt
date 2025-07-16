@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
@@ -56,13 +57,13 @@ fun CalibrationScreen(
                         viewModel.saveCalibration(verticalLinePixelHeight, horizontalLinePixelWidth)
                         navController.popBackStack()
                     }) {
-                        Text("Done")
+                        Text("Save Calibration")
                     }
                 }
             )
         }
     ) { paddingValues ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
@@ -70,90 +71,112 @@ fun CalibrationScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            Text(
-                text = "To improve accuracy, scroll over the lines below using a real-world reference, like a ruler.",
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center
-            )
+            item {
+                Text(
+                    text = "To improve accuracy, we need to understand how your phone measures a scroll.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center
+                )
+            }
+            item {
+                Text(
+                    text = "Scroll down one full screen in a list below, then press 'Save Calibration'.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center
+                )
+            }
 
             // Vertical Calibration
-            CalibrationCard(
-                title = "Vertical Calibration",
-                instruction = "Scroll Down 5cm",
-                accumulatedScroll = accumulatedY,
-                onReset = { viewModel.resetScroll("Y") }
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp) // Fixed height for calibration target
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .pointerInput(Unit) {
-                            detectDragGestures { change, dragAmount ->
-                                change.consume()
-                                viewModel.addScrollDelta(0, abs(dragAmount.y.toInt()))
+            item {
+                CalibrationCard(
+                    title = "Vertical Calibration",
+                    instruction = "Scroll Down 5cm",
+                    accumulatedScroll = accumulatedY,
+                    onReset = { viewModel.resetScroll("Y") }
+                ) {
+                    LaunchedEffect(Unit) {
+                        viewModel.startCalibration()
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp) // Fixed height for calibration target
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .onGloballyPositioned {
+                                verticalLinePixelHeight = it.size.height.toFloat()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val cmToPx = 37.7952755906f
+                            for (i in 0..5) {
+                                drawLine(
+                                    color = Color.Gray,
+                                    start = Offset(size.width / 2 - 20, i * cmToPx),
+                                    end = Offset(size.width / 2 + 20, i * cmToPx),
+                                    strokeWidth = 2.dp.toPx(),
+                                    cap = StrokeCap.Round
+                                )
                             }
                         }
-                        .onGloballyPositioned {
-                            verticalLinePixelHeight = it.size.height.toFloat()
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        drawLine(
-                            color = Color.Red,
-                            start = Offset(size.width / 2, 0f),
-                            end = Offset(size.width / 2, size.height),
-                            strokeWidth = 4.dp.toPx(),
-                            cap = StrokeCap.Round
-                        )
                     }
                 }
             }
 
             // Horizontal Calibration
-            CalibrationCard(
-                title = "Horizontal Calibration",
-                instruction = "Swipe Right 5cm",
-                accumulatedScroll = accumulatedX,
-                onReset = { viewModel.resetScroll("X") }
-            ) {
-                Box(
-                    modifier = Modifier
-                        .height(100.dp)
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .pointerInput(Unit) {
-                            detectDragGestures { change, dragAmount ->
-                                change.consume()
-                                viewModel.addScrollDelta(abs(dragAmount.x.toInt()), 0)
+            item {
+                CalibrationCard(
+                    title = "Horizontal Calibration",
+                    instruction = "Swipe Right 5cm",
+                    accumulatedScroll = accumulatedX,
+                    onReset = { viewModel.resetScroll("X") }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .height(100.dp)
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .pointerInput(Unit) {
+                                detectDragGestures { change, dragAmount ->
+                                    change.consume()
+                                    viewModel.addScrollDelta(abs(dragAmount.x.toInt()), 0)
+                                }
+                            }
+                            .onGloballyPositioned {
+                                horizontalLinePixelWidth = it.size.width.toFloat()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val cmToPx = 37.7952755906f
+                            for (i in 0..5) {
+                                drawLine(
+                                    color = Color.Gray,
+                                    start = Offset(i * cmToPx, size.height / 2 - 20),
+                                    end = Offset(i * cmToPx, size.height / 2 + 20),
+                                    strokeWidth = 2.dp.toPx(),
+                                    cap = StrokeCap.Round
+                                )
                             }
                         }
-                        .onGloballyPositioned {
-                            horizontalLinePixelWidth = it.size.width.toFloat()
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        drawLine(
-                            color = Color.Blue,
-                            start = Offset(0f, size.height / 2),
-                            end = Offset(size.width, size.height / 2),
-                            strokeWidth = 4.dp.toPx(),
-                            cap = StrokeCap.Round
-                        )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
+            item {
+                Spacer(modifier = Modifier.height(16.dp))
+            }
 
-            Text(
-                text = "Current Status: ${uiState.statusText}",
-                style = MaterialTheme.typography.titleMedium
-            )
+            item {
+                Text(
+                    text = "Current Status: ${uiState.statusText}",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
             if (uiState.isCalibrated) {
-                Text("Vertical: ${uiState.verticalDpi} | Horizontal: ${uiState.horizontalDpi}")
+                item {
+                    Text("Vertical: ${uiState.verticalDpi} | Horizontal: ${uiState.horizontalDpi}")
+                }
             }
         }
     }
@@ -198,4 +221,4 @@ private fun CalibrationScreenPreview() {
     ScrollTrackTheme {
         CalibrationScreen(navController = rememberNavController())
     }
-} 
+}

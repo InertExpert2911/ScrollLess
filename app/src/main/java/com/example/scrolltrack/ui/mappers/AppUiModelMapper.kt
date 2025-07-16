@@ -43,8 +43,8 @@ class AppUiModelMapper @Inject constructor(
     suspend fun mapToAppUsageUiItems(records: List<DailyAppUsageRecord>, days: Int = 1): List<AppUsageUiItem> {
         return withContext(Dispatchers.IO) {
             records.groupBy { it.packageName }
-                .map { (packageName, records) ->
-                    val totalUsage = records.sumOf { it.usageTimeMillis }
+                .map { (packageName, userRecords) ->
+                    val totalUsage = userRecords.sumOf { it.usageTimeMillis }
                     val metadata = appMetadataRepository.getAppMetadata(packageName)
                     val iconFile = appMetadataRepository.getIconFile(packageName)
                     AppUsageUiItem(
@@ -77,9 +77,12 @@ class AppUiModelMapper @Inject constructor(
             val metadata = appMetadataRepository.getAppMetadata(appData.packageName)
             val iconFile = appMetadataRepository.getIconFile(appData.packageName)
 
+            // Create a unique ID by combining package name and data type
+            val uniqueId = "${appData.packageName}-${appData.dataType}"
+
             if (metadata != null) {
                 AppScrollUiItem(
-                    id = appData.packageName,
+                    id = uniqueId,
                     appName = metadata.appName,
                     icon = iconFile,
                     totalScroll = appData.totalScroll,
@@ -91,7 +94,7 @@ class AppUiModelMapper @Inject constructor(
             } else {
                 Log.w("AppUiModelMapper", "No metadata found for scroll item ${appData.packageName}, creating fallback UI item.")
                 val fallbackAppName = appData.packageName.substringAfterLast('.', appData.packageName)
-                AppScrollUiItem(appData.packageName, fallbackAppName, null, appData.totalScroll, 0, 0, appData.packageName, appData.dataType)
+                AppScrollUiItem(uniqueId, fallbackAppName, null, appData.totalScroll, 0, 0, appData.packageName, appData.dataType)
             }
         }
     }

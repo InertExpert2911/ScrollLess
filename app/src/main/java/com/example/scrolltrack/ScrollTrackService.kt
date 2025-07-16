@@ -14,6 +14,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.app.NotificationCompat
 import com.example.scrolltrack.db.RawAppEvent
+import com.example.scrolltrack.data.SettingsRepository
 import com.example.scrolltrack.db.RawAppEventDao
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.AndroidEntryPoint
@@ -23,11 +24,6 @@ import javax.inject.Inject
 import kotlin.math.abs
 import com.example.scrolltrack.util.AppConstants
 import kotlin.math.sqrt
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.workDataOf
-import com.example.scrolltrack.services.InferredScrollWorker
 import java.util.concurrent.TimeUnit
 
 @AndroidEntryPoint
@@ -41,13 +37,20 @@ class ScrollTrackService : AccessibilityService() {
     @Inject
     lateinit var rawAppEventDao: RawAppEventDao
 
-    // Allow injecting WorkManager for testing
     @Inject
-    lateinit var workManager: WorkManager
+    lateinit var settingsRepository: SettingsRepository
 
+
+    private val inferredScrollEventCounter = mutableMapOf<String, Int>()
+    private val inferredScrollJobs = mutableMapOf<String, Job>()
     private var currentForegroundPackage: String? = null
+    private val lastMeasuredScrollTimestamp = ConcurrentHashMap<String, Long>()
     private val lastTypingEventTimestamp = ConcurrentHashMap<String, Long>()
     private val TYPING_DEBOUNCE_MS = 3000L // 3 seconds
+    private val MEASURED_SCROLL_COOLDOWN_MS = 500L // 0.5 seconds
+
+    private var calibrationFactorX = 1.0f
+    private var calibrationFactorY = 1.0f
 
     private val unlockReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -69,6 +72,17 @@ class ScrollTrackService : AccessibilityService() {
         startForeground(SERVICE_NOTIFICATION_ID, createServiceNotification())
         val filter = IntentFilter(Intent.ACTION_USER_UNLOCKED)
         registerReceiver(unlockReceiver, filter)
+
+        serviceScope.launch {
+            settingsRepository.calibrationFactorX.collect {
+                calibrationFactorX = it ?: 1.0f
+            }
+        }
+        serviceScope.launch {
+            settingsRepository.calibrationFactorY.collect {
+                calibrationFactorY = it ?: 1.0f
+            }
+        }
     }
 
     private fun createServiceNotification(): Notification {
@@ -120,11 +134,20 @@ class ScrollTrackService : AccessibilityService() {
     }
 
     private fun handleWindowStateChange(event: AccessibilityEvent) {
-        val packageName = event.packageName?.toString()
-        if (!packageName.isNullOrEmpty()) {
-            currentForegroundPackage = packageName
-            Log.d(TAG, "Foreground package updated to: $currentForegroundPackage from window state change.")
+        val newPackageName = event.packageName?.toString()
+        if (newPackageName.isNullOrEmpty()) {
+            event.source?.recycle()
+            return
         }
+
+        val oldPackageName = currentForegroundPackage
+        if (newPackageName != oldPackageName && oldPackageName != null) {
+            // Immediately process any pending scroll events for the old app
+            processInferredScroll(oldPackageName)
+        }
+
+        currentForegroundPackage = newPackageName
+        Log.d(TAG, "Foreground package updated to: $currentForegroundPackage from window state change.")
         event.source?.recycle()
     }
 
@@ -134,13 +157,24 @@ class ScrollTrackService : AccessibilityService() {
         if (event.scrollDeltaX == 0 && event.scrollDeltaY == 0) return
 
         val activePackage = currentForegroundPackage ?: packageName
+        
+        // Cancel any pending inferred scroll job for this package
+        inferredScrollJobs[activePackage]?.cancel()
+        inferredScrollJobs.remove(activePackage)
+        inferredScrollEventCounter.remove(activePackage)
+
+        lastMeasuredScrollTimestamp[activePackage] = System.currentTimeMillis()
+
+        val calibratedDeltaX = (event.scrollDeltaX * calibrationFactorX).toInt()
+        val calibratedDeltaY = (event.scrollDeltaY * calibrationFactorY).toInt()
+
         logRawEvent(
             activePackage,
             event.className?.toString(),
             RawAppEvent.EVENT_TYPE_SCROLL_MEASURED,
             null, // The 'value' field is no longer needed for scroll
-            event.scrollDeltaX,
-            event.scrollDeltaY
+            calibratedDeltaX,
+            calibratedDeltaY
         )
     }
 
@@ -171,18 +205,36 @@ class ScrollTrackService : AccessibilityService() {
     }
 
     private fun handleInferredScroll(packageName: String) {
-        val workName = "${InferredScrollWorker.WORK_NAME_PREFIX}$packageName"
+        val activePackage = currentForegroundPackage ?: return
 
-        val workRequest = OneTimeWorkRequestBuilder<InferredScrollWorker>()
-            .setInputData(workDataOf(InferredScrollWorker.KEY_PACKAGE_NAME to packageName))
-            .setInitialDelay(AppConstants.INFERRED_SCROLL_DEBOUNCE_MS, TimeUnit.MILLISECONDS)
-            .build()
+        // Cooldown: If a measured scroll happened recently, ignore this inferred event.
+        val lastMeasuredTime = lastMeasuredScrollTimestamp[activePackage] ?: 0L
+        if (System.currentTimeMillis() - lastMeasuredTime < MEASURED_SCROLL_COOLDOWN_MS) {
+            return
+        }
 
-        workManager.enqueueUniqueWork(
-            workName,
-            ExistingWorkPolicy.REPLACE, // This is the key to debouncing
-            workRequest
-        )
+        inferredScrollEventCounter[activePackage] = (inferredScrollEventCounter[activePackage] ?: 0) + 1
+
+        inferredScrollJobs[activePackage]?.cancel()
+        inferredScrollJobs[activePackage] = serviceScope.launch {
+            delay(AppConstants.INFERRED_SCROLL_DEBOUNCE_MS)
+            processInferredScroll(activePackage)
+        }
+    }
+
+    private fun processInferredScroll(packageName: String) {
+        val count = inferredScrollEventCounter.remove(packageName) ?: 0
+        if (count > 0) {
+            val scrollAmount = (sqrt(count.toDouble()) * AppConstants.INFERRED_SCROLL_MULTIPLIER)
+            val calibratedAmount = (scrollAmount * calibrationFactorY).toLong()
+            logRawEvent(
+                packageName = packageName,
+                className = null,
+                eventType = RawAppEvent.EVENT_TYPE_SCROLL_INFERRED,
+                value = calibratedAmount
+            )
+        }
+        inferredScrollJobs.remove(packageName)
     }
 
     internal fun isNodeScrollable(node: AccessibilityNodeInfo?): Boolean {
@@ -225,12 +277,23 @@ class ScrollTrackService : AccessibilityService() {
         }
     }
 
+    private fun flushAllPendingScrolls() {
+        // Make a copy of the keys to avoid ConcurrentModificationException
+        val packagesToFlush = inferredScrollEventCounter.keys.toList()
+        packagesToFlush.forEach { packageName ->
+            processInferredScroll(packageName)
+        }
+    }
+
     override fun onInterrupt() {
-        Log.w(TAG, "Accessibility service interrupted.")
+        Log.w(TAG, "Accessibility service interrupted. Flushing any pending data.")
+        flushAllPendingScrolls()
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        Log.d(TAG, "ScrollTrackService destroying. Flushing any pending data.")
+        flushAllPendingScrolls()
         unregisterReceiver(unlockReceiver)
         serviceJob.cancel()
         Log.d(TAG, "ScrollTrackService destroyed.")

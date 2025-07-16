@@ -146,7 +146,7 @@ fun PhoneUsageScreen(
             }
 
             if (uiState.appUsage.isNotEmpty()) {
-                items(uiState.appUsage, key = { it.id }) { usageItem ->
+                items(uiState.appUsage, key = { "${it.id}-${it.usageTimeMillis}" }) { usageItem ->
                     AppUsageRowItem(
                         usageItem = usageItem,
                         period = uiState.period,

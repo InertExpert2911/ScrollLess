@@ -23,9 +23,8 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
-import com.example.scrolltrack.BuildConfig
-import com.example.scrolltrack.services.FlushInferredScrollWorker
 import com.example.scrolltrack.services.DailyProcessingWorker
+import com.example.scrolltrack.BuildConfig
 
 @HiltAndroidApp
 class ScrollTrackApplication : Application(), Configuration.Provider {
@@ -65,24 +64,26 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
         val isSyncDone = globalPrefs.getBoolean(KEY_METADATA_SYNC_DONE, false)
 
         if (!isSyncDone) {
-            Log.i("ScrollTrackApplication", "Initial app metadata sync has not been performed. Starting now.")
+            Timber.tag("ScrollTrackApplication")
+                .i("Initial app metadata sync has not been performed. Starting now.")
             applicationScope.launch {
                 try {
                     appMetadataRepository.syncAllInstalledApps()
                     globalPrefs.edit().putBoolean(KEY_METADATA_SYNC_DONE, true).apply()
-                    Log.i("ScrollTrackApplication", "Initial app metadata sync completed successfully and flag was set.")
+                    Timber.tag("ScrollTrackApplication")
+                        .i("Initial app metadata sync completed successfully and flag was set.")
                 } catch (e: Exception) {
-                    Log.e("ScrollTrackApplication", "Initial app metadata sync failed.", e)
+                    Timber.tag("ScrollTrackApplication").e(e, "Initial app metadata sync failed.")
                 }
             }
         } else {
-            Log.d("ScrollTrackApplication", "Initial app metadata sync flag is already set. Skipping.")
+            Timber.tag("ScrollTrackApplication")
+                .d("Initial app metadata sync flag is already set. Skipping.")
         }
     }
 
     private fun setupWorkers() {
         setupUsageStatsWorker()
-        setupFlushInferredScrollWorker()
         setupDailyProcessingWorker()
     }
 
@@ -113,19 +114,6 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
         Timber.d("DailyProcessingWorker scheduled.")
     }
 
-    private fun setupFlushInferredScrollWorker() {
-        val repeatingRequest = PeriodicWorkRequestBuilder<FlushInferredScrollWorker>(15, TimeUnit.MINUTES)
-            .setConstraints(Constraints.Builder().build()) // No special constraints
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            FlushInferredScrollWorker.WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
-            repeatingRequest
-        )
-        Timber.d("FlushInferredScrollWorker scheduled.")
-    }
-
     private fun setupUsageStatsWorker() {
         // This worker runs frequently to pull in the latest system events.
         // It does not need network and should run even if the device is not idle or charging.
@@ -139,4 +127,4 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
         )
         Timber.d("UsageStatsWorker scheduled.")
     }
-} 
+}

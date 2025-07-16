@@ -36,7 +36,7 @@ object AppConstants {
     /**
      * The window over which to batch content change events for a single inferred scroll calculation.
      */
-    const val INFERRED_SCROLL_DEBOUNCE_MS = 1000L // 1 second
+    const val INFERRED_SCROLL_DEBOUNCE_MS = 1500L // 1.5 seconds
     const val FLUSH_INFERRED_SCROLL_INTERVAL_MINUTES = 15L
     const val UNLOCK_EVENT_FOLLOW_WINDOW_MS = 2000L // 2 seconds
     const val NOTIFICATION_UNLOCK_WINDOW_MS = 30_000L // 30 seconds

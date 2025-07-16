@@ -183,11 +183,30 @@ class ScrollDataRepositoryImpl @Inject constructor(
     }
 
     internal fun processScrollEvents(events: List<RawAppEvent>, filterSet: Set<String>): List<ScrollSessionRecord> {
-        val scrollEvents = events
+        val allScrollEvents = events
             .filter {
                 (it.eventType == RawAppEvent.EVENT_TYPE_SCROLL_MEASURED || it.eventType == RawAppEvent.EVENT_TYPE_SCROLL_INFERRED)
                         && (it.scrollDeltaX != null || it.scrollDeltaY != null || it.value != null) // Include legacy 'value' for migration
                         && it.packageName !in filterSet
+            }
+
+        // Identify all packages that have produced high-quality, measured scroll data in this batch.
+        val packagesWithMeasuredScroll = allScrollEvents
+            .filter { it.eventType == RawAppEvent.EVENT_TYPE_SCROLL_MEASURED }
+            .map { it.packageName }
+            .toSet()
+
+        // Filter the events list. If a package has any measured events, we completely discard its inferred events for this batch.
+        // This ensures an app is only represented by one data type per processing cycle, prioritizing the higher quality one.
+        val scrollEvents = allScrollEvents
+            .filter { event ->
+                if (event.packageName in packagesWithMeasuredScroll) {
+                    // This app has measured data, so only keep its measured events.
+                    event.eventType == RawAppEvent.EVENT_TYPE_SCROLL_MEASURED
+                } else {
+                    // This app does not have measured data, so keep its events (which will be inferred).
+                    true
+                }
             }
             .sortedBy { it.eventTimestamp }
 
