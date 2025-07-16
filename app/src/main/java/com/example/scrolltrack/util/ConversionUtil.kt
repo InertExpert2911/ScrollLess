@@ -90,4 +90,23 @@ class ConversionUtil @Inject constructor(
             }
         }
     }
+
+    fun formatUnits(units: Long): String {
+        val numberFormat = NumberFormat.getNumberInstance(Locale.getDefault())
+        return when {
+            units >= 1_000_000 -> {
+                numberFormat.maximumFractionDigits = 1
+                val millions = units / 1_000_000.0
+                "${numberFormat.format(millions)}M"
+            }
+            units >= 1_000 -> {
+                numberFormat.maximumFractionDigits = 1
+                val thousands = units / 1_000.0
+                "${numberFormat.format(thousands)}K"
+            }
+            else -> {
+                units.toString()
+            }
+        }
+    }
 }

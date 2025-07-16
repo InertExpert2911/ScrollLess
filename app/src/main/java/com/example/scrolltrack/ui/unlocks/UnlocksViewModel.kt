@@ -68,7 +68,7 @@ class UnlocksViewModel @Inject constructor(
                 val dateStrings = (0..6).map { startOfWeek.plusDays(it.toLong()).toString() }
                 val weeklySummaries = allSummaries.filter { it.dateString in dateStrings }
                 val avg = if (weeklySummaries.isNotEmpty()) {
-                    weeklySummaries.sumOf { it.totalUnlockCount }.toDouble() / weeklySummaries.size
+                    weeklySummaries.sumOf { it.totalUnlockCount }.toDouble() / 7
                 } else 0.0
                 val display = "Week ${DateUtil.getWeekOfYear(selectedDate)} (${startOfWeek.format(DateTimeFormatter.ofPattern("MMM d"))} - ${endOfWeek.format(DateTimeFormatter.ofPattern("d, yyyy"))})"
                 Triple(avg.roundToInt(), dateStrings, display)
@@ -78,7 +78,7 @@ class UnlocksViewModel @Inject constructor(
                 val dateStrings = (0 until startOfMonth.lengthOfMonth()).map { startOfMonth.plusDays(it.toLong()).toString() }
                 val monthlySummaries = allSummaries.filter { it.dateString in dateStrings }
                 val avg = if (monthlySummaries.isNotEmpty()) {
-                    monthlySummaries.sumOf { it.totalUnlockCount }.toDouble() / monthlySummaries.size
+                    monthlySummaries.sumOf { it.totalUnlockCount }.toDouble() / startOfMonth.lengthOfMonth()
                 } else 0.0
                 Triple(avg.roundToInt(), dateStrings, selectedDate.format(DateTimeFormatter.ofPattern("MMMM yyyy")))
             }

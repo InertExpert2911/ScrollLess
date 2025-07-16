@@ -29,6 +29,7 @@ import kotlinx.coroutines.launch
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.navigation.compose.rememberNavController
+import timber.log.Timber
 
 // Constants for theme variants to be used by the Switch logic
 private const val THEME_LIGHT = "light"
@@ -46,9 +47,9 @@ class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
             if (isGranted) {
-                Log.i(TAG, "Notification permission granted by user.")
+                Timber.tag(TAG).i("Notification permission granted by user.")
             } else {
-                Log.w(TAG, "Notification permission denied by user.")
+                Timber.tag(TAG).w("Notification permission denied by user.")
             }
         }
 
@@ -70,17 +71,20 @@ class MainActivity : ComponentActivity() {
             // Once permission is confirmed, check if backfill has already been done.
             val isBackfillDone = globalPrefs.getBoolean(KEY_BACKFILL_DONE, false)
             if (!isBackfillDone) {
-                Log.i(TAG, "Usage permission is granted and backfill has not been run. Triggering now.")
+                Timber.tag(TAG)
+                    .i("Usage permission is granted and backfill has not been run. Triggering now.")
                 viewModel.performHistoricalUsageDataBackfill(10) { success ->
                     if (success) {
                         globalPrefs.edit().putBoolean(KEY_BACKFILL_DONE, true).apply()
-                        Log.i(TAG, "Historical backfill completed successfully and flag was set.")
+                        Timber.tag(TAG)
+                            .i("Historical backfill completed successfully and flag was set.")
                     } else {
-                        Log.e(TAG, "Historical backfill failed. Flag will not be set.")
+                        Timber.tag(TAG).e("Historical backfill failed. Flag will not be set.")
                     }
                 }
             } else {
-                Log.d(TAG, "Historical backfill flag is already set. Skipping check after permission grant.")
+                Timber.tag(TAG)
+                    .d("Historical backfill flag is already set. Skipping check after permission grant.")
             }
         }
 
@@ -118,7 +122,7 @@ class MainActivity : ComponentActivity() {
                                 try {
                                     startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
                                 } catch (e: Exception) {
-                                    Log.e(TAG, "Error opening usage access settings", e)
+                                    Timber.tag(TAG).e(e, "Error opening usage access settings")
                                     startActivity(Intent(Settings.ACTION_SETTINGS))
                                 }
                             },
@@ -126,7 +130,8 @@ class MainActivity : ComponentActivity() {
                                 try {
                                     startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
                                 } catch (e: Exception) {
-                                    Log.e(TAG, "Error opening notification listener settings", e)
+                                    Timber.tag(TAG)
+                                        .e(e, "Error opening notification listener settings")
                                     startActivity(Intent(Settings.ACTION_SETTINGS))
                                 }
                             }
@@ -151,18 +156,18 @@ class MainActivity : ComponentActivity() {
                     this,
                     Manifest.permission.POST_NOTIFICATIONS
                 ) == PackageManager.PERMISSION_GRANTED -> {
-                    Log.i(TAG, "Notification permission already granted.")
+                    Timber.tag(TAG).i("Notification permission already granted.")
                 }
                 ActivityCompat.shouldShowRequestPermissionRationale(
                     this,
                     Manifest.permission.POST_NOTIFICATIONS
                 ) -> {
                     // In a real app, you might show a custom dialog explaining why the permission is needed
-                    Log.w(TAG, "Showing rationale for notification permission.")
+                    Timber.tag(TAG).w("Showing rationale for notification permission.")
                     requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
                 else -> {
-                    Log.i(TAG, "Requesting notification permission.")
+                    Timber.tag(TAG).i("Requesting notification permission.")
                     requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 }
             }

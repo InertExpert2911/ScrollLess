@@ -38,6 +38,8 @@ interface ScrollDataRepository {
     fun getAllDeviceSummaries(): Flow<List<DailyDeviceSummary>>
     fun getTotalUsageTimePerDay(): Flow<Map<java.time.LocalDate, Int>>
     fun getAppUsageForDateRange(startDate: java.time.LocalDate, endDate: java.time.LocalDate): Flow<List<DailyAppUsageRecord>>
+    fun getTotalScrollPerDay(): Flow<Map<java.time.LocalDate, Int>>
+    fun getScrollDataForDateRange(startDate: java.time.LocalDate, endDate: java.time.LocalDate): Flow<List<AppScrollData>>
 
     // --- Notification Data Access ---
     fun getNotificationSummaryForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationSummary>>

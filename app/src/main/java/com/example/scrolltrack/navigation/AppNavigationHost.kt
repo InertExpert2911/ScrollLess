@@ -200,21 +200,15 @@ private fun NavGraphBuilder.addDashboardGraph(
         composable(
             route = ScreenRoutes.ScrollDetailRoute.route,
             arguments = listOf(navArgument("date") { type = NavType.StringType })
-        ) {
-                backStackEntry ->
+        ) { backStackEntry ->
             val date = backStackEntry.arguments?.getString("date")
             if (date != null) {
                 val scrollDetailViewModel: ScrollDetailViewModel = hiltViewModel()
-                val selectedDateString by scrollDetailViewModel.selectedDateForScrollDetail.collectAsStateWithLifecycle()
-                val scrollData by scrollDetailViewModel.aggregatedScrollDataForSelectedDate.collectAsStateWithLifecycle()
-                val selectableDates by scrollDetailViewModel.selectableDatesForScrollDetail.collectAsStateWithLifecycle()
-
                 LaunchedEffect(date) {
-                    DateUtil.parseLocalDate(date)?.atStartOfDay(java.time.ZoneOffset.UTC)?.toInstant()?.toEpochMilli()?.let {
-                        scrollDetailViewModel.updateSelectedDateForScrollDetail(it)
+                    DateUtil.parseLocalDate(date)?.let {
+                        scrollDetailViewModel.onDateSelected(it)
                     }
                 }
-
                 ScrollDetailScreen(
                     navController = navController,
                     viewModel = scrollDetailViewModel

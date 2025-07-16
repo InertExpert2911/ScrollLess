@@ -46,6 +46,20 @@ interface ScrollSessionDao {
     @Query("SELECT DISTINCT date_string FROM scroll_sessions ORDER BY date_string DESC")
     fun getAllDistinctScrollDateStrings(): Flow<List<String>>
 
+    @Query("SELECT * FROM scroll_sessions")
+    fun getAllScrollSessions(): Flow<List<ScrollSessionRecord>>
+
+    @Query("""
+        SELECT package_name as packageName, 
+               SUM(scroll_amount) as totalScroll, 
+               SUM(scroll_amount_x) as totalScrollX,
+               SUM(scroll_amount_y) as totalScrollY,
+               dataType
+        FROM scroll_sessions
+        WHERE date_string BETWEEN :startDateString AND :endDateString
+        GROUP BY package_name, dataType
+    """)
+    fun getScrollDataForDateRange(startDateString: String, endDateString: String): Flow<List<AppScrollData>>
 }
 // New data class to hold scroll data along with its date, as AppScrollData only has packageName and totalScroll
 data class AppScrollDataPerDate(
@@ -54,4 +68,3 @@ data class AppScrollDataPerDate(
     val totalScrollX: Long,
     val totalScrollY: Long
 )
-

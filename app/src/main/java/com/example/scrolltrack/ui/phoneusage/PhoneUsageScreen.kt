@@ -149,6 +149,7 @@ fun PhoneUsageScreen(
                 items(uiState.appUsage, key = { it.id }) { usageItem ->
                     AppUsageRowItem(
                         usageItem = usageItem,
+                        period = uiState.period,
                         onClick = { navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(usageItem.packageName)) },
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
@@ -162,6 +163,7 @@ fun PhoneUsageScreen(
 @Composable
 fun AppUsageRowItem(
     usageItem: AppUsageUiItem,
+    period: PhoneUsagePeriod,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
@@ -177,8 +179,9 @@ fun AppUsageRowItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(all = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Image(
                 painter = rememberAsyncImagePainter(
@@ -190,29 +193,27 @@ fun AppUsageRowItem(
                     .clip(CircleShape),
                 contentScale = ContentScale.Fit
             )
-            Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = usageItem.appName,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                Spacer(modifier = Modifier.height(4.dp))
+                val usageText = when (period) {
+                    PhoneUsagePeriod.Daily -> "Used for ${DateUtil.formatDuration(usageItem.usageTimeMillis)}"
+                    else -> "Used for ${DateUtil.formatDuration(usageItem.usageTimeMillis)} on average"
+                }
                 Text(
-                    text = usageItem.packageName,
-                    style = MaterialTheme.typography.bodyMedium,
+                    text = usageText,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = DateUtil.formatDuration(usageItem.usageTimeMillis),
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.End
-            )
         }
     }
 }

@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun MainScreen(
+    modifier: Modifier = Modifier,
     navController: NavHostController,
     isAccessibilityEnabledState: Boolean,
     isUsageStatsGrantedState: Boolean,
@@ -24,6 +25,7 @@ fun MainScreen(
     onEnableNotificationListenerClick: () -> Unit
 ) {
     Scaffold(
+        modifier = modifier,
         contentWindowInsets = WindowInsets(0, 0, 0, 0), // Let the content handle insets
         bottomBar = {
             AppNavigationBar(navController = navController)
@@ -44,4 +46,4 @@ fun MainScreen(
             onEnableNotificationListenerClick = onEnableNotificationListenerClick
         )
     }
-} 
+}
