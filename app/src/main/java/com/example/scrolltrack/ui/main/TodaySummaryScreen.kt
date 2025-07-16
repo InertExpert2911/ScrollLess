@@ -231,6 +231,7 @@ fun TodaySummaryScreen(
                         unit = "received",
                         icon = Icons.Filled.Notifications,
                         comparison = notificationsComparison,
+                        showComparisonText = true,
                         onCardClick = onNavigateToNotifications
                     )
                     DashboardCard(
@@ -240,6 +241,7 @@ fun TodaySummaryScreen(
                         unit = "meters",
                         icon = Icons.AutoMirrored.Filled.TrendingUp,
                         comparison = scrollComparison,
+                        showComparisonText = true,
                         onCardClick = {
                             val todayDate = DateUtil.getCurrentLocalDateString()
                             navController.navigate(ScreenRoutes.ScrollDetailRoute.createRoute(todayDate))

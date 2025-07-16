@@ -57,30 +57,12 @@ fun DashboardCard(
                         comparison.percentageChange < 0 -> MaterialTheme.colorScheme.primary to Icons.Default.TrendingDown
                         else -> MaterialTheme.colorScheme.onSurfaceVariant to Icons.Default.Remove
                     }
-                    Card(
-                        shape = MaterialTheme.shapes.small,
-                        colors = CardDefaults.cardColors(
-                            containerColor = color.copy(alpha = 0.1f),
-                            contentColor = color
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = arrow,
-                                contentDescription = null,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Text(
-                                text = "${"%.0f".format(comparison.percentageChange.absoluteValue)}%",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                        }
-                    }
+                    Icon(
+                        imageVector = arrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = color
+                    )
                 }
             }
             Spacer(modifier = Modifier.weight(1f))
@@ -103,13 +85,13 @@ fun DashboardCard(
                     )
                 }
                 if (showComparisonText && comparison != null) {
-                    val text = when {
-                        comparison.percentageChange > 0 -> "More than yesterday"
-                        comparison.percentageChange < 0 -> "Less than yesterday"
-                        else -> "Same as yesterday"
+                    val changeText = when {
+                        comparison.percentageChange > 0 -> "+${"%.0f".format(comparison.percentageChange.absoluteValue)}% more"
+                        comparison.percentageChange < 0 -> "-${"%.0f".format(comparison.percentageChange.absoluteValue)}% less"
+                        else -> "Same as"
                     }
                     Text(
-                        text = text,
+                        text = "$changeText than yesterday",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

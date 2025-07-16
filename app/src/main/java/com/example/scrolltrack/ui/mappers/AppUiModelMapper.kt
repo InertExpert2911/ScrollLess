@@ -40,11 +40,22 @@ class AppUiModelMapper @Inject constructor(
         }
     }
 
-    suspend fun mapToAppUsageUiItems(records: List<DailyAppUsageRecord>): List<AppUsageUiItem> {
+    suspend fun mapToAppUsageUiItems(records: List<DailyAppUsageRecord>, days: Int = 1): List<AppUsageUiItem> {
         return withContext(Dispatchers.IO) {
-            records.map { record ->
-                mapToAppUsageUiItem(record)
-            }
+            records.groupBy { it.packageName }
+                .map { (packageName, records) ->
+                    val totalUsage = records.sumOf { it.usageTimeMillis }
+                    val metadata = appMetadataRepository.getAppMetadata(packageName)
+                    val iconFile = appMetadataRepository.getIconFile(packageName)
+                    AppUsageUiItem(
+                        id = packageName,
+                        appName = metadata?.appName ?: packageName.substringAfterLast('.', packageName),
+                        icon = iconFile,
+                        usageTimeMillis = totalUsage / days,
+                        packageName = packageName
+                    )
+                }
+                .sortedByDescending { it.usageTimeMillis }
         }
     }
 
@@ -84,4 +95,4 @@ class AppUiModelMapper @Inject constructor(
             }
         }
     }
-} 
+}

@@ -419,6 +419,21 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
     override fun getAllDeviceSummaries(): Flow<List<DailyDeviceSummary>> = dailyDeviceSummaryDao.getAllSummaries()
 
+    override fun getTotalUsageTimePerDay(): Flow<Map<java.time.LocalDate, Int>> {
+        return dailyAppUsageDao.getAllUsageRecords().map { records ->
+            records.groupBy { DateUtil.parseLocalDate(it.dateString)!! }
+                .mapValues { (_, value) ->
+                    value.sumOf { it.usageTimeMillis }.toInt()
+                }
+        }
+    }
+
+    override fun getAppUsageForDateRange(startDate: java.time.LocalDate, endDate: java.time.LocalDate): Flow<List<DailyAppUsageRecord>> {
+        val startDateString = DateUtil.formatDateToYyyyMmDdString(startDate)
+        val endDateString = DateUtil.formatDateToYyyyMmDdString(endDate)
+        return dailyAppUsageDao.getUsageRecordsForDateRange(startDateString, endDateString)
+    }
+
     override fun getNotificationSummaryForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationSummary>> = notificationDao.getNotificationSummaryForPeriod(startDateString, endDateString)
     override fun getNotificationCountPerAppForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationCountPerApp>> = notificationDao.getNotificationCountPerAppForPeriod(startDateString, endDateString)
     override fun getAllNotificationSummaries(): Flow<List<NotificationSummary>> = notificationDao.getAllNotificationSummaries()

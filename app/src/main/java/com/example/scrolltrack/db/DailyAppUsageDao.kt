@@ -96,6 +96,9 @@ interface DailyAppUsageDao {
 
     @Query("SELECT DISTINCT date_string FROM daily_app_usage ORDER BY date_string DESC")
     fun getAllDistinctUsageDateStrings(): Flow<List<String>>
+
+    @Query("SELECT * FROM daily_app_usage")
+    fun getAllUsageRecords(): Flow<List<DailyAppUsageRecord>>
 }
 
 /**

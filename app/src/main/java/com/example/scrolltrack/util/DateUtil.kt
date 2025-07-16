@@ -134,4 +134,20 @@ object DateUtil {
         val formatter = DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.getDefault())
         return today.format(formatter)
     }
+
+    fun formatLocalDateToString(date: LocalDate): String {
+        return date.format(YYYY_MM_DD_FORMATTER)
+    }
+
+    fun getWeekRange(date: LocalDate): Pair<LocalDate, LocalDate> {
+        val startOfWeek = getStartOfWeek(date)
+        val endOfWeek = getEndOfWeek(date)
+        return Pair(startOfWeek, endOfWeek)
+    }
+
+    fun getMonthRange(date: LocalDate): Pair<LocalDate, LocalDate> {
+        val startOfMonth = getStartOfMonth(date)
+        val endOfMonth = getEndOfMonth(date)
+        return Pair(startOfMonth, endOfMonth)
+    }
 }

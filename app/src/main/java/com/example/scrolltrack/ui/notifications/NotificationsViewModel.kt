@@ -57,7 +57,7 @@ class NotificationsViewModel @Inject constructor(
         val periodDetails = when (period) {
             NotificationPeriod.Daily -> {
                 val date = localDate.toString()
-                PeriodDetails(date, date, "For ${localDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy"))}", listOf(date))
+                PeriodDetails(date, date, localDate.format(DateTimeFormatter.ofPattern("MMM d, yyyy")), listOf(date))
             }
             NotificationPeriod.Weekly -> {
                 val start = DateUtil.getStartOfWeek(localDate)

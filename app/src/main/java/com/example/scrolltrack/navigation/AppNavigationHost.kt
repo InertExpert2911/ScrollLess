@@ -18,8 +18,8 @@ import com.example.scrolltrack.ui.detail.AppDetailScreen
 import com.example.scrolltrack.ui.detail.AppDetailViewModel
 import com.example.scrolltrack.ui.detail.ScrollDetailScreen
 import com.example.scrolltrack.ui.detail.ScrollDetailViewModel
-import com.example.scrolltrack.ui.historical.HistoricalUsageScreen
-import com.example.scrolltrack.ui.historical.HistoricalViewModel
+import com.example.scrolltrack.ui.phoneusage.PhoneUsageScreen
+import com.example.scrolltrack.ui.phoneusage.PhoneUsageViewModel
 import com.example.scrolltrack.ui.main.TodaySummaryScreen
 import com.example.scrolltrack.ui.main.TodaySummaryViewModel
 import com.example.scrolltrack.ui.main.StatComparison
@@ -175,10 +175,10 @@ private fun NavGraphBuilder.addDashboardGraph(
             UnlocksScreen(navController = navController, viewModel = unlocksViewModel)
         }
         composable(ScreenRoutes.HistoricalUsageRoute.route) {
-            val historicalViewModel: HistoricalViewModel = hiltViewModel()
-            HistoricalUsageScreen(
+            val phoneUsageViewModel: PhoneUsageViewModel = hiltViewModel()
+            PhoneUsageScreen(
                 navController = navController,
-                viewModel = historicalViewModel
+                viewModel = phoneUsageViewModel
             )
         }
         composable(
