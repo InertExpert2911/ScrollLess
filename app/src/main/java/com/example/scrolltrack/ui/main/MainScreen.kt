@@ -37,7 +37,7 @@ fun MainScreen(
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding)
                 .safeDrawingPadding()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+                .padding(horizontal = 16.dp),
             isAccessibilityEnabledState = isAccessibilityEnabledState,
             isUsageStatsGrantedState = isUsageStatsGrantedState,
             isNotificationListenerEnabledState = isNotificationListenerEnabledState,

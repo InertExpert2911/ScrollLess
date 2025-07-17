@@ -41,21 +41,6 @@ fun PhoneUsageScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Phone Usage", style = MaterialTheme.typography.headlineLarge) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        },
         modifier = modifier.navigationBarsPadding()
     ) { innerPadding ->
         LazyColumn(
@@ -64,6 +49,7 @@ fun PhoneUsageScreen(
                 .padding(innerPadding)
         ) {
             item {
+                Spacer(modifier = Modifier.height(16.dp))
                 InteractiveCalendarHeatmap(
                     heatmapData = uiState.heatmapData,
                     selectedDate = uiState.selectedDate,

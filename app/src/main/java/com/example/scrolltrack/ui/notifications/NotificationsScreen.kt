@@ -45,22 +45,7 @@ fun NotificationsScreen(
     val uiState by viewModel.uiState.collectAsState()
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Notifications", style = MaterialTheme.typography.headlineLarge) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        }
+        modifier = Modifier.navigationBarsPadding()
     ) { innerPadding ->
         when (val state = uiState) {
             is NotificationsUiState.Loading -> {
@@ -72,10 +57,10 @@ fun NotificationsScreen(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(innerPadding),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .padding(innerPadding)
                 ) {
                     item {
+                        Spacer(modifier = Modifier.height(16.dp))
                         InteractiveCalendarHeatmap(
                             heatmapData = state.heatmapData,
                             selectedDate = state.selectedDate,
@@ -144,7 +129,9 @@ fun NotificationsScreen(
                     if (state.notificationCounts.isEmpty()) {
                         item {
                             Box(
-                                modifier = Modifier.fillParentMaxSize(),
+                                modifier = Modifier
+                                    .fillParentMaxSize()
+                                    .padding(horizontal = 16.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
@@ -164,13 +151,14 @@ fun NotificationsScreen(
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                    .padding(horizontal = 16.dp),
                                 shape = MaterialTheme.shapes.large,
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
                             ) {
                                 Row(
                                     modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     Image(
                                         painter = rememberAsyncImagePainter(
@@ -181,7 +169,6 @@ fun NotificationsScreen(
                                             .size(40.dp)
                                             .clip(CircleShape)
                                     )
-                                    Spacer(modifier = Modifier.width(16.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = metadata.appName,
@@ -201,6 +188,7 @@ fun NotificationsScreen(
                                     }
                                 }
                             }
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
                 }

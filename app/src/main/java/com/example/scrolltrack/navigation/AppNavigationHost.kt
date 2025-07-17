@@ -29,6 +29,7 @@ import com.example.scrolltrack.ui.unlocks.UnlocksViewModel
 import com.example.scrolltrack.util.DateUtil
 import com.example.scrolltrack.ui.notifications.NotificationsViewModel
 import com.example.scrolltrack.ui.notifications.NotificationsScreen
+import com.example.scrolltrack.ui.dashboard.DashboardTabs
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -154,9 +155,10 @@ private fun NavGraphBuilder.addDashboardGraph(
                 unlocksComparison = unlocksComparison,
                 notificationsComparison = notificationsComparison,
                 scrollComparison = scrollComparison,
-                onNavigateToHistoricalUsage = { navController.navigate(ScreenRoutes.HistoricalUsageRoute.route) },
-                onNavigateToUnlocks = { navController.navigate(ScreenRoutes.UnlocksRoute.route) },
-                onNavigateToNotifications = { navController.navigate(ScreenRoutes.NotificationsRoute.route) },
+                onNavigateToHistoricalUsage = { navController.navigate(ScreenRoutes.DashboardTabs.createRoute("PhoneUsage")) },
+                onNavigateToUnlocks = { navController.navigate(ScreenRoutes.DashboardTabs.createRoute("Unlocks")) },
+                onNavigateToNotifications = { navController.navigate(ScreenRoutes.DashboardTabs.createRoute("Notifications")) },
+                onNavigateToScrollDetail = { navController.navigate(ScreenRoutes.DashboardTabs.createRoute("ScrollDistance")) },
                 onNavigateToAppDetail = { packageName: String ->
                     navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(packageName))
                 },
@@ -166,20 +168,12 @@ private fun NavGraphBuilder.addDashboardGraph(
                 onSnackbarDismiss = { viewModel.dismissSnackbar() }
             )
         }
-        composable(ScreenRoutes.NotificationsRoute.route) {
-            val notificationsViewModel: NotificationsViewModel = hiltViewModel()
-            NotificationsScreen(navController = navController, viewModel = notificationsViewModel)
-        }
-        composable(ScreenRoutes.UnlocksRoute.route) {
-            val unlocksViewModel: UnlocksViewModel = hiltViewModel()
-            UnlocksScreen(navController = navController, viewModel = unlocksViewModel)
-        }
-        composable(ScreenRoutes.HistoricalUsageRoute.route) {
-            val phoneUsageViewModel: PhoneUsageViewModel = hiltViewModel()
-            PhoneUsageScreen(
-                navController = navController,
-                viewModel = phoneUsageViewModel
-            )
+        composable(
+            route = ScreenRoutes.DashboardTabs.route,
+            arguments = listOf(navArgument("tab") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val tab = backStackEntry.arguments?.getString("tab")
+            DashboardTabs(navController = navController, selectedTab = tab)
         }
         composable(
             route = ScreenRoutes.AppDetailRoute.route,

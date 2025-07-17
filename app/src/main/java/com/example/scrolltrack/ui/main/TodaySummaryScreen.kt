@@ -72,6 +72,7 @@ fun TodaySummaryScreen(
     onNavigateToHistoricalUsage: () -> Unit,
     onNavigateToUnlocks: () -> Unit,
     onNavigateToNotifications: () -> Unit,
+    onNavigateToScrollDetail: () -> Unit,
     onNavigateToAppDetail: (String) -> Unit,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
@@ -242,10 +243,7 @@ fun TodaySummaryScreen(
                         icon = Icons.AutoMirrored.Filled.TrendingUp,
                         comparison = scrollComparison,
                         showComparisonText = true,
-                        onCardClick = {
-                            val todayDate = DateUtil.getCurrentLocalDateString()
-                            navController.navigate(ScreenRoutes.ScrollDetailRoute.createRoute(todayDate))
-                        }
+                        onCardClick = onNavigateToScrollDetail
                     )
                 }
             }

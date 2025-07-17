@@ -56,21 +56,6 @@ fun ScrollDetailScreen(
     val conversionUtil = viewModel.conversionUtil
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Scroll Breakdown", style = MaterialTheme.typography.headlineLarge) },
-                navigationIcon = {
-                    IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        },
         modifier = Modifier.navigationBarsPadding()
     ) { innerPadding ->
         LazyColumn(
@@ -79,6 +64,7 @@ fun ScrollDetailScreen(
                 .padding(innerPadding)
         ) {
             item {
+                Spacer(modifier = Modifier.height(16.dp))
                 InteractiveCalendarHeatmap(
                     heatmapData = uiState.heatmapData,
                     selectedDate = uiState.selectedDate,

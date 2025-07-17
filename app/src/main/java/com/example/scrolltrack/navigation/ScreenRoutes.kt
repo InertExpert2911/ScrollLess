@@ -11,6 +11,9 @@ sealed class ScreenRoutes(val route: String) {
     object Dashboard : ScreenRoutes("dashboard")
     object Insights : ScreenRoutes("insights")
     object Settings : ScreenRoutes("settings")
+    object DashboardTabs : ScreenRoutes("dashboard_tabs/{tab}") {
+        fun createRoute(tab: String) = "dashboard_tabs/$tab"
+    }
 
     // --- Other screens navigated to from the main destinations ---
     object AppVisibility : ScreenRoutes("app_visibility")
