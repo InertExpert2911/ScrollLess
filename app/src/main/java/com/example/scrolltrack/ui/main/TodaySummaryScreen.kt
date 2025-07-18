@@ -202,7 +202,6 @@ fun TodaySummaryScreen(
                         title = "Screen Time",
                         value = totalUsageTime,
                         unit = "",
-                        icon = Icons.Outlined.PhoneAndroid,
                         comparison = screenTimeComparison,
                         showComparisonText = true,
                         onCardClick = onNavigateToHistoricalUsage
@@ -212,7 +211,6 @@ fun TodaySummaryScreen(
                         title = "Unlocks",
                         value = totalUnlocks.toString(),
                         unit = "times",
-                        icon = Icons.Filled.LockOpen,
                         comparison = unlocksComparison,
                         showComparisonText = true,
                         onCardClick = onNavigateToUnlocks
@@ -230,7 +228,6 @@ fun TodaySummaryScreen(
                         title = "Notifications",
                         value = totalNotifications.toString(),
                         unit = "received",
-                        icon = Icons.Filled.Notifications,
                         comparison = notificationsComparison,
                         showComparisonText = true,
                         onCardClick = onNavigateToNotifications
@@ -240,7 +237,6 @@ fun TodaySummaryScreen(
                         title = "Scrolled",
                         value = scrollDistanceMeters.split(" ").firstOrNull() ?: "",
                         unit = "meters",
-                        icon = Icons.AutoMirrored.Filled.TrendingUp,
                         comparison = scrollComparison,
                         showComparisonText = true,
                         onCardClick = onNavigateToScrollDetail

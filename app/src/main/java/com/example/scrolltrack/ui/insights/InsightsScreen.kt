@@ -57,7 +57,6 @@ fun InsightsScreen(
                     title = "Meaningful Unlocks",
                     value = intentionalUnlocks.toString(),
                     unit = "times",
-                    icon = Icons.Filled.LockOpen,
                     comparison = null
                 )
                 DashboardCard(
@@ -65,7 +64,6 @@ fun InsightsScreen(
                     title = "Quick Glances",
                     value = glanceUnlocks.toString(),
                     unit = "times",
-                    icon = Icons.Filled.WbSunny,
                     comparison = null
                 )
             }
@@ -81,7 +79,6 @@ fun InsightsScreen(
                     title = "First Unlock",
                     value = firstUnlockTime,
                     unit = "",
-                    icon = Icons.Filled.HourglassTop,
                     comparison = null
                 )
                 DashboardCard(
@@ -89,7 +86,6 @@ fun InsightsScreen(
                     title = "Last Unlock",
                     value = lastUnlockTime,
                     unit = "",
-                    icon = Icons.Filled.PhoneLocked,
                     comparison = null
                 )
             }

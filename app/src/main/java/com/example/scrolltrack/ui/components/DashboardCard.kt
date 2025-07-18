@@ -1,18 +1,15 @@
 package com.example.scrolltrack.ui.components
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.TrendingDown
-import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.scrolltrack.R
 import com.example.scrolltrack.ui.main.StatComparison
 import kotlin.math.absoluteValue
 
@@ -22,7 +19,6 @@ fun DashboardCard(
     title: String,
     value: String,
     unit: String,
-    icon: ImageVector,
     comparison: StatComparison?,
     showComparisonText: Boolean = false,
     onCardClick: (() -> Unit)? = null
@@ -52,16 +48,16 @@ fun DashboardCard(
                     fontWeight = FontWeight.Medium
                 )
                 if (comparison != null) {
-                    val (color, arrow) = when {
-                        comparison.percentageChange > 0 -> MaterialTheme.colorScheme.error to Icons.Default.TrendingUp
-                        comparison.percentageChange < 0 -> MaterialTheme.colorScheme.primary to Icons.Default.TrendingDown
-                        else -> MaterialTheme.colorScheme.onSurfaceVariant to Icons.Default.Remove
+                    val (tint, icon) = when {
+                        comparison.percentageChange > 0 -> Color.Red to R.drawable.ic_chartline_up_duotone
+                        comparison.percentageChange < 0 -> MaterialTheme.colorScheme.primary to R.drawable.ic_chartline_down_duotone
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant to R.drawable.ic_minus_duotone
                     }
                     Icon(
-                        imageVector = arrow,
+                        painter = painterResource(id = icon),
                         contentDescription = null,
                         modifier = Modifier.size(24.dp),
-                        tint = color
+                        tint = tint
                     )
                 }
             }

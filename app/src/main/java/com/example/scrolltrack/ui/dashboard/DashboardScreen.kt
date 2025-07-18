@@ -1,16 +1,18 @@
 package com.example.scrolltrack.ui.dashboard
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
@@ -18,48 +20,46 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
-import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.scrolltrack.ui.phoneusage.PhoneUsageScreen
-import com.example.scrolltrack.ui.unlocks.UnlocksScreen
+import androidx.navigation.NavController
+import com.example.scrolltrack.R
 import com.example.scrolltrack.ui.detail.ScrollDetailScreen
 import com.example.scrolltrack.ui.notifications.NotificationsScreen
+import com.example.scrolltrack.ui.phoneusage.PhoneUsageScreen
+import com.example.scrolltrack.ui.unlocks.UnlocksScreen
+import kotlinx.coroutines.launch
 
 enum class DashboardScreen(
-    val icon: ImageVector
+    val icon: Int
 ) {
-    PhoneUsage(Icons.Default.Phone),
-    Unlocks(Icons.Default.Lock),
-    ScrollDistance(Icons.Default.Home),
-    Notifications(Icons.Default.Notifications)
+    PhoneUsage(R.drawable.ic_mobile_duotone),
+    Unlocks(R.drawable.ic_lock_duotone),
+    ScrollDistance(R.drawable.ic_ruler_triangle_duotone),
+    Notifications(R.drawable.ic_notificaiton_bell_duotone)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun DashboardTabs(
     navController: NavController,
     selectedTab: String?,
     modifier: Modifier = Modifier
 ) {
-    val tabNavController = rememberNavController()
-    var selectedDestination by rememberSaveable {
-        mutableIntStateOf(
-            DashboardScreen.valueOf(selectedTab ?: DashboardScreen.PhoneUsage.name).ordinal
-        )
+    val initialPageIndex = remember {
+        DashboardScreen.valueOf(selectedTab ?: DashboardScreen.PhoneUsage.name).ordinal
     }
+    val pagerState = rememberPagerState(initialPage = initialPageIndex) {
+        DashboardScreen.entries.size
+    }
+    val coroutineScope = rememberCoroutineScope()
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
 
     Scaffold(
@@ -70,7 +70,7 @@ fun DashboardTabs(
                     containerColor = Color.Transparent,
                     scrolledContainerColor = Color.Transparent
                 ),
-                title = { Text(DashboardScreen.entries[selectedDestination].name.let {
+                title = { Text(DashboardScreen.entries[pagerState.currentPage].name.let {
                     when(it) {
                         "PhoneUsage" -> "Phone Usage"
                         "ScrollDistance" -> "Scroll Distance"
@@ -87,38 +87,34 @@ fun DashboardTabs(
         }
     ) { contentPadding ->
         Column(modifier = Modifier.padding(contentPadding)) {
-            PrimaryTabRow(selectedTabIndex = selectedDestination) {
+            PrimaryTabRow(selectedTabIndex = pagerState.currentPage) {
                 DashboardScreen.entries.forEachIndexed { index, destination ->
                     Tab(
-                        selected = selectedDestination == index,
+                        selected = pagerState.currentPage == index,
                         onClick = {
-                            selectedDestination = index
-                            tabNavController.navigate(destination.name) {
-                                popUpTo(0)
-                                launchSingleTop = true
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(index)
                             }
                         },
                         icon = {
-                            Icon(destination.icon, contentDescription = destination.name)
+                            Icon(
+                                painter = painterResource(id = destination.icon),
+                                contentDescription = destination.name,
+                                modifier = Modifier.size(24.dp)
+                            )
                         }
                     )
                 }
             }
-            NavHost(
-                navController = tabNavController,
-                startDestination = selectedTab ?: DashboardScreen.PhoneUsage.name
-            ) {
-                composable(DashboardScreen.PhoneUsage.name) {
-                    PhoneUsageScreen(navController = navController, viewModel = hiltViewModel())
-                }
-                composable(DashboardScreen.Unlocks.name) {
-                    UnlocksScreen(navController = navController, viewModel = hiltViewModel())
-                }
-                composable(DashboardScreen.ScrollDistance.name) {
-                    ScrollDetailScreen(navController = navController, viewModel = hiltViewModel())
-                }
-                composable(DashboardScreen.Notifications.name) {
-                    NotificationsScreen(navController = navController, viewModel = hiltViewModel())
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                when (page) {
+                    DashboardScreen.PhoneUsage.ordinal -> PhoneUsageScreen(navController = navController, viewModel = hiltViewModel())
+                    DashboardScreen.Unlocks.ordinal -> UnlocksScreen(navController = navController, viewModel = hiltViewModel())
+                    DashboardScreen.ScrollDistance.ordinal -> ScrollDetailScreen(navController = navController, viewModel = hiltViewModel())
+                    DashboardScreen.Notifications.ordinal -> NotificationsScreen(navController = navController, viewModel = hiltViewModel())
                 }
             }
         }

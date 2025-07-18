@@ -1,7 +1,5 @@
 package com.example.scrolltrack.navigation
 
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffColorFilter
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,14 +12,20 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.airbnb.lottie.LottieProperty
 import com.airbnb.lottie.compose.*
-import com.airbnb.lottie.model.KeyPath
+import com.example.scrolltrack.R
+
+private sealed class NavigationItem(val route: String, val animResId: Int) {
+    object Dashboard : NavigationItem(ScreenRoutes.Dashboard.route, R.raw.home_nav_bar_anim_icon)
+    object Insights : NavigationItem(ScreenRoutes.Insights.route, R.raw.bolt_nav_bar_anim_icon)
+    object Settings : NavigationItem(ScreenRoutes.Settings.route, R.raw.settings_nav_bar_anim_icon)
+}
 
 @Composable
 fun AppNavigationBar(navController: NavController) {
     val items = listOf(
-        BottomNavItem.Dashboard,
-        BottomNavItem.Insights,
-        BottomNavItem.Settings
+        NavigationItem.Dashboard,
+        NavigationItem.Insights,
+        NavigationItem.Settings
     )
 
     NavigationBar {
@@ -42,18 +46,20 @@ fun AppNavigationBar(navController: NavController) {
             NavigationBarItem(
                 selected = isSelected,
                 onClick = {
-                    navController.navigate(item.route) {
-                        // Pop up to the start destination of the graph to
-                        // avoid building up a large stack of destinations
-                        // on the back stack as users select items.
-                        popUpTo(navController.graph.findStartDestination().id) {
-                            saveState = true
+                    if (isSelected) {
+                        // When re-selecting the current tab, we want to pop the back stack to the start destination.
+                        // This gives the "reset" behavior.
+                        navController.popBackStack(item.route, inclusive = false)
+                    } else {
+                        // When selecting a new tab, we use the standard navigation pattern
+                        // which saves and restores the back stack.
+                        navController.navigate(item.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
                         }
-                        // Avoid multiple copies of the same destination when
-                        // reselecting the same item
-                        launchSingleTop = true
-                        // Restore state when reselecting a previously selected item
-                        restoreState = true
                     }
                 },
                 icon = {
@@ -81,4 +87,4 @@ fun AppNavigationBar(navController: NavController) {
             )
         }
     }
-} 
+}

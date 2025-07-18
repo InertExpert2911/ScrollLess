@@ -1,28 +1,28 @@
 package com.example.scrolltrack.navigation
 
-import androidx.annotation.RawRes
+import androidx.annotation.DrawableRes
 import com.example.scrolltrack.R
 
 sealed class BottomNavItem(
     val route: String,
     val title: String,
-    @param:RawRes val animResId: Int
+    @param:DrawableRes val icon: Int
 ) {
-    object Dashboard : BottomNavItem(
-        route = DASHBOARD_GRAPH_ROUTE,
-        title = "Dashboard",
-        animResId = R.raw.home_nav_bar_anim_icon
+    object Locks : BottomNavItem(
+        route = ScreenRoutes.UnlocksRoute.route,
+        title = "Unlocks",
+        icon = R.drawable.ic_lock_duotone
     )
 
-    object Insights : BottomNavItem(
-        route = INSIGHTS_GRAPH_ROUTE,
-        title = "Insights",
-        animResId = R.raw.bolt_nav_bar_anim_icon
+    object Notifications : BottomNavItem(
+        route = ScreenRoutes.NotificationsRoute.route,
+        title = "Notifications",
+        icon = R.drawable.ic_notificaiton_bell_duotone
     )
 
-    object Settings : BottomNavItem(
-        route = SETTINGS_GRAPH_ROUTE,
-        title = "Settings",
-        animResId = R.raw.settings_nav_bar_anim_icon
+    object Scroll : BottomNavItem(
+        route = ScreenRoutes.ScrollDetailRoute.route,
+        title = "Scroll",
+        icon = R.drawable.ic_ruler_triangle_duotone
     )
 }
