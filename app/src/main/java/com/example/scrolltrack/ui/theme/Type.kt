@@ -8,11 +8,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.example.scrolltrack.R
 
-// Define Pixelify Sans font family (ensure pixelifysans_variable.ttf is in res/font)
-val PixelifySansFontFamily = FontFamily(
-    Font(R.font.pixelifysans_variable, FontWeight.Normal),
-    Font(R.font.pixelifysans_variable, FontWeight.Bold)
-    // Add other weights if your variable font file for Pixelify Sans supports them
+// Define Analogue OS font family
+val AnalogueOsFontFamily = FontFamily(
+    Font(R.font.analogue_os_regular, FontWeight.Normal),
+    Font(R.font.analogue_os_regular, FontWeight.Bold)
 )
 
 // Define Inter font family (ensure inter_variable.ttf and inter_italic_variable.ttf are in res/font)
@@ -33,21 +32,21 @@ val InterFontFamily = FontFamily(
 val AppTypography = Typography(
     // Display styles - typically larger, for short, important text
     displayLarge = TextStyle(
-        fontFamily = PixelifySansFontFamily, // Pixelify Sans for display
+        fontFamily = AnalogueOsFontFamily, // Analogue OS for display
         fontWeight = FontWeight.Normal,
         fontSize = 57.sp,
         lineHeight = 64.sp,
         letterSpacing = (-0.25).sp
     ),
     displayMedium = TextStyle(
-        fontFamily = PixelifySansFontFamily, // Pixelify Sans for display
+        fontFamily = AnalogueOsFontFamily, // Analogue OS for display
         fontWeight = FontWeight.Normal,
         fontSize = 45.sp,
         lineHeight = 52.sp,
         letterSpacing = 0.sp
     ),
     displaySmall = TextStyle(
-        fontFamily = PixelifySansFontFamily, // Pixelify Sans for display
+        fontFamily = AnalogueOsFontFamily, // Analogue OS for display
         fontWeight = FontWeight.Normal,
         fontSize = 36.sp,
         lineHeight = 44.sp,
@@ -56,21 +55,21 @@ val AppTypography = Typography(
 
     // Headline styles - for moderately important text, like section titles
     headlineLarge = TextStyle(
-        fontFamily = PixelifySansFontFamily, // Pixelify Sans for headlines
+        fontFamily = AnalogueOsFontFamily, // Analogue OS for headlines
         fontWeight = FontWeight.SemiBold,
         fontSize = 32.sp,
         lineHeight = 40.sp,
         letterSpacing = 0.sp
     ),
     headlineMedium = TextStyle(
-        fontFamily = PixelifySansFontFamily, // Pixelify Sans for headlines
+        fontFamily = AnalogueOsFontFamily, // Analogue OS for headlines
         fontWeight = FontWeight.SemiBold,
         fontSize = 28.sp,
         lineHeight = 36.sp,
         letterSpacing = 0.sp
     ),
     headlineSmall = TextStyle(
-        fontFamily = PixelifySansFontFamily, // Pixelify Sans for headlines
+        fontFamily = AnalogueOsFontFamily, // Analogue OS for headlines
         fontWeight = FontWeight.SemiBold,
         fontSize = 24.sp,
         lineHeight = 32.sp,
@@ -79,7 +78,7 @@ val AppTypography = Typography(
 
     // Title styles - for less prominent titles, like in app bars or dialogs
     titleLarge = TextStyle(
-        fontFamily = PixelifySansFontFamily, // Pixelify Sans for titles
+        fontFamily = AnalogueOsFontFamily, // Analogue OS for titles
         fontWeight = FontWeight.Normal, // M3 default is Normal for titleLarge
         fontSize = 22.sp,
         lineHeight = 28.sp,
