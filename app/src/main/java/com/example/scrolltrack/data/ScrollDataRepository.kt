@@ -8,6 +8,8 @@ import com.example.scrolltrack.data.AppScrollData
 import com.example.scrolltrack.data.NotificationCountPerApp
 import com.example.scrolltrack.data.NotificationSummary
 import com.example.scrolltrack.db.RawAppEvent
+import com.example.scrolltrack.db.PackageCount
+import com.example.scrolltrack.db.UnlockSessionRecord
 
 interface ScrollDataRepository {
     // --- Core Processing Triggers ---
@@ -45,4 +47,11 @@ interface ScrollDataRepository {
     fun getNotificationSummaryForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationSummary>>
     fun getNotificationCountPerAppForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationCountPerApp>>
     fun getAllNotificationSummaries(): Flow<List<NotificationSummary>>
+
+    // --- Insight-Specific Data Access ---
+    suspend fun getFirstAppUsedAfter(timestamp: Long): RawAppEvent?
+    suspend fun getLastAppUsedOn(dateString: String): RawAppEvent?
+    fun getCompulsiveCheckCounts(startDate: String, endDate: String): Flow<List<PackageCount>>
+    fun getNotificationDrivenUnlockCounts(startDate: String, endDate: String): Flow<List<PackageCount>>
+    fun getUnlockSessionsForDateRange(startDate: String, endDate: String): Flow<List<UnlockSessionRecord>>
 }

@@ -3,6 +3,7 @@ package com.example.scrolltrack.util
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
@@ -50,6 +51,14 @@ object DateUtil {
     fun getEndOfDayUtcMillis(dateString: String): Long {
         val startOfDay = parseLocalDate(dateString)?.atStartOfDay(UTC_ZONE_ID)
         return startOfDay?.plusDays(1)?.minusNanos(1)?.toInstant()?.toEpochMilli() ?: 0L
+    }
+
+    fun getStartOfToday(): ZonedDateTime {
+        return LocalDate.now().atStartOfDay(ZoneId.systemDefault())
+    }
+
+    fun formatUtcTimestampToLocalDateTime(utcTimestampMillis: Long): LocalDateTime {
+        return Instant.ofEpochMilli(utcTimestampMillis).atZone(ZoneId.systemDefault()).toLocalDateTime()
     }
 
     fun getStartOfWeek(date: LocalDate): LocalDate {

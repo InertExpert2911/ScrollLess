@@ -43,4 +43,10 @@ interface RawAppEventDao {
 
     @Query("DELETE FROM raw_app_events WHERE event_timestamp < :timestamp")
     suspend fun deleteEventsBefore(timestamp: Long)
-} 
+
+    @Query("SELECT * FROM raw_app_events WHERE event_type = :eventType AND event_timestamp > :timestamp ORDER BY event_timestamp ASC LIMIT 1")
+    suspend fun getFirstEventAfter(timestamp: Long, eventType: Int): RawAppEvent?
+
+    @Query("SELECT * FROM raw_app_events WHERE event_type = :eventType AND event_date_string = :dateString ORDER BY event_timestamp DESC LIMIT 1")
+    suspend fun getLastEventForDate(dateString: String, eventType: Int): RawAppEvent?
+}

@@ -42,4 +42,21 @@ interface UnlockSessionDao {
 
     @Query("SELECT * FROM unlock_sessions WHERE date_string = :dateString")
     suspend fun getUnlockSessionsForDate(dateString: String): List<UnlockSessionRecord>
+
+    @Query("SELECT * FROM unlock_sessions WHERE date_string BETWEEN :startDateString AND :endDateString")
+    fun getUnlockSessionsForDateRange(startDateString: String, endDateString: String): Flow<List<UnlockSessionRecord>>
+
+    @Query("SELECT first_app_package_name as packageName, COUNT(id) as count FROM unlock_sessions WHERE session_type = 'Glance' AND date_string BETWEEN :startDateString AND :endDateString AND first_app_package_name IS NOT NULL GROUP BY first_app_package_name ORDER BY count DESC")
+    fun getGlanceCountsByPackage(startDateString: String, endDateString: String): Flow<List<PackageCount>>
+
+    @Query("SELECT n.package_name as packageName, COUNT(u.id) as count FROM unlock_sessions u JOIN notifications n ON u.triggering_notification_key = n.notification_key WHERE u.date_string BETWEEN :startDateString AND :endDateString AND u.triggering_notification_key IS NOT NULL GROUP BY n.package_name ORDER BY count DESC")
+    fun getNotificationDrivenUnlockCounts(startDateString: String, endDateString: String): Flow<List<PackageCount>>
 }
+
+/**
+ * A generic data class for DAO queries that return a package name and an associated count.
+ */
+data class PackageCount(
+    val packageName: String,
+    val count: Int
+)

@@ -5,6 +5,8 @@ import android.graphics.drawable.Drawable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -22,6 +24,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -192,43 +195,6 @@ fun AppDetailScreen(
                 .padding(innerPadding),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Period Selector Buttons
-            val segmentedButtonColors = SegmentedButtonDefaults.colors(
-                activeContainerColor = MaterialTheme.colorScheme.primary,
-                activeContentColor = MaterialTheme.colorScheme.onPrimary,
-                inactiveContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                inactiveContentColor = MaterialTheme.colorScheme.onSecondaryContainer
-            )
-            SingleChoiceSegmentedButtonRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                ChartPeriodType.entries.forEachIndexed { index, period ->
-                    SegmentedButton(
-                        shape = SegmentedButtonDefaults.itemShape(index = index, count = ChartPeriodType.entries.size),
-                        onClick = { viewModel.changeChartPeriod(period) },
-                        selected = currentPeriodType == period,
-                        colors = segmentedButtonColors,
-                        icon = {
-                            if (currentPeriodType == period) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = "Selected",
-                                    modifier = Modifier.size(ButtonDefaults.IconSize)
-                                )
-                            }
-                        }
-                    ) {
-                        Text(period.name.replaceFirstChar {
-                            if (it.isLowerCase()) it.titlecase(
-                                Locale.getDefault()
-                            ) else it.toString()
-                        })
-                    }
-                }
-            }
-
             // Date Navigation and Relocated Summary Information Area
             Row(
                 modifier = Modifier
@@ -386,6 +352,45 @@ fun AppDetailScreen(
                     )
                 } else {
                     Text("Loading chart data...", style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+
+            // Period Selector Buttons
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .clip(MaterialTheme.shapes.medium)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.medium),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                val items = ChartPeriodType.entries
+                items.forEachIndexed { index, period ->
+                    val isSelected = currentPeriodType == period
+                    val background = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
+                    val contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .background(background)
+                            .clickable { viewModel.changeChartPeriod(period) }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = period.name.replaceFirstChar { it.titlecase(Locale.getDefault()) },
+                            color = contentColor
+                        )
+                    }
+                    if (index < items.lastIndex) {
+                        Divider(
+                            color = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .width(1.dp)
+                        )
+                    }
                 }
             }
             if (focusedOpenCount > 0) {

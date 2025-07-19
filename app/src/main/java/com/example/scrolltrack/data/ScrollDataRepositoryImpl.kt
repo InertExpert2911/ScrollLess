@@ -38,6 +38,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlin.math.abs
+import com.example.scrolltrack.db.PackageCount
 
 @Singleton
 class ScrollDataRepositoryImpl @Inject constructor(
@@ -471,6 +472,27 @@ class ScrollDataRepositoryImpl @Inject constructor(
     override fun getNotificationSummaryForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationSummary>> = notificationDao.getNotificationSummaryForPeriod(startDateString, endDateString)
     override fun getNotificationCountPerAppForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationCountPerApp>> = notificationDao.getNotificationCountPerAppForPeriod(startDateString, endDateString)
     override fun getAllNotificationSummaries(): Flow<List<NotificationSummary>> = notificationDao.getAllNotificationSummaries()
+
+    // --- Insight-Specific Implementations ---
+    override suspend fun getFirstAppUsedAfter(timestamp: Long): RawAppEvent? {
+        return rawAppEventDao.getFirstEventAfter(timestamp, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED)
+    }
+
+    override suspend fun getLastAppUsedOn(dateString: String): RawAppEvent? {
+        return rawAppEventDao.getLastEventForDate(dateString, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED)
+    }
+
+    override fun getCompulsiveCheckCounts(startDate: String, endDate: String): Flow<List<PackageCount>> {
+        return unlockSessionDao.getGlanceCountsByPackage(startDate, endDate)
+    }
+
+    override fun getNotificationDrivenUnlockCounts(startDate: String, endDate: String): Flow<List<PackageCount>> {
+        return unlockSessionDao.getNotificationDrivenUnlockCounts(startDate, endDate)
+    }
+
+    override fun getUnlockSessionsForDateRange(startDate: String, endDate: String): Flow<List<UnlockSessionRecord>> {
+        return unlockSessionDao.getUnlockSessionsForDateRange(startDate, endDate)
+    }
 
     internal suspend fun calculateAppOpens(events: List<RawAppEvent>): Map<String, Int> {
         val sortedEvents = events.sortedBy { it.eventTimestamp }
