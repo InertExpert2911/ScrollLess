@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import kotlin.math.abs
 import com.example.scrolltrack.util.AppConstants
+import timber.log.Timber
 import kotlin.math.sqrt
 import java.util.concurrent.TimeUnit
 
@@ -55,7 +56,7 @@ class ScrollTrackService : AccessibilityService() {
     private val unlockReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == Intent.ACTION_USER_UNLOCKED) {
-                Log.d(TAG, "ACTION_USER_UNLOCKED received in-service, logging event.")
+                Timber.tag(TAG).d("ACTION_USER_UNLOCKED received in-service, logging event.")
                 logRawEvent(
                     packageName = "android.system.unlock", // Generic package for system events
                     className = null,
@@ -68,7 +69,7 @@ class ScrollTrackService : AccessibilityService() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "ScrollTrackService onCreate.")
+        Timber.tag(TAG).i("ScrollTrackService onCreate.")
         startForeground(SERVICE_NOTIFICATION_ID, createServiceNotification())
         val filter = IntentFilter(Intent.ACTION_USER_UNLOCKED)
         registerReceiver(unlockReceiver, filter)
@@ -116,7 +117,7 @@ class ScrollTrackService : AccessibilityService() {
             notificationTimeout = 100 // ms
         }
         this.serviceInfo = info
-        Log.i(TAG, "Accessibility service connected and configured.")
+        Timber.tag(TAG).i("Accessibility service connected and configured.")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -147,7 +148,8 @@ class ScrollTrackService : AccessibilityService() {
         }
 
         currentForegroundPackage = newPackageName
-        Log.d(TAG, "Foreground package updated to: $currentForegroundPackage from window state change.")
+        Timber.tag(TAG)
+            .d("Foreground package updated to: $currentForegroundPackage from window state change.")
         event.source?.recycle()
     }
 
@@ -231,7 +233,9 @@ class ScrollTrackService : AccessibilityService() {
                 packageName = packageName,
                 className = null,
                 eventType = RawAppEvent.EVENT_TYPE_SCROLL_INFERRED,
-                value = calibratedAmount
+                value = calibratedAmount,
+                scrollDeltaX = 0, // Inferred scroll is vertical only for now
+                scrollDeltaY = calibratedAmount.toInt()
             )
         }
         inferredScrollJobs.remove(packageName)
@@ -286,16 +290,16 @@ class ScrollTrackService : AccessibilityService() {
     }
 
     override fun onInterrupt() {
-        Log.w(TAG, "Accessibility service interrupted. Flushing any pending data.")
+        Timber.tag(TAG).w("Accessibility service interrupted. Flushing any pending data.")
         flushAllPendingScrolls()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.d(TAG, "ScrollTrackService destroying. Flushing any pending data.")
+        Timber.tag(TAG).d("ScrollTrackService destroying. Flushing any pending data.")
         flushAllPendingScrolls()
         unregisterReceiver(unlockReceiver)
         serviceJob.cancel()
-        Log.d(TAG, "ScrollTrackService destroyed.")
+        Timber.tag(TAG).d("ScrollTrackService destroyed.")
     }
 }

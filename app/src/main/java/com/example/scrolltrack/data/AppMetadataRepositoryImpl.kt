@@ -14,6 +14,7 @@ import com.example.scrolltrack.db.AppMetadataDao
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
 import javax.inject.Inject
@@ -51,14 +52,15 @@ class AppMetadataRepositoryImpl @Inject constructor(
                 }
 
                 if (fromDb.versionCode != currentVersionCode) {
-                    Log.d(TAG, "App update detected for $packageName. Re-fetching metadata.")
+                    Timber.tag(TAG).d("App update detected for $packageName. Re-fetching metadata.")
                     return fetchFromPackageManagerAndCache(packageName)
                 } else {
                     return fromDb // Version is the same, return cached data.
                 }
             } catch (e: PackageManager.NameNotFoundException) {
                 // App was marked as installed, but is no longer on device. Correct this.
-                Log.w(TAG, "Correcting record: $packageName was marked installed but not found.")
+                Timber.tag(TAG)
+                    .w("Correcting record: $packageName was marked installed but not found.")
                 return handleAppUninstalled(packageName)
             }
         }
@@ -81,7 +83,7 @@ class AppMetadataRepositoryImpl @Inject constructor(
     }
 
     override suspend fun syncAllInstalledApps() {
-        Log.d(TAG, "Starting full sync of installed apps...")
+        Timber.tag(TAG).d("Starting full sync of installed apps...")
         val allPmApps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
         val allDbPackageNames = appMetadataDao.getAllKnownPackageNames().toSet()
         val allPmPackageNames = allPmApps.map { it.packageName }.toSet()
@@ -91,7 +93,7 @@ class AppMetadataRepositoryImpl @Inject constructor(
         for (pkgName in newApps) {
             fetchFromPackageManagerAndCache(pkgName)
         }
-        Log.d(TAG, "Found and cached ${newApps.size} new apps.")
+        Timber.tag(TAG).d("Found and cached ${newApps.size} new apps.")
 
         // Mark uninstalled apps
         val uninstalledApps = allDbPackageNames - allPmPackageNames
@@ -101,20 +103,20 @@ class AppMetadataRepositoryImpl @Inject constructor(
                 handleAppUninstalled(pkgName)
             }
         }
-        Log.d(TAG, "Marked ${uninstalledApps.size} apps as uninstalled.")
-        Log.d(TAG, "Full sync complete.")
+        Timber.tag(TAG).d("Marked ${uninstalledApps.size} apps as uninstalled.")
+        Timber.tag(TAG).d("Full sync complete.")
     }
 
     override suspend fun handleAppUninstalled(packageName: String): AppMetadata? {
         appMetadataDao.markAsUninstalled(packageName, System.currentTimeMillis())
         deleteIconFile(packageName)
-        Log.d(TAG, "Handled app uninstallation for $packageName.")
+        Timber.tag(TAG).d("Handled app uninstallation for $packageName.")
         return appMetadataDao.getByPackageName(packageName)
     }
 
     override suspend fun handleAppInstalledOrUpdated(packageName: String) {
         fetchFromPackageManagerAndCache(packageName)
-        Log.d(TAG, "Handled app installation/update for $packageName.")
+        Timber.tag(TAG).d("Handled app installation/update for $packageName.")
     }
 
     override suspend fun getNonVisiblePackageNames(): List<String> {
@@ -123,7 +125,7 @@ class AppMetadataRepositoryImpl @Inject constructor(
 
     override suspend fun updateUserHidesOverride(packageName: String, userHidesOverride: Boolean?) {
         appMetadataDao.updateUserHidesOverride(packageName, userHidesOverride)
-        Log.d(TAG, "User override for $packageName set to $userHidesOverride")
+        Timber.tag(TAG).d("User override for $packageName set to $userHidesOverride")
     }
 
     override suspend fun getAllMetadata(): List<AppMetadata> {
@@ -136,10 +138,10 @@ class AppMetadataRepositoryImpl @Inject constructor(
             val packageInfo = packageManager.getPackageInfo(packageName, 0)
             val appInfo = packageInfo.applicationInfo
             if (appInfo == null) {
-                Log.e(TAG, "ApplicationInfo is null for $packageName. Cannot cache.")
+                Timber.tag(TAG).e("ApplicationInfo is null for $packageName. Cannot cache.")
                 return null
             }
-            val appName = packageManager.getApplicationLabel(appInfo).toString()
+            val appName = packageManager.getApplicationLabel(appInfo).toString().trim()
             val isSystem = (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
             val icon = packageManager.getApplicationIcon(appInfo)
 
@@ -154,21 +156,12 @@ class AppMetadataRepositoryImpl @Inject constructor(
             }
 
             // --- Heuristic for isUserVisible ---
-            val hasLaunchIntent = packageManager.getLaunchIntentForPackage(packageName) != null
-
-            // A more robust check for a main "launcher" intent.
-            val mainIntent = Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
-            val resolveInfoList = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                packageManager.queryIntentActivities(mainIntent, PackageManager.ResolveInfoFlags.of(0))
-            } else {
-                @Suppress("DEPRECATION")
-                packageManager.queryIntentActivities(mainIntent, 0)
-            }
-            val hasLauncherIcon = resolveInfoList.any { it.activityInfo.packageName == packageName }
-
-            // An app is considered user-visible if it's NOT a system app,
-            // OR if it IS a system app but it explicitly has a launcher icon.
-            val isUserVisible = !isSystem || hasLauncherIcon
+            // The most reliable way to determine if an app is "user-facing" is to check
+            // if it has an activity that can be launched from the main app drawer.
+            val launchIntent = Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
+            launchIntent.setPackage(packageName)
+            val resolveInfoList = packageManager.queryIntentActivities(launchIntent, 0)
+            val isUserVisible = resolveInfoList.isNotEmpty()
             // --- End of Heuristic ---
 
             val metadata = AppMetadata(
@@ -187,10 +180,14 @@ class AppMetadataRepositoryImpl @Inject constructor(
             )
 
             appMetadataDao.insertOrUpdate(metadata)
-            Log.d(TAG, "Fetched and cached new metadata for $packageName. IsUserVisible: $isUserVisible")
+            Timber.tag(TAG)
+                .d("Fetched and cached new metadata for $packageName. IsUserVisible: $isUserVisible")
             return metadata
         } catch (e: PackageManager.NameNotFoundException) {
-            Log.w(TAG, "Could not fetch metadata for $packageName, it may have been uninstalled quickly.", e)
+            Timber.tag(TAG).w(
+                e,
+                "Could not fetch metadata for $packageName, it may have been uninstalled quickly."
+            )
             return null
         }
     }
@@ -224,7 +221,7 @@ class AppMetadataRepositoryImpl @Inject constructor(
             }
             return true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save icon to file for $packageName", e)
+            Timber.tag(TAG).e(e, "Failed to save icon to file for $packageName")
             return false
         }
     }
@@ -233,10 +230,10 @@ class AppMetadataRepositoryImpl @Inject constructor(
         val iconFile = File(iconDir, "$packageName.png")
         if (iconFile.exists()) {
             if (iconFile.delete()) {
-                Log.d(TAG, "Deleted cached icon for $packageName")
+                Timber.tag(TAG).d("Deleted cached icon for $packageName")
             } else {
-                Log.e(TAG, "Failed to delete cached icon for $packageName")
+                Timber.tag(TAG).e("Failed to delete cached icon for $packageName")
             }
         }
     }
-} 
+}

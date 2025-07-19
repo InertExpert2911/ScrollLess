@@ -37,6 +37,8 @@ import javax.inject.Singleton
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flow
 import kotlin.math.abs
 import com.example.scrolltrack.db.PackageCount
 
@@ -151,6 +153,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
                 processUnlockEvents(
                     unlockRelatedEvents,
                     notifications,
+                    filterSet, // Pass the filter set
                     unlockEventTypes = setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED, RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN),
                     lockEventTypes = setOf(RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN, RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE)
                 )
@@ -221,7 +224,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
             // Prioritize new delta columns, fall back to 'value' for old events
             val deltaX = event.scrollDeltaX ?: 0
-            val deltaY = event.scrollDeltaY ?: if (event.eventType == RawAppEvent.EVENT_TYPE_SCROLL_INFERRED) event.value?.toInt() ?: 0 else event.value?.toInt() ?: 0
+            val deltaY = event.scrollDeltaY ?: if (event.eventType == RawAppEvent.EVENT_TYPE_SCROLL_INFERRED) event.value?.toInt() ?: 0 else 0
             val totalDelta = (abs(deltaX) + abs(deltaY)).toLong()
 
             if (totalDelta == 0L) continue // Skip events with no effective scroll
@@ -272,6 +275,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
     private suspend fun processUnlockEvents(
         events: List<RawAppEvent>,
         notifications: List<NotificationRecord>,
+        filterSet: Set<String>, // New parameter
         unlockEventTypes: Set<Int>,
         lockEventTypes: Set<Int>
     ) {
@@ -318,7 +322,8 @@ class ScrollDataRepositoryImpl @Inject constructor(
                     val firstAppEvent = events.find { e ->
                         e.eventTimestamp > openSession!!.unlockTimestamp &&
                                 e.eventTimestamp < event.eventTimestamp &&
-                                e.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED
+                                e.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED &&
+                                e.packageName !in filterSet // Apply filter here
                     }
                     val recentNotification = notifications.lastOrNull { n ->
                         openSession!!.unlockTimestamp > n.postTimeUTC &&
@@ -470,7 +475,16 @@ class ScrollDataRepositoryImpl @Inject constructor(
     }
 
     override fun getNotificationSummaryForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationSummary>> = notificationDao.getNotificationSummaryForPeriod(startDateString, endDateString)
-    override fun getNotificationCountPerAppForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationCountPerApp>> = notificationDao.getNotificationCountPerAppForPeriod(startDateString, endDateString)
+
+    override fun getNotificationCountPerAppForPeriod(startDateString: String, endDateString: String): Flow<List<NotificationCountPerApp>> {
+        val notificationFlow = notificationDao.getNotificationCountPerAppForPeriod(startDateString, endDateString)
+        val filterSetFlow = flow { emit(buildFilterSet()) }
+
+        return combine(notificationFlow, filterSetFlow) { notifications, filterSet ->
+            notifications.filter { it.packageName !in filterSet }
+        }
+    }
+
     override fun getAllNotificationSummaries(): Flow<List<NotificationSummary>> = notificationDao.getAllNotificationSummaries()
 
     // --- Insight-Specific Implementations ---
@@ -483,15 +497,27 @@ class ScrollDataRepositoryImpl @Inject constructor(
     }
 
     override fun getCompulsiveCheckCounts(startDate: String, endDate: String): Flow<List<PackageCount>> {
-        return unlockSessionDao.getGlanceCountsByPackage(startDate, endDate)
+        val glanceCountsFlow = unlockSessionDao.getGlanceCountsByPackage(startDate, endDate)
+        val filterSetFlow = flow { emit(buildFilterSet()) }
+        return combine(glanceCountsFlow, filterSetFlow) { glanceCounts, filterSet ->
+            glanceCounts.filter { it.packageName !in filterSet }
+        }
     }
 
     override fun getNotificationDrivenUnlockCounts(startDate: String, endDate: String): Flow<List<PackageCount>> {
-        return unlockSessionDao.getNotificationDrivenUnlockCounts(startDate, endDate)
+        val notificationUnlocksFlow = unlockSessionDao.getNotificationDrivenUnlockCounts(startDate, endDate)
+        val filterSetFlow = flow { emit(buildFilterSet()) }
+        return combine(notificationUnlocksFlow, filterSetFlow) { unlockCounts, filterSet ->
+            unlockCounts.filter { it.packageName !in filterSet }
+        }
     }
 
     override fun getUnlockSessionsForDateRange(startDate: String, endDate: String): Flow<List<UnlockSessionRecord>> {
-        return unlockSessionDao.getUnlockSessionsForDateRange(startDate, endDate)
+        val unlockSessionsFlow = unlockSessionDao.getUnlockSessionsForDateRange(startDate, endDate)
+        val filterSetFlow = flow { emit(buildFilterSet()) }
+        return combine(unlockSessionsFlow, filterSetFlow) { sessions, filterSet ->
+            sessions.filter { it.firstAppPackageName == null || it.firstAppPackageName !in filterSet }
+        }
     }
 
     internal suspend fun calculateAppOpens(events: List<RawAppEvent>): Map<String, Int> {
@@ -745,6 +771,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
                 processUnlockEvents(
                     unlockRelatedEvents,
                     emptyList(), // No notification data for this specific backfill
+                    emptySet(),
                     unlockEventTypes = setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED, RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN),
                     lockEventTypes = setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE)
                 )
