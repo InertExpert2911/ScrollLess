@@ -23,8 +23,8 @@ class SettingsRepositoryImpl @Inject constructor(@ApplicationContext context: Co
         val DEFAULT_THEME = AppTheme.CalmLavender.name
         const val KEY_IS_DARK_MODE = "is_dark_mode"
         const val DEFAULT_IS_DARK_MODE = true // Default to dark mode
-        const val KEY_CALIBRATION_FACTOR_X = "calibration_factor_x"
-        const val KEY_CALIBRATION_FACTOR_Y = "calibration_factor_y"
+        const val KEY_SCREEN_DPI = "screen_dpi"
+        const val DEFAULT_DPI = 0 // 0 indicates not calibrated
     }
 
     init {
@@ -61,47 +61,14 @@ class SettingsRepositoryImpl @Inject constructor(@ApplicationContext context: Co
         awaitClose { appPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
-    override val calibrationFactorX: Flow<Float?> = callbackFlow {
+    override val screenDpi: Flow<Int> = callbackFlow {
         val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == KEY_CALIBRATION_FACTOR_X) {
-                if (appPrefs.contains(KEY_CALIBRATION_FACTOR_X)) {
-                    trySend(appPrefs.getFloat(KEY_CALIBRATION_FACTOR_X, -1f))
-                } else {
-                    trySend(null)
-                }
+            if (key == KEY_SCREEN_DPI) {
+                trySend(appPrefs.getInt(KEY_SCREEN_DPI, DEFAULT_DPI))
             }
         }
         appPrefs.registerOnSharedPreferenceChangeListener(listener)
-
-        // Emit initial value
-        if (appPrefs.contains(KEY_CALIBRATION_FACTOR_X)) {
-            trySend(appPrefs.getFloat(KEY_CALIBRATION_FACTOR_X, -1f))
-        } else {
-            trySend(null)
-        }
-
-        awaitClose { appPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
-    }
-
-    override val calibrationFactorY: Flow<Float?> = callbackFlow {
-        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == KEY_CALIBRATION_FACTOR_Y) {
-                if (appPrefs.contains(KEY_CALIBRATION_FACTOR_Y)) {
-                    trySend(appPrefs.getFloat(KEY_CALIBRATION_FACTOR_Y, -1f))
-                } else {
-                    trySend(null)
-                }
-            }
-        }
-        appPrefs.registerOnSharedPreferenceChangeListener(listener)
-
-        // Emit initial value
-        if (appPrefs.contains(KEY_CALIBRATION_FACTOR_Y)) {
-            trySend(appPrefs.getFloat(KEY_CALIBRATION_FACTOR_Y, -1f))
-        } else {
-            trySend(null)
-        }
-
+        trySend(appPrefs.getInt(KEY_SCREEN_DPI, DEFAULT_DPI))
         awaitClose { appPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
 
@@ -117,18 +84,9 @@ class SettingsRepositoryImpl @Inject constructor(@ApplicationContext context: Co
         }
     }
 
-    override suspend fun setCalibrationFactors(factorX: Float?, factorY: Float?) {
+    override suspend fun setScreenDpi(dpi: Int) {
         appPrefs.edit {
-            if (factorX != null) {
-                putFloat(KEY_CALIBRATION_FACTOR_X, factorX)
-            } else {
-                remove(KEY_CALIBRATION_FACTOR_X)
-            }
-            if (factorY != null) {
-                putFloat(KEY_CALIBRATION_FACTOR_Y, factorY)
-            } else {
-                remove(KEY_CALIBRATION_FACTOR_Y)
-            }
+            putInt(KEY_SCREEN_DPI, dpi)
         }
     }
-} 
+}

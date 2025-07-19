@@ -28,23 +28,11 @@ class ConversionUtil @Inject constructor(
     ): Pair<String, String> {
         if (scrollUnitsX <= 0 && scrollUnitsY <= 0) return "0" to "m"
 
-        val factorX = settingsRepository.calibrationFactorX.first()
-        val factorY = settingsRepository.calibrationFactorY.first()
+        val dpi = settingsRepository.screenDpi.first()
 
-        val ydpi = context.resources.displayMetrics.ydpi
-        val xdpi = context.resources.displayMetrics.xdpi
+        val pixelsPerInchX = if (dpi > 0) dpi.toFloat() else context.resources.displayMetrics.xdpi
+        val pixelsPerInchY = if (dpi > 0) dpi.toFloat() else context.resources.displayMetrics.ydpi
 
-        val pixelsPerInchY = if (factorY != null && factorY > 0) {
-            factorY / PHYSICAL_DISTANCE_CM.toFloat() * 2.54f // pixels/cm -> pixels/inch
-        } else {
-            ydpi
-        }
-
-        val pixelsPerInchX = if (factorX != null && factorX > 0) {
-            factorX / PHYSICAL_DISTANCE_CM.toFloat() * 2.54f // pixels/cm -> pixels/inch
-        } else {
-            xdpi
-        }
 
         if (pixelsPerInchX <= 0f || pixelsPerInchY <= 0f) return "N/A" to "error"
 

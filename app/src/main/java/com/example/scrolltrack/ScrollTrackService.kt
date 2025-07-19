@@ -50,8 +50,7 @@ class ScrollTrackService : AccessibilityService() {
     private val TYPING_DEBOUNCE_MS = 3000L // 3 seconds
     private val MEASURED_SCROLL_COOLDOWN_MS = 500L // 0.5 seconds
 
-    private var calibrationFactorX = 1.0f
-    private var calibrationFactorY = 1.0f
+    private var scrollFactor = 1.0f
 
     private val unlockReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -75,13 +74,12 @@ class ScrollTrackService : AccessibilityService() {
         registerReceiver(unlockReceiver, filter)
 
         serviceScope.launch {
-            settingsRepository.calibrationFactorX.collect {
-                calibrationFactorX = it ?: 1.0f
-            }
-        }
-        serviceScope.launch {
-            settingsRepository.calibrationFactorY.collect {
-                calibrationFactorY = it ?: 1.0f
+            settingsRepository.screenDpi.collect { dpi ->
+                scrollFactor = if (dpi > 0) {
+                    160f / dpi 
+                } else {
+                    1.0f
+                }
             }
         }
     }
@@ -167,8 +165,8 @@ class ScrollTrackService : AccessibilityService() {
 
         lastMeasuredScrollTimestamp[activePackage] = System.currentTimeMillis()
 
-        val calibratedDeltaX = (event.scrollDeltaX * calibrationFactorX).toInt()
-        val calibratedDeltaY = (event.scrollDeltaY * calibrationFactorY).toInt()
+        val calibratedDeltaX = (event.scrollDeltaX * scrollFactor).toInt()
+        val calibratedDeltaY = (event.scrollDeltaY * scrollFactor).toInt()
 
         logRawEvent(
             activePackage,
@@ -228,7 +226,7 @@ class ScrollTrackService : AccessibilityService() {
         val count = inferredScrollEventCounter.remove(packageName) ?: 0
         if (count > 0) {
             val scrollAmount = (sqrt(count.toDouble()) * AppConstants.INFERRED_SCROLL_MULTIPLIER)
-            val calibratedAmount = (scrollAmount * calibrationFactorY).toLong()
+            val calibratedAmount = (scrollAmount * scrollFactor).toLong()
             logRawEvent(
                 packageName = packageName,
                 className = null,

@@ -257,7 +257,6 @@ private class FakeSettingsRepository : SettingsRepository {
     override suspend fun setSelectedTheme(theme: AppTheme) {}
     override val isDarkMode: Flow<Boolean> = flowOf(true)
     override suspend fun setIsDarkMode(isDark: Boolean) {}
-    override val calibrationFactorX: Flow<Float?> = flowOf(null)
-    override val calibrationFactorY: Flow<Float?> = flowOf(null)
-    override suspend fun setCalibrationFactors(factorX: Float?, factorY: Float?) {}
+    override val screenDpi: Flow<Int> = flowOf(0)
+    override suspend fun setScreenDpi(dpi: Int) {}
 }

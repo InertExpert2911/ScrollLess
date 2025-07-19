@@ -19,4 +19,25 @@
     <string name="text_no_data_yet">No data yet</string>
     <string name="card_title_scroll_stats_today">Scroll Stats Today</string>
     <string name="calibration_instructions">To calibrate, press "Begin", then scroll down exactly %1$.1fcm using a ruler against your screen. Press "Save" when done.</string>
+
+    <!-- Settings Screen -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_dark_mode">Dark Mode</string>
+    <string name="settings_dark_mode_on">Switch to Dark Mode</string>
+    <string name="settings_dark_mode_off">Switch to Light Mode</string>
+    <string name="settings_theme_palette">Theme Palette</string>
+    <string name="settings_section_general">General</string>
+    <string name="settings_scroll_calibration">Scroll Calibration</string>
+    <string name="settings_navigate_to_calibration">Navigate to Calibration</string>
+    <string name="settings_manage_app_visibility">Manage App Visibility</string>
+    <string name="settings_navigate_to_app_visibility">Navigate to App Visibility Settings</string>
+    <string name="settings_theme_dialog_title">Select a Theme</string>
+    <string name="dialog_cancel">Cancel</string>
+    <string name="settings_dark_mode_subtitle_on">Enabled</string>
+    <string name="settings_dark_mode_subtitle_off">Disabled</string>
+    <string name="settings_manage_app_visibility_subtitle">Choose which apps to track</string>
+
+    <string name="calibration_instructions_title">How to Calibrate</string>
+    <string name="calibration_instructions_body">This tool helps the app understand your screen\'s physical size to provide accurate scroll distance measurements.\n\n1. Press the \'Start\' button.\n2. Place a standard-sized card (like a credit card or ID) vertically on your screen next to the slider.\n3. Adjust the slider until its colored track matches the height of your card.\n4. Press \'Save\' when you\'re done.</string>
 </resources>

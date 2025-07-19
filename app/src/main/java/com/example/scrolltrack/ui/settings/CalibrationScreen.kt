@@ -1,32 +1,80 @@
 package com.example.scrolltrack.ui.settings
 
+import android.graphics.Paint
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import androidx.navigation.compose.rememberNavController
-import com.example.scrolltrack.ui.theme.ScrollTrackTheme
-import kotlin.math.abs
+import com.example.scrolltrack.R
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -35,190 +83,120 @@ fun CalibrationScreen(
     viewModel: CalibrationViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val accumulatedX by viewModel.accumulatedScrollX.collectAsStateWithLifecycle()
-    val accumulatedY by viewModel.accumulatedScrollY.collectAsStateWithLifecycle()
-    val density = LocalDensity.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    var sliderHeightPx by remember { mutableStateOf(0f) }
 
-    // This will hold the measured pixel size of our target Composables
-    var verticalLinePixelHeight by remember { mutableStateOf(0f) }
-    var horizontalLinePixelWidth by remember { mutableStateOf(0f) }
+    LaunchedEffect(uiState.showConfirmation) {
+        if (uiState.showConfirmation) {
+            scope.launch {
+                snackbarHostState.showSnackbar("Calibration saved!")
+            }
+            viewModel.dismissConfirmation()
+        }
+    }
+
+    if (uiState.showInfoDialog) {
+        CalibrationInfoDialog(onDismiss = { viewModel.showInfoDialog(false) })
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Scroll Calibration") },
+                title = { Text(stringResource(R.string.settings_scroll_calibration), style = MaterialTheme.typography.headlineMedium) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back"
+                        )
                     }
                 },
                 actions = {
-                    TextButton(onClick = {
-                        viewModel.saveCalibration(verticalLinePixelHeight, horizontalLinePixelWidth)
-                        navController.popBackStack()
-                    }) {
-                        Text("Save Calibration")
+                    IconButton(onClick = { viewModel.showInfoDialog(true) }) {
+                        Icon(imageVector = Icons.Outlined.Info, contentDescription = "Info")
+                    }
+                    if (uiState.calibrationInProgress) {
+                        IconButton(onClick = { viewModel.stopCalibrationAndSave(sliderHeightPx) }) {
+                            Icon(imageVector = Icons.Default.Save, contentDescription = "Save")
+                        }
+                    } else {
+                        IconButton(onClick = { viewModel.startCalibration() }) {
+                            Icon(imageVector = Icons.Default.PlayArrow, contentDescription = "Start")
+                        }
+                    }
+                    IconButton(onClick = { viewModel.resetCalibration() }) {
+                        Icon(imageVector = Icons.Default.Refresh, contentDescription = "Reset")
                     }
                 }
             )
         }
-    ) { paddingValues ->
-        LazyColumn(
+    ) { innerPadding ->
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
+                .padding(innerPadding)
                 .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            item {
-                Text(
-                    text = "To improve accuracy, we need to understand how your phone measures a scroll.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center
-                )
-            }
-            item {
-                Text(
-                    text = "Scroll down one full screen in a list below, then press 'Save Calibration'.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.Center
-                )
-            }
+            Text(
+                text = if (uiState.calibrationInProgress)
+                    "Place a credit card vertically. Adjust the slider to match the card's long edge."
+                else
+                    "Press Start to begin calibration.",
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(bottom = 32.dp)
+            )
 
-            // Vertical Calibration
-            item {
-                CalibrationCard(
-                    title = "Vertical Calibration",
-                    instruction = "Scroll Down 5cm",
-                    accumulatedScroll = accumulatedY,
-                    onReset = { viewModel.resetScroll("Y") }
-                ) {
-                    LaunchedEffect(Unit) {
-                        viewModel.startCalibration()
-                    }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp) // Fixed height for calibration target
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .onGloballyPositioned {
-                                verticalLinePixelHeight = it.size.height.toFloat()
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val cmToPx = 37.7952755906f
-                            for (i in 0..5) {
-                                drawLine(
-                                    color = Color.Gray,
-                                    start = Offset(size.width / 2 - 20, i * cmToPx),
-                                    end = Offset(size.width / 2 + 20, i * cmToPx),
-                                    strokeWidth = 2.dp.toPx(),
-                                    cap = StrokeCap.Round
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Horizontal Calibration
-            item {
-                CalibrationCard(
-                    title = "Horizontal Calibration",
-                    instruction = "Swipe Right 5cm",
-                    accumulatedScroll = accumulatedX,
-                    onReset = { viewModel.resetScroll("X") }
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .height(100.dp)
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .pointerInput(Unit) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    viewModel.addScrollDelta(abs(dragAmount.x.toInt()), 0)
-                                }
-                            }
-                            .onGloballyPositioned {
-                                horizontalLinePixelWidth = it.size.width.toFloat()
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val cmToPx = 37.7952755906f
-                            for (i in 0..5) {
-                                drawLine(
-                                    color = Color.Gray,
-                                    start = Offset(i * cmToPx, size.height / 2 - 20),
-                                    end = Offset(i * cmToPx, size.height / 2 + 20),
-                                    strokeWidth = 2.dp.toPx(),
-                                    cap = StrokeCap.Round
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            item {
-                Text(
-                    text = "Current Status: ${uiState.statusText}",
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
-            if (uiState.isCalibrated) {
-                item {
-                    Text("Vertical: ${uiState.verticalDpi} | Horizontal: ${uiState.horizontalDpi}")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun CalibrationCard(
-    title: String,
-    instruction: String,
-    accumulatedScroll: Int,
-    onReset: () -> Unit,
-    content: @Composable () -> Unit
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(text = title, style = MaterialTheme.typography.titleLarge)
-            Text(text = instruction, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(modifier = Modifier.height(8.dp))
-            content()
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    text = "Scrolled: $accumulatedScroll px",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Button(onClick = onReset) {
-                    Text("Reset")
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .onSizeChanged { sliderHeightPx = it.height.toFloat() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Slider(
+                        value = uiState.sliderPosition,
+                        onValueChange = viewModel::onSliderValueChanged,
+                        enabled = uiState.calibrationInProgress,
+                        steps = 10,
+                        modifier = Modifier
+                            .width(maxHeight)
+                            .rotate(-90f)
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                if (uiState.calibrationInProgress) {
+                    val displayValue = (uiState.sliderPosition * sliderHeightPx).roundToInt()
+                    Text(
+                        text = "$displayValue px",
+                        style = MaterialTheme.typography.displaySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }
     }
 }
 
-@Preview
 @Composable
-private fun CalibrationScreenPreview() {
-    ScrollTrackTheme {
-        CalibrationScreen(navController = rememberNavController())
-    }
+private fun CalibrationInfoDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.calibration_instructions_title)) },
+        text = { Text(stringResource(R.string.calibration_instructions_body)) },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("OK")
+            }
+        }
+    )
 }

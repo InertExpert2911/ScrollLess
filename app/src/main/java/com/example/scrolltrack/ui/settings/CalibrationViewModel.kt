@@ -3,114 +3,66 @@ package com.example.scrolltrack.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.scrolltrack.data.SettingsRepository
-import com.example.scrolltrack.db.RawAppEventDao
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import kotlin.math.roundToInt
 
-data class CalibrationUiState(
-    val statusText: String = "Not yet calibrated",
-    val verticalDpi: Int? = null,
-    val horizontalDpi: Int? = null,
-    val isCalibrated: Boolean = false
+private const val CREDIT_CARD_HEIGHT_INCHES = 2.125f // Standard ID-1 card height
+
+data class CalibrationScreenState(
+    val sliderPosition: Float = 0.5f, // Represents value from 0.0 to 1.0
+    val calibrationInProgress: Boolean = false,
+    val showInfoDialog: Boolean = false,
+    val showConfirmation: Boolean = false
 )
 
 @HiltViewModel
 class CalibrationViewModel @Inject constructor(
-    private val settingsRepository: SettingsRepository,
-    private val rawAppEventDao: RawAppEventDao
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
-    private val _calibrationInProgress = MutableStateFlow(false)
+    private val _uiState = MutableStateFlow(CalibrationScreenState())
+    val uiState: StateFlow<CalibrationScreenState> = _uiState.asStateFlow()
 
-    private val _accumulatedScrollX = MutableStateFlow(0)
-    val accumulatedScrollX: StateFlow<Int> = _accumulatedScrollX.asStateFlow()
-
-    private val _accumulatedScrollY = MutableStateFlow(0)
-    val accumulatedScrollY: StateFlow<Int> = _accumulatedScrollY.asStateFlow()
-
-    val uiState: StateFlow<CalibrationUiState> = combine(
-        settingsRepository.calibrationFactorX,
-        settingsRepository.calibrationFactorY
-    ) { factorX, factorY ->
-        if (factorX != 1.0f || factorY != 1.0f) {
-            CalibrationUiState(
-                statusText = "Device calibrated",
-                verticalDpi = factorY?.roundToInt(),
-                horizontalDpi = factorX?.roundToInt(),
-                isCalibrated = true
-            )
-        } else {
-            CalibrationUiState()
-        }
-    }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = CalibrationUiState()
-    )
-
-    init {
-        viewModelScope.launch {
-            _calibrationInProgress.flatMapLatest { inProgress ->
-                if (inProgress) {
-                    rawAppEventDao.getEventsForPeriodFlow(System.currentTimeMillis() - 10000, System.currentTimeMillis() + 10000)
-                } else {
-                    emptyFlow()
-                }
-            }.collect { events ->
-                val scrollY = events.sumOf { it.scrollDeltaY ?: 0 }
-                _accumulatedScrollY.value = scrollY
-            }
+    fun onSliderValueChanged(newValue: Float) {
+        if (_uiState.value.calibrationInProgress) {
+            _uiState.value = _uiState.value.copy(sliderPosition = newValue)
         }
     }
 
     fun startCalibration() {
-        _calibrationInProgress.value = true
+        // Reset to a default position when starting
+        _uiState.value = _uiState.value.copy(sliderPosition = 0.5f, calibrationInProgress = true)
     }
 
-    fun addScrollDelta(deltaX: Int, deltaY: Int) {
-        if (deltaX != 0) {
-            _accumulatedScrollX.value += deltaX
-        }
-        if (deltaY != 0) {
-            _accumulatedScrollY.value += deltaY
-        }
-    }
-
-    fun resetScroll(axis: String) {
-        if (axis == "X") {
-            _accumulatedScrollX.value = 0
-        } else {
-            _accumulatedScrollY.value = 0
+    fun stopCalibrationAndSave(sliderHeightPx: Float) {
+        if (_uiState.value.calibrationInProgress) {
+            viewModelScope.launch {
+                // The calibrated height in pixels is the slider's total height * its position
+                val calibratedHeightInPx = sliderHeightPx * _uiState.value.sliderPosition
+                // DPI is the number of pixels per inch
+                val newDpi = calibratedHeightInPx / CREDIT_CARD_HEIGHT_INCHES
+                settingsRepository.setScreenDpi(newDpi.toInt())
+                _uiState.value = _uiState.value.copy(calibrationInProgress = false, showConfirmation = true)
+            }
         }
     }
 
-    fun saveCalibration(
-        targetPixelHeight: Float,
-        targetPixelWidth: Float
-    ) {
+    fun resetCalibration() {
+        _uiState.value = _uiState.value.copy(sliderPosition = 0.5f, calibrationInProgress = false)
         viewModelScope.launch {
-            val factorY = if (_accumulatedScrollY.value > 0) {
-                targetPixelHeight / _accumulatedScrollY.value
-            } else {
-                1.0f
-            }
-
-            val factorX = if (_accumulatedScrollX.value > 0) {
-                targetPixelWidth / _accumulatedScrollX.value
-            } else {
-                1.0f
-            }
-            settingsRepository.setCalibrationFactors(factorX, factorY)
+            settingsRepository.setScreenDpi(0) // Reset to default/uncalibrated
         }
+    }
+
+    fun showInfoDialog(show: Boolean) {
+        _uiState.value = _uiState.value.copy(showInfoDialog = show)
+    }
+
+    fun dismissConfirmation() {
+        _uiState.value = _uiState.value.copy(showConfirmation = false)
     }
 }
