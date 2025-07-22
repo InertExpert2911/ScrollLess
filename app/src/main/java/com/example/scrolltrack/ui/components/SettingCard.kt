@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 
@@ -22,7 +23,7 @@ import androidx.compose.ui.unit.dp
 fun SettingCard(
     title: String,
     subtitle: String,
-    icon: ImageVector,
+    icon: Painter,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
@@ -39,9 +40,10 @@ fun SettingCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = icon,
+                painter = icon,
                 contentDescription = null,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.primary
             )
             Column(
                 modifier = Modifier

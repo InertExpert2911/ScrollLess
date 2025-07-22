@@ -259,4 +259,8 @@ private class FakeSettingsRepository : SettingsRepository {
     override suspend fun setIsDarkMode(isDark: Boolean) {}
     override val screenDpi: Flow<Int> = flowOf(0)
     override suspend fun setScreenDpi(dpi: Int) {}
+    override val calibrationSliderPosition: Flow<Float> = flowOf(0.5f)
+    override suspend fun setCalibrationSliderPosition(position: Float) {}
+    override val calibrationSliderHeight: Flow<Float> = flowOf(0f)
+    override suspend fun setCalibrationSliderHeight(height: Float) {}
 }

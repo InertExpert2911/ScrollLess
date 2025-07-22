@@ -12,4 +12,10 @@ interface SettingsRepository {
 
     val screenDpi: Flow<Int>
     suspend fun setScreenDpi(dpi: Int)
+
+    val calibrationSliderPosition: Flow<Float>
+    suspend fun setCalibrationSliderPosition(position: Float)
+
+    val calibrationSliderHeight: Flow<Float>
+    suspend fun setCalibrationSliderHeight(height: Float)
 }

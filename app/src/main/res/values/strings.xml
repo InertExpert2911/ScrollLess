@@ -38,6 +38,6 @@
     <string name="settings_dark_mode_subtitle_off">Disabled</string>
     <string name="settings_manage_app_visibility_subtitle">Choose which apps to track</string>
 
-    <string name="calibration_instructions_title">How to Calibrate</string>
-    <string name="calibration_instructions_body">This tool helps the app understand your screen\'s physical size to provide accurate scroll distance measurements.\n\n1. Press the \'Start\' button.\n2. Place a standard-sized card (like a credit card or ID) vertically on your screen next to the slider.\n3. Adjust the slider until its colored track matches the height of your card.\n4. Press \'Save\' when you\'re done.</string>
+    <string name="calibration_instructions_title">Calibrate Scroll Distance</string>
+    <string name="calibration_instructions_body">To measure scroll distance accurately, we need to calibrate your screen.\n\n1. Press \'Start\'.\n2. Place a credit card vertically on your screen.\n3. Adjust the slider to match the card\'s height.\n4. Press \'Save\'.</string>
 </resources>

@@ -38,8 +38,8 @@ class SettingsRepositoryImplTest {
         val DEFAULT_THEME = AppTheme.CalmLavender
         const val KEY_IS_DARK_MODE = "is_dark_mode"
         const val DEFAULT_IS_DARK_MODE = true
-        const val KEY_CALIBRATION_FACTOR_X = "calibration_factor_x"
-        const val KEY_CALIBRATION_FACTOR_Y = "calibration_factor_y"
+        const val KEY_CALIBRATION_SLIDER_HEIGHT = "calibration_slider_height"
+        const val DEFAULT_CALIBRATION_SLIDER_HEIGHT = 0f
     }
 
 
@@ -101,55 +101,24 @@ class SettingsRepositoryImplTest {
     }
 
     @Test
-    fun `calibrationFactor - initial values are null`() = runTest {
-        assertThat(repository.calibrationFactorX.first()).isNull()
-        assertThat(repository.calibrationFactorY.first()).isNull()
+    fun `calibrationSliderHeight - initial value is default`() = runTest {
+        assertThat(repository.calibrationSliderHeight.first()).isEqualTo(DEFAULT_CALIBRATION_SLIDER_HEIGHT)
     }
 
     @Test
-    fun `setCalibrationFactors - can be set and then cleared`() = runTest {
-        val factorX = 1.5f
-        val factorY = 0.8f
+    fun `setCalibrationSliderHeight - updates height and flow emits new value`() = runTest {
+        val newHeight = 1200f
 
-        // Use separate collectors to avoid race conditions between flows
-        val xValues = mutableListOf<Float?>()
-        val yValues = mutableListOf<Float?>()
+        repository.calibrationSliderHeight.test {
+            assertThat(awaitItem()).isEqualTo(DEFAULT_CALIBRATION_SLIDER_HEIGHT)
 
-        val jobX = launch {
-            repository.calibrationFactorX.collect { xValues.add(it) }
+            repository.setCalibrationSliderHeight(newHeight)
+
+            assertThat(awaitItem()).isEqualTo(newHeight)
+
+            assertThat(sharedPreferences.getFloat(KEY_CALIBRATION_SLIDER_HEIGHT, 0f)).isEqualTo(newHeight)
+            cancelAndIgnoreRemainingEvents()
         }
-        val jobY = launch {
-            repository.calibrationFactorY.collect { yValues.add(it) }
-        }
-
-        // Allow initial values to be collected
-        advanceUntilIdle()
-
-        // Initial state
-        assertThat(xValues.first()).isNull()
-        assertThat(yValues.first()).isNull()
-
-        // Set values
-        repository.setCalibrationFactors(factorX, factorY)
-        // Wait for flows to emit the new value
-        advanceUntilIdle()
-
-        assertThat(xValues.last()).isEqualTo(factorX)
-        assertThat(yValues.last()).isEqualTo(factorY)
-        assertThat(sharedPreferences.getFloat(KEY_CALIBRATION_FACTOR_X, -1f)).isEqualTo(factorX)
-        assertThat(sharedPreferences.getFloat(KEY_CALIBRATION_FACTOR_Y, -1f)).isEqualTo(factorY)
-
-        // Clear values
-        repository.setCalibrationFactors(null, null)
-        advanceUntilIdle()
-
-        assertThat(xValues.last()).isNull()
-        assertThat(yValues.last()).isNull()
-        assertThat(sharedPreferences.contains(KEY_CALIBRATION_FACTOR_X)).isFalse()
-        assertThat(sharedPreferences.contains(KEY_CALIBRATION_FACTOR_Y)).isFalse()
-
-        jobX.cancel()
-        jobY.cancel()
     }
 
     @Test

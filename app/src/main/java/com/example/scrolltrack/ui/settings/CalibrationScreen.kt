@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -85,7 +86,7 @@ fun CalibrationScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    var sliderHeightPx by remember { mutableStateOf(0f) }
+    val density = LocalDensity.current
 
     LaunchedEffect(uiState.showConfirmation) {
         if (uiState.showConfirmation) {
@@ -115,19 +116,35 @@ fun CalibrationScreen(
                 },
                 actions = {
                     IconButton(onClick = { viewModel.showInfoDialog(true) }) {
-                        Icon(imageVector = Icons.Outlined.Info, contentDescription = "Info")
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_info_duotone),
+                            contentDescription = "Info",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
                     }
                     if (uiState.calibrationInProgress) {
-                        IconButton(onClick = { viewModel.stopCalibrationAndSave(sliderHeightPx) }) {
-                            Icon(imageVector = Icons.Default.Save, contentDescription = "Save")
+                        IconButton(onClick = { viewModel.stopCalibrationAndSave() }) {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_floppy_disk_duotone),
+                                contentDescription = "Save",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                         }
                     } else {
                         IconButton(onClick = { viewModel.startCalibration() }) {
-                            Icon(imageVector = Icons.Default.PlayArrow, contentDescription = "Start")
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_play_duotone),
+                                contentDescription = "Start",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                         }
                     }
                     IconButton(onClick = { viewModel.resetCalibration() }) {
-                        Icon(imageVector = Icons.Default.Refresh, contentDescription = "Reset")
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_reset_duotone),
+                            contentDescription = "Reset",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             )
@@ -138,49 +155,106 @@ fun CalibrationScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = if (uiState.calibrationInProgress)
-                    "Place a credit card vertically. Adjust the slider to match the card's long edge."
-                else
-                    "Press Start to begin calibration.",
-                style = MaterialTheme.typography.titleMedium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(bottom = 32.dp)
-            )
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                BoxWithConstraints(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .onSizeChanged { sliderHeightPx = it.height.toFloat() },
-                    contentAlignment = Alignment.Center
-                ) {
+            when {
+                uiState.calibrationInProgress -> {
+                    Text(
+                        text = "Place a credit card against the screen and match the box height to the card's long edge.",
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .padding(bottom = 16.dp)
+                            .height(48.dp)
+                    )
+                    BoxWithConstraints(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .onSizeChanged {
+                                viewModel.setSliderHeight(it.height.toFloat())
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val cardHeight = with(density) { (uiState.sliderHeightPx * uiState.sliderPosition).toDp() }
+                        Card(
+                            modifier = Modifier
+                                .height(cardHeight)
+                                .fillMaxWidth(0.6f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {}
+                    }
                     Slider(
                         value = uiState.sliderPosition,
                         onValueChange = viewModel::onSliderValueChanged,
                         enabled = uiState.calibrationInProgress,
-                        steps = 10,
-                        modifier = Modifier
-                            .width(maxHeight)
-                            .rotate(-90f)
+                        modifier = Modifier.fillMaxWidth()
                     )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                if (uiState.calibrationInProgress) {
-                    val displayValue = (uiState.sliderPosition * sliderHeightPx).roundToInt()
+                    val displayValue = (uiState.sliderPosition * uiState.sliderHeightPx).roundToInt()
                     Text(
                         text = "$displayValue px",
                         style = MaterialTheme.typography.displaySmall,
                         color = MaterialTheme.colorScheme.primary
                     )
+                }
+                uiState.calibratedDpi > 0 -> {
+                    Text(
+                        text = "Great! The screen is now calibrated.",
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center
+                    )
+                    BoxWithConstraints(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .onSizeChanged {
+                                viewModel.setSliderHeight(it.height.toFloat())
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val cardHeight = with(density) { (uiState.sliderHeightPx * uiState.sliderPosition).toDp() }
+                        Card(
+                            modifier = Modifier
+                                .height(cardHeight)
+                                .fillMaxWidth(0.6f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {}
+                    }
+                    Slider(
+                        value = uiState.sliderPosition,
+                        onValueChange = {},
+                        enabled = false,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = "${uiState.calibratedDpi} Dots Per Inch",
+                        style = MaterialTheme.typography.displaySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                else -> {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_ruler_combined_duotone),
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Press Start to calibrate.",
+                            style = MaterialTheme.typography.titleMedium,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                    Button(onClick = { viewModel.startCalibration() }) {
+                        Text("Start")
+                    }
                 }
             }
         }

@@ -25,6 +25,10 @@ class SettingsRepositoryImpl @Inject constructor(@ApplicationContext context: Co
         const val DEFAULT_IS_DARK_MODE = true // Default to dark mode
         const val KEY_SCREEN_DPI = "screen_dpi"
         const val DEFAULT_DPI = 0 // 0 indicates not calibrated
+        const val KEY_CALIBRATION_SLIDER_POSITION = "calibration_slider_position"
+        const val DEFAULT_CALIBRATION_SLIDER_POSITION = 0.5f
+        const val KEY_CALIBRATION_SLIDER_HEIGHT = "calibration_slider_height"
+        const val DEFAULT_CALIBRATION_SLIDER_HEIGHT = 0f
     }
 
     init {
@@ -87,6 +91,40 @@ class SettingsRepositoryImpl @Inject constructor(@ApplicationContext context: Co
     override suspend fun setScreenDpi(dpi: Int) {
         appPrefs.edit {
             putInt(KEY_SCREEN_DPI, dpi)
+        }
+    }
+
+    override val calibrationSliderPosition: Flow<Float> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_CALIBRATION_SLIDER_POSITION) {
+                trySend(appPrefs.getFloat(KEY_CALIBRATION_SLIDER_POSITION, DEFAULT_CALIBRATION_SLIDER_POSITION))
+            }
+        }
+        appPrefs.registerOnSharedPreferenceChangeListener(listener)
+        trySend(appPrefs.getFloat(KEY_CALIBRATION_SLIDER_POSITION, DEFAULT_CALIBRATION_SLIDER_POSITION))
+        awaitClose { appPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    override suspend fun setCalibrationSliderPosition(position: Float) {
+        appPrefs.edit {
+            putFloat(KEY_CALIBRATION_SLIDER_POSITION, position)
+        }
+    }
+
+    override val calibrationSliderHeight: Flow<Float> = callbackFlow {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == KEY_CALIBRATION_SLIDER_HEIGHT) {
+                trySend(appPrefs.getFloat(KEY_CALIBRATION_SLIDER_HEIGHT, DEFAULT_CALIBRATION_SLIDER_HEIGHT))
+            }
+        }
+        appPrefs.registerOnSharedPreferenceChangeListener(listener)
+        trySend(appPrefs.getFloat(KEY_CALIBRATION_SLIDER_HEIGHT, DEFAULT_CALIBRATION_SLIDER_HEIGHT))
+        awaitClose { appPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    override suspend fun setCalibrationSliderHeight(height: Float) {
+        appPrefs.edit {
+            putFloat(KEY_CALIBRATION_SLIDER_HEIGHT, height)
         }
     }
 }

@@ -92,7 +92,7 @@ fun SettingsScreen(
             SettingCard(
                 title = stringResource(R.string.settings_dark_mode),
                 subtitle = stringResource(if (isDarkMode) R.string.settings_dark_mode_subtitle_on else R.string.settings_dark_mode_subtitle_off),
-                icon = if (isDarkMode) Icons.Filled.Brightness2 else Icons.Filled.WbSunny,
+                icon = painterResource(if (isDarkMode) R.drawable.ic_moon_duotone else R.drawable.ic_sun_duotone),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Switch(
@@ -111,7 +111,7 @@ fun SettingsScreen(
             SettingCard(
                 title = stringResource(R.string.settings_theme_palette),
                 subtitle = selectedTheme.name,
-                icon = Icons.Filled.ColorLens,
+                icon = painterResource(id = R.drawable.ic_theme_palette_duotone),
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { showThemeDialog = true }
@@ -132,7 +132,7 @@ fun SettingsScreen(
             SettingCard(
                 title = stringResource(R.string.settings_scroll_calibration),
                 subtitle = calibrationStatus,
-                icon = Icons.Filled.Straighten,
+                icon = painterResource(id = R.drawable.ic_ruler_combined_duotone),
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { navController.navigate(ScreenRoutes.CalibrationRoute.route) }
@@ -146,7 +146,7 @@ fun SettingsScreen(
             SettingCard(
                 title = stringResource(R.string.settings_manage_app_visibility),
                 subtitle = stringResource(R.string.settings_manage_app_visibility_subtitle),
-                icon = Icons.Filled.Visibility,
+                icon = painterResource(id = R.drawable.ic_eye_duotone),
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { navController.navigate(ScreenRoutes.AppVisibility.route) }
