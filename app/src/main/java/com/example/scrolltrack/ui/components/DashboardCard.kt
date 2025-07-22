@@ -44,8 +44,7 @@ fun DashboardCard(
             ) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium
+                    style = MaterialTheme.typography.titleMedium
                 )
                 if (comparison != null) {
                     val (tint, icon) = when {
@@ -84,7 +83,7 @@ fun DashboardCard(
                     val changeText = when {
                         comparison.percentageChange > 0 -> "+${"%.0f".format(comparison.percentageChange.absoluteValue)}% more"
                         comparison.percentageChange < 0 -> "-${"%.0f".format(comparison.percentageChange.absoluteValue)}% less"
-                        else -> "Same as"
+                        else -> "Same as yesterday"
                     }
                     Text(
                         text = "$changeText than yesterday",

@@ -96,9 +96,7 @@ fun AppVisibilityScreen(
                             }
                         }
                         LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                            modifier = Modifier.fillMaxSize()
                         ) {
                             items(state.apps, key = { it.packageName }) { app ->
                                 AppVisibilityRow(
@@ -107,6 +105,7 @@ fun AppVisibilityScreen(
                                         viewModel.setAppVisibility(app.packageName, newVisibility)
                                     }
                                 )
+                                HorizontalDivider()
                             }
                         }
                     }
@@ -125,7 +124,7 @@ fun AppVisibilityRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp)
+            .padding(16.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Image(

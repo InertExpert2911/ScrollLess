@@ -110,7 +110,7 @@ fun SettingsScreen(
             HorizontalDivider()
             SettingCard(
                 title = stringResource(R.string.settings_theme_palette),
-                subtitle = selectedTheme.name,
+                subtitle = formatEnumName(selectedTheme.name),
                 icon = painterResource(id = R.drawable.ic_theme_palette_duotone),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -170,6 +170,10 @@ fun SettingsSectionTitle(title: String) {
     )
 }
 
+fun formatEnumName(name: String): String {
+    return name.replace(Regex("(?<=[a-z])(?=[A-Z])")) { " " }
+}
+
 @Composable
 fun ThemeSelectorDialog(
     currentTheme: AppTheme,
@@ -177,44 +181,34 @@ fun ThemeSelectorDialog(
     onDismissRequest: () -> Unit
 ) {
     val isDarkMode = isSystemInDarkTheme()
+    val themes = AppTheme.entries
+    val (topRowThemes, bottomRowThemes) = themes.withIndex()
+        .partition { it.index < 4 }
+
     AlertDialog(
         onDismissRequest = onDismissRequest,
-        title = { Text(stringResource(R.string.settings_theme_dialog_title)) },
+        title = { Text(stringResource(R.string.settings_theme_dialog_title), style = MaterialTheme.typography.headlineSmall) },
         text = {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 LazyRow(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    items(AppTheme.entries) { theme ->
-                        val isSelected = theme == currentTheme
-                        val themeColors = getThemeColors(theme = theme, darkTheme = isDarkMode)
-                        val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
-
-                        Box(
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clip(CircleShape)
-                                .background(themeColors.primary)
-                                .border(BorderStroke(3.dp, borderColor), CircleShape)
-                                .clickable { onThemeSelected(theme) }
-                                .padding(4.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (isSelected) {
-                                Icon(
-                                    imageVector = Icons.Filled.Check,
-                                    contentDescription = "Selected",
-                                    tint = MaterialTheme.colorScheme.onPrimary
-                                )
-                            }
-                        }
+                    items(topRowThemes.map { it.value }) { theme ->
+                        ThemeSelectorItem(theme, currentTheme, isDarkMode, onThemeSelected)
+                    }
+                }
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    items(bottomRowThemes.map { it.value }) { theme ->
+                        ThemeSelectorItem(theme, currentTheme, isDarkMode, onThemeSelected)
                     }
                 }
             }
@@ -225,4 +219,34 @@ fun ThemeSelectorDialog(
             }
         }
     )
+}
+
+@Composable
+private fun ThemeSelectorItem(
+    theme: AppTheme,
+    currentTheme: AppTheme,
+    isDarkMode: Boolean,
+    onThemeSelected: (AppTheme) -> Unit
+) {
+    val isSelected = theme == currentTheme
+    val themeColors = getThemeColors(theme = theme, darkTheme = isDarkMode)
+    val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
+
+    Box(
+        modifier = Modifier
+            .size(56.dp)
+            .clip(CircleShape)
+            .background(themeColors.primary)
+            .border(BorderStroke(3.dp, borderColor), CircleShape)
+            .clickable { onThemeSelected(theme) },
+        contentAlignment = Alignment.Center
+    ) {
+        if (isSelected) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = "Selected",
+                tint = MaterialTheme.colorScheme.onPrimary
+            )
+        }
+    }
 }
