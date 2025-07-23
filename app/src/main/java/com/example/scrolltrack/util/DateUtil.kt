@@ -5,7 +5,6 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
-import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
@@ -16,8 +15,8 @@ import java.util.concurrent.TimeUnit
 
 object DateUtil {
 
-    val UTC_ZONE_ID = ZoneOffset.UTC
-    private val YYYY_MM_DD_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.US).withZone(UTC_ZONE_ID)
+    val localTimeZone = ZoneId.systemDefault()
+    private val YYYY_MM_DD_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.US)
     private val HH_MM_FORMATTER = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
 
     fun getUtcTimestamp(): Long {
@@ -25,11 +24,11 @@ object DateUtil {
     }
 
     fun getCurrentLocalDateString(): String {
-        return LocalDate.now(UTC_ZONE_ID).format(YYYY_MM_DD_FORMATTER)
+        return LocalDate.now(localTimeZone).format(YYYY_MM_DD_FORMATTER)
     }
 
     fun formatUtcTimestampToLocalDateString(utcTimestampMillis: Long): String {
-        return Instant.ofEpochMilli(utcTimestampMillis).atZone(UTC_ZONE_ID).toLocalDate().format(YYYY_MM_DD_FORMATTER)
+        return Instant.ofEpochMilli(utcTimestampMillis).atZone(localTimeZone).toLocalDate().format(YYYY_MM_DD_FORMATTER)
     }
 
     fun parseLocalDate(dateString: String): LocalDate? {
@@ -45,20 +44,20 @@ object DateUtil {
     }
 
     fun getStartOfDayUtcMillis(dateString: String): Long {
-        return parseLocalDate(dateString)?.atStartOfDay(UTC_ZONE_ID)?.toInstant()?.toEpochMilli() ?: 0L
+        return parseLocalDate(dateString)?.atStartOfDay(localTimeZone)?.toInstant()?.toEpochMilli() ?: 0L
     }
 
     fun getEndOfDayUtcMillis(dateString: String): Long {
-        val startOfDay = parseLocalDate(dateString)?.atStartOfDay(UTC_ZONE_ID)
+        val startOfDay = parseLocalDate(dateString)?.atStartOfDay(localTimeZone)
         return startOfDay?.plusDays(1)?.minusNanos(1)?.toInstant()?.toEpochMilli() ?: 0L
     }
 
     fun getStartOfToday(): ZonedDateTime {
-        return LocalDate.now().atStartOfDay(ZoneId.systemDefault())
+        return LocalDate.now().atStartOfDay(localTimeZone)
     }
 
     fun formatUtcTimestampToLocalDateTime(utcTimestampMillis: Long): LocalDateTime {
-        return Instant.ofEpochMilli(utcTimestampMillis).atZone(ZoneId.systemDefault()).toLocalDateTime()
+        return Instant.ofEpochMilli(utcTimestampMillis).atZone(localTimeZone).toLocalDateTime()
     }
 
     fun getStartOfWeek(date: LocalDate): LocalDate {
@@ -114,27 +113,27 @@ object DateUtil {
 
     fun formatUtcTimestampToTimeString(timestamp: Long): String {
         return Instant.ofEpochMilli(timestamp)
-            .atZone(ZoneId.systemDefault())
+            .atZone(localTimeZone)
             .toLocalTime()
             .format(HH_MM_FORMATTER)
     }
 
     fun getYesterdayDateString(): String {
-        return LocalDate.now(UTC_ZONE_ID).minusDays(1).format(YYYY_MM_DD_FORMATTER)
+        return LocalDate.now(localTimeZone).minusDays(1).format(YYYY_MM_DD_FORMATTER)
     }
 
     fun getMillisUntilNextMidnight(): Long {
-        val now = ZonedDateTime.now(ZoneId.systemDefault())
+        val now = ZonedDateTime.now(localTimeZone)
         val nextMidnight = now.toLocalDate().plusDays(1).atStartOfDay(now.zone)
         return nextMidnight.toInstant().toEpochMilli() - now.toInstant().toEpochMilli()
     }
 
     fun getPastDateString(daysAgo: Int): String {
-        return LocalDate.now(UTC_ZONE_ID).minusDays(daysAgo.toLong()).format(YYYY_MM_DD_FORMATTER)
+        return LocalDate.now(localTimeZone).minusDays(daysAgo.toLong()).format(YYYY_MM_DD_FORMATTER)
     }
 
     fun getPastDateString(daysAgo: Int, fromDate: LocalDate?): String {
-        val date = fromDate ?: LocalDate.now(UTC_ZONE_ID)
+        val date = fromDate ?: LocalDate.now(localTimeZone)
         return date.minusDays(daysAgo.toLong()).format(YYYY_MM_DD_FORMATTER)
     }
 

@@ -151,7 +151,7 @@ fun AppDetailScreen(
     val canNavigateForward by remember(currentPeriodType, currentReferenceDateStr) {
         derivedStateOf {
             val refDate = DateUtil.parseLocalDate(currentReferenceDateStr) ?: return@derivedStateOf false
-            val today = LocalDate.now(DateUtil.UTC_ZONE_ID)
+            val today = DateUtil.parseLocalDate(DateUtil.getCurrentLocalDateString()) ?: return@derivedStateOf false
 
             when (currentPeriodType) {
                 ChartPeriodType.DAILY -> refDate.isBefore(today)

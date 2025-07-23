@@ -94,9 +94,9 @@ class InsightsViewModel @Inject constructor(
     }
 
     private suspend fun loadFirstAppInsight(): InsightCardUiModel.FirstApp? {
-        // Define "morning" as any time after 4 AM on the current day.
-        val morningStartTimestamp = DateUtil.getStartOfToday().plusHours(4).toEpochSecond() * 1000
-        val firstAppEvent = scrollDataRepository.getFirstAppUsedAfter(morningStartTimestamp) ?: return null
+        // Use the start of the user's local day (12:00 AM)
+        val startOfTodayTimestamp = DateUtil.getStartOfDayUtcMillis(DateUtil.getCurrentLocalDateString())
+        val firstAppEvent = scrollDataRepository.getFirstAppUsedAfter(startOfTodayTimestamp) ?: return null
 
         val appMetadata = appMetadataRepository.getAppMetadata(firstAppEvent.packageName)
         val iconFile = appMetadataRepository.getIconFile(firstAppEvent.packageName)
