@@ -13,6 +13,7 @@ import com.example.scrolltrack.db.AppMetadata
 import com.example.scrolltrack.db.AppMetadataDao
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
@@ -128,7 +129,7 @@ class AppMetadataRepositoryImpl @Inject constructor(
         Timber.tag(TAG).d("User override for $packageName set to $userHidesOverride")
     }
 
-    override suspend fun getAllMetadata(): List<AppMetadata> {
+    override fun getAllMetadata(): Flow<List<AppMetadata>> {
         return appMetadataDao.getAll()
     }
 

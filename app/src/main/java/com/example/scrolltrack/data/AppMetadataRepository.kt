@@ -2,6 +2,7 @@ package com.example.scrolltrack.data
 
 import android.graphics.drawable.Drawable
 import com.example.scrolltrack.db.AppMetadata
+import kotlinx.coroutines.flow.Flow
 import java.io.File
 
 interface AppMetadataRepository {
@@ -12,5 +13,5 @@ interface AppMetadataRepository {
     suspend fun handleAppInstalledOrUpdated(packageName: String)
     suspend fun getNonVisiblePackageNames(): List<String>
     suspend fun updateUserHidesOverride(packageName: String, userHidesOverride: Boolean?)
-    suspend fun getAllMetadata(): List<AppMetadata>
-} 
+    fun getAllMetadata(): Flow<List<AppMetadata>>
+}

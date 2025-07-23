@@ -129,7 +129,7 @@ class TodaySummaryViewModel @Inject constructor(
     val todaysAppUsageUiList: StateFlow<List<AppUsageUiItem>> =
         _selectedDate.flatMapLatest { date ->
             repository.getAppUsageForDate(date)
-                .map { records -> records.map { mapper.mapToAppUsageUiItem(it) } }
+                .map { records -> mapper.mapToAppUsageUiItems(records) }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     val aggregatedScrollDataToday: StateFlow<List<AppScrollUiItem>> =

@@ -246,7 +246,7 @@ fun TodaySummaryScreen(
             
             item {
                 AppUsageCard(
-                    apps = todaysAppUsage,
+                    apps = todaysAppUsage.take(3),
                     totalUsageTimeMillis = totalUsageTimeMillis,
                     onAppClick = onNavigateToAppDetail,
                     modifier = Modifier

@@ -48,7 +48,7 @@ fun DashboardCard(
                 )
                 if (comparison != null) {
                     val (tint, icon) = when {
-                        comparison.percentageChange > 0 -> Color.Red to R.drawable.ic_chartline_up_duotone
+                        comparison.percentageChange > 0 -> MaterialTheme.colorScheme.error to R.drawable.ic_chartline_up_duotone
                         comparison.percentageChange < 0 -> MaterialTheme.colorScheme.primary to R.drawable.ic_chartline_down_duotone
                         else -> MaterialTheme.colorScheme.onSurfaceVariant to R.drawable.ic_minus_duotone
                     }

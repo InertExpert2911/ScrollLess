@@ -18,6 +18,7 @@ import javax.inject.Inject
 import com.example.scrolltrack.db.AppMetadata
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.text.Collator
 import java.util.Locale
@@ -70,7 +71,7 @@ class AppVisibilityViewModel @Inject constructor(
             _uiState.value = AppVisibilityUiState.Loading
             try {
                 val appVisibilityItems = withContext(ioDispatcher) {
-                    appMetadataRepository.getAllMetadata()
+                    appMetadataRepository.getAllMetadata().first()
                         .mapNotNull { metadata ->
                             try {
                                 val iconPath = appMetadataRepository.getIconFile(metadata.packageName)?.path

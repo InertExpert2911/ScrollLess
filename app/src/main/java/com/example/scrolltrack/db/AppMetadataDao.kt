@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface AppMetadataDao {
@@ -23,8 +24,8 @@ interface AppMetadataDao {
     suspend fun getNonVisiblePackageNames(): List<String>
 
     @Query("SELECT * FROM app_metadata")
-    suspend fun getAll(): List<AppMetadata>
+    fun getAll(): Flow<List<AppMetadata>>
 
     @Query("UPDATE app_metadata SET user_hides_override = :userHidesOverride WHERE package_name = :packageName")
     suspend fun updateUserHidesOverride(packageName: String, userHidesOverride: Boolean?)
-} 
+}

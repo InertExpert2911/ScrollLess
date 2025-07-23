@@ -51,7 +51,7 @@ fun AppUsageCard(
                 }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    apps.take(5).forEach { app ->
+                    apps.forEach { app ->
                         AppUsageRow(
                             app = app,
                             totalUsageMillis = totalUsageTimeMillis,
