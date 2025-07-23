@@ -132,11 +132,12 @@ class InsightsViewModel @Inject constructor(
 
     private suspend fun loadCompulsiveCheckInsight(): InsightCardUiModel.CompulsiveCheck? {
         val today = DateUtil.getCurrentLocalDateString()
-        val topCompulsiveApp = scrollDataRepository.getCompulsiveCheckCounts(today, today)
+        // Call our new, more accurate method
+        val topCompulsiveApp = scrollDataRepository.getCompulsiveCheckCountsByPackage(today, today)
             .first()
             .maxByOrNull { it.count } ?: return null
 
-        // Only show if the count is somewhat significant
+        // Only show if the count is significant
         if (topCompulsiveApp.count < 3) return null
 
         val appMetadata = appMetadataRepository.getAppMetadata(topCompulsiveApp.packageName)

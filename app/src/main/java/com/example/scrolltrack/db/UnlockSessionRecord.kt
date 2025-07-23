@@ -41,5 +41,8 @@ data class UnlockSessionRecord(
     val sessionType: String? = null, // e.g., "Glance", "Intentional"
 
     @ColumnInfo(name = "session_end_reason")
-    val sessionEndReason: String? = null // e.g., "LOCKED", "GHOST"
+    val sessionEndReason: String? = null, // e.g., "LOCKED", "GHOST"
+
+    @ColumnInfo(name = "is_compulsive", defaultValue = "0")
+    val isCompulsive: Boolean = false
 )

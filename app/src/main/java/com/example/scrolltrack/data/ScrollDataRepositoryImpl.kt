@@ -317,12 +317,28 @@ class ScrollDataRepositoryImpl @Inject constructor(
                 if (duration >= 0) {
                     val sessionType = if (duration < AppConstants.MINIMUM_GLANCE_DURATION_MS) "Glance" else "Intentional"
 
+                    // --- NEW LOGIC STARTS HERE ---
+                    var isCompulsiveCheck = false
                     val firstAppEvent = events.find { e ->
                         e.eventTimestamp > currentOpenSession.unlockTimestamp &&
                                 e.eventTimestamp < event.eventTimestamp &&
                                 e.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED &&
                                 e.packageName !in hiddenAppsSet
                     }
+
+                    if (firstAppEvent != null) {
+                        // Check if any OTHER app was resumed during this session.
+                        val otherAppOpened = events.any { e ->
+                            e.eventTimestamp > firstAppEvent.eventTimestamp &&
+                                    e.eventTimestamp < event.eventTimestamp &&
+                                    e.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED
+                        }
+                        // A compulsive check is a short session where only ONE app was opened.
+                        if (!otherAppOpened && duration < AppConstants.COMPULSIVE_UNLOCK_THRESHOLD_MS) {
+                            isCompulsiveCheck = true
+                        }
+                    }
+                    // --- NEW LOGIC ENDS HERE ---
 
                     val recentNotification = notifications.lastOrNull { n ->
                         currentOpenSession.unlockTimestamp > n.postTimeUTC &&
@@ -336,7 +352,8 @@ class ScrollDataRepositoryImpl @Inject constructor(
                         firstAppPackage = firstAppEvent?.packageName,
                         notificationKey = recentNotification?.notificationKey,
                         sessionType = sessionType,
-                        sessionEndReason = "LOCKED"
+                        sessionEndReason = "LOCKED",
+                        isCompulsive = isCompulsiveCheck // Pass our new flag
                     )
                 }
                 openSession = null
@@ -518,10 +535,10 @@ class ScrollDataRepositoryImpl @Inject constructor(
             .lastOrNull()
     }
 
-    override fun getCompulsiveCheckCounts(startDate: String, endDate: String): Flow<List<PackageCount>> {
-        val glanceCountsFlow = unlockSessionDao.getGlanceCountsByPackage(startDate, endDate)
-        return combine(glanceCountsFlow, filterSet) { glanceCounts, currentFilterSet ->
-            glanceCounts.filter { it.packageName !in currentFilterSet }
+    override fun getCompulsiveCheckCountsByPackage(startDate: String, endDate: String): Flow<List<PackageCount>> {
+        val compulsiveCountsFlow = unlockSessionDao.getCompulsiveCheckCountsByPackage(startDate, endDate)
+        return combine(compulsiveCountsFlow, filterSet) { compulsiveCounts, currentFilterSet ->
+            compulsiveCounts.filter { it.packageName !in currentFilterSet }
         }
     }
 

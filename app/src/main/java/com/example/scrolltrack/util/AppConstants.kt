@@ -23,6 +23,11 @@ object AppConstants {
     val MINIMUM_GLANCE_DURATION_MS = TimeUnit.SECONDS.toMillis(3)
 
     /**
+     * The threshold for a short unlock to be considered a potential compulsive check.
+     */
+    const val COMPULSIVE_UNLOCK_THRESHOLD_MS = 20_000L // 20 seconds
+
+    /**
      * The maximum time gap in milliseconds between two scroll events for them to be considered
      * part of the same continuous scrolling session.
      */
