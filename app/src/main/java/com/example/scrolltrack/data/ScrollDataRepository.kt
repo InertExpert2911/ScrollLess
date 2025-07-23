@@ -51,6 +51,7 @@ interface ScrollDataRepository {
     // --- Insight-Specific Data Access ---
     suspend fun getFirstAppUsedAfter(timestamp: Long): RawAppEvent?
     suspend fun getLastAppUsedOn(dateString: String): RawAppEvent?
+    suspend fun getLastAppUsedBetween(startTime: Long, endTime: Long): RawAppEvent? // Add this new function
     fun getCompulsiveCheckCountsByPackage(startDate: String, endDate: String): Flow<List<PackageCount>>
     fun getNotificationDrivenUnlockCountsByPackage(startDate: String, endDate: String): Flow<List<PackageCount>>
     fun getUnlockSessionsForDateRange(startDate: String, endDate: String): Flow<List<UnlockSessionRecord>>

@@ -547,6 +547,13 @@ class ScrollDataRepositoryImpl @Inject constructor(
             .lastOrNull()
     }
 
+    override suspend fun getLastAppUsedBetween(startTime: Long, endTime: Long): RawAppEvent? {
+        val currentFilterSet = this.filterSet.first()
+        return rawAppEventDao.getEventsForPeriod(startTime, endTime)
+            .filter { it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED && it.packageName !in currentFilterSet }
+            .lastOrNull()
+    }
+
     override fun getCompulsiveCheckCountsByPackage(startDate: String, endDate: String): Flow<List<PackageCount>> {
         val compulsiveCountsFlow = unlockSessionDao.getCompulsiveCheckCountsByPackage(startDate, endDate)
         return combine(compulsiveCountsFlow, filterSet) { compulsiveCounts, currentFilterSet ->

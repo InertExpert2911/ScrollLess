@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -74,12 +75,14 @@ class InsightsViewModel @Inject constructor(
             val compulsiveCheckInsightDeferred = async { loadCompulsiveCheckInsight() }
             val notificationLeaderInsightDeferred = async { loadNotificationLeaderInsight() }
             val timePatternInsightDeferred = async { loadTimePatternInsight() }
+            val nightOwlInsightDeferred = async { loadNightOwlInsight() } // Add this line
 
 
             // Await all results and filter out any nulls (if an insight can't be generated)
             val loadedInsights = listOfNotNull(
                 firstAppInsightDeferred.await(),
                 lastAppInsightDeferred.await(),
+                nightOwlInsightDeferred.await(), // Add this line
                 compulsiveCheckInsightDeferred.await(),
                 notificationLeaderInsightDeferred.await(),
                 timePatternInsightDeferred.await()
@@ -202,6 +205,28 @@ class InsightsViewModel @Inject constructor(
             timeOfDay = timeOfDay,
             metric = "unlocks",
             period = period
+        )
+    }
+
+    private suspend fun loadNightOwlInsight(): InsightCardUiModel.NightOwl? {
+        val today = DateUtil.getCurrentLocalDateString()
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(today)
+        // Define our late-night window: 12 AM to 4 AM
+        val endOfWindow = startOfDay + TimeUnit.HOURS.toMillis(4)
+
+        val lastAppEvent = scrollDataRepository.getLastAppUsedBetween(startOfDay, endOfWindow) ?: return null
+
+        val appMetadata = appMetadataRepository.getAppMetadata(lastAppEvent.packageName)
+        val iconFile = appMetadataRepository.getIconFile(lastAppEvent.packageName)
+
+        val timeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
+        val usageTime = DateUtil.formatUtcTimestampToLocalDateTime(lastAppEvent.eventTimestamp)
+            .format(timeFormatter)
+
+        return InsightCardUiModel.NightOwl(
+            appName = appMetadata?.appName ?: lastAppEvent.packageName,
+            icon = iconFile,
+            time = usageTime
         )
     }
 }

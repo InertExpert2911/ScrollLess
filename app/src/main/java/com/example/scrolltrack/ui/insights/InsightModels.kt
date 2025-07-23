@@ -15,6 +15,12 @@ sealed class InsightCardUiModel(val id: String) {
         val time: String
     ) : InsightCardUiModel("last_app")
 
+    data class NightOwl(
+        val appName: String?,
+        val icon: File?,
+        val time: String
+    ) : InsightCardUiModel("night_owl")
+
     data class CompulsiveCheck(
         val appName: String?,
         val icon: File?,

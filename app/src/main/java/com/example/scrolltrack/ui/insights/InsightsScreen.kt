@@ -118,6 +118,7 @@ fun InsightsScreen(
                     is InsightCardUiModel.Loading -> LoadingInsightCard()
                     is InsightCardUiModel.FirstApp -> FirstAppInsightCard(insight)
                     is InsightCardUiModel.LastApp -> LastAppInsightCard(insight)
+                    is InsightCardUiModel.NightOwl -> NightOwlInsightCard(insight) // Add this line
                     is InsightCardUiModel.CompulsiveCheck -> CompulsiveCheckInsightCard(insight)
                     is InsightCardUiModel.NotificationLeader -> NotificationLeaderInsightCard(insight)
                     is InsightCardUiModel.TimePattern -> TimePatternInsightCard(insight)
@@ -163,6 +164,47 @@ fun FirstAppInsightCard(insight: InsightCardUiModel.FirstApp) {
                             append(insight.appName ?: "an app")
                         }
                         append(" at ${insight.time}.")
+                    },
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun NightOwlInsightCard(insight: InsightCardUiModel.NightOwl) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Image(
+                painter = rememberAsyncImagePainter(
+                    model = insight.icon ?: R.mipmap.ic_launcher_round
+                ),
+                contentDescription = "App Icon",
+                modifier = Modifier.size(48.dp).clip(CircleShape)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
+                Text(
+                    text = "Night Owl",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    buildAnnotatedString {
+                        append("Burning the midnight oil? You were on ")
+                        withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                            append(insight.appName ?: "an app")
+                        }
+                        append(" until ${insight.time}.")
                     },
                     style = MaterialTheme.typography.bodyMedium
                 )
