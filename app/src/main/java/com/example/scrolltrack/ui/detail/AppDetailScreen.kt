@@ -17,7 +17,20 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.HorizontalRule
-import androidx.compose.material3.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.ToggleButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -27,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
@@ -93,7 +107,7 @@ private fun formatDateToDayOfMonth(dateString: String): String {
 // Constant for swipe threshold
 private const val SWIPE_THRESHOLD_DP = 50 // Adjust as needed
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun AppDetailScreen(
     navController: NavController,
@@ -168,7 +182,7 @@ fun AppDetailScreen(
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
                             text = appName ?: packageName,
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.headlineMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -357,38 +371,37 @@ fun AppDetailScreen(
 
             // Period Selector Buttons
             Row(
-                modifier = Modifier
+                Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .clip(MaterialTheme.shapes.medium)
-                    .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.medium),
-                horizontalArrangement = Arrangement.Center
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
             ) {
-                val items = ChartPeriodType.entries
-                items.forEachIndexed { index, period ->
-                    val isSelected = currentPeriodType == period
-                    val background = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
-                    val contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(background)
-                            .clickable { viewModel.changeChartPeriod(period) }
-                            .padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center
+                val options = ChartPeriodType.entries
+                options.forEachIndexed { index, period ->
+                    ToggleButton(
+                        checked = currentPeriodType == period,
+                        onCheckedChange = { viewModel.changeChartPeriod(period) },
+                        modifier = Modifier.weight(1f),
+                        shapes =
+                        when (index) {
+                            0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                            options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                            else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                        },
                     ) {
+                        if (currentPeriodType == period) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Selected",
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
                         Text(
-                            text = period.name.replaceFirstChar { it.titlecase(Locale.getDefault()) },
-                            color = contentColor
-                        )
-                    }
-                    if (index < items.lastIndex) {
-                        Divider(
-                            color = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .width(1.dp)
+                            text = period.name.lowercase()
+                                .replaceFirstChar {
+                                    if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
+                                }
                         )
                     }
                 }
@@ -428,6 +441,7 @@ fun UsageBarScrollLineChart(
 ) {
     val textMeasurer = rememberTextMeasurer()
     val context = LocalContext.current
+    val surfaceContainerColor = MaterialTheme.colorScheme.surfaceContainer
 
     // Hoisted Paint objects for performance
     val axisLabelPaint = remember { android.graphics.Paint().apply { textAlign = android.graphics.Paint.Align.LEFT } }
@@ -516,20 +530,40 @@ fun UsageBarScrollLineChart(
         )
 
         val barCount = chartState.data.size
-        val totalBarWidthFactor = when (chartState.periodType) {
-            ChartPeriodType.DAILY, ChartPeriodType.WEEKLY -> 0.6f
-            ChartPeriodType.MONTHLY -> 0.7f
+        val barWidth: Float
+        val barSpacing: Float
+
+        when (chartState.periodType) {
+            ChartPeriodType.DAILY, ChartPeriodType.WEEKLY -> {
+                // Keep these centered and spaced out
+                val totalBarWidthFactor = 0.7f
+                val totalBarLayoutWidth = chartWidth * totalBarWidthFactor
+                barWidth = (totalBarLayoutWidth / barCount).coerceAtLeast(2f)
+                barSpacing = (chartWidth - totalBarLayoutWidth) / (barCount + 1).coerceAtLeast(1)
+            }
+            ChartPeriodType.MONTHLY -> {
+                // Use fixed width and spacing for a denser look
+                barWidth = 8.dp.toPx()
+                barSpacing = 6.dp.toPx()
+            }
         }
-        val totalBarLayoutWidth = chartWidth * totalBarWidthFactor
-        val barWidth = (totalBarLayoutWidth / barCount).coerceAtLeast(2f)
-        val barSpacing = (chartWidth - totalBarLayoutWidth) / (barCount + 1).coerceAtLeast(1)
+        val totalRequiredWidth = barCount * (barWidth + barSpacing) + barSpacing
+        val actualChartWidth = maxOf(chartWidth, totalRequiredWidth)
+        val startOffset = (chartWidth - totalRequiredWidth).coerceAtMost(0f) / 2 // Center if smaller than screen
+
+        // Draw a subtle background for the chart area
+        drawRect(
+            color = surfaceContainerColor,
+            topLeft = Offset(chartState.leftMargin, chartState.topMargin),
+            size = Size(chartWidth, chartHeight)
+        )
 
         chartState.data.forEachIndexed { index, detail ->
             if (detail.usageTimeMillis > 0) {
                 val barHeightNorm = ((detail.usageTimeMillis - chartState.minUsageTime).toFloat() / (chartState.maxUsageTime - chartState.minUsageTime).coerceAtLeast(1L).toFloat())
                 val barActualHeight = (barHeightNorm * chartHeight).coerceAtLeast(2.dp.toPx())
 
-                val barLeft = chartState.leftMargin + barSpacing + index * (barWidth + barSpacing)
+                val barLeft = chartState.leftMargin + startOffset + barSpacing + index * (barWidth + barSpacing)
                 val barTop = chartState.topMargin + chartHeight - barActualHeight
                 val barRight = barLeft + barWidth
 
@@ -583,7 +617,7 @@ fun UsageBarScrollLineChart(
 
         val scrollDataPoints = chartState.data.mapIndexedNotNull { index, detail ->
             if (detail.scrollUnits <= 0) return@mapIndexedNotNull null
-            val barLeft = chartState.leftMargin + barSpacing + index * (barWidth + barSpacing)
+            val barLeft = chartState.leftMargin + startOffset + barSpacing + index * (barWidth + barSpacing)
             val barCenterX = barLeft + barWidth / 2
             val scrollRange = (chartState.maxScrollUnits - chartState.minScrollUnits).coerceAtLeast(1L)
             val yNorm = if (scrollRange == 0L) 0f else ((detail.scrollUnits - chartState.minScrollUnits).toFloat() / scrollRange.toFloat())
@@ -627,7 +661,9 @@ fun UsageBarScrollLineChart(
                 ChartPeriodType.MONTHLY -> {
                     try {
                         val dayOfMonth = dailyData.date.substringAfterLast('-').toInt()
-                        if (dayOfMonth == 1 || index == chartState.data.size - 1 || (dayOfMonth % 5 == 0 && !(dayOfMonth == 30 && chartState.data.size == 31))) {
+                        val isLastDay = index == chartState.data.size - 1
+                        // Show label for the 1st, 15th, and last day of the month
+                        if (dayOfMonth == 1 || dayOfMonth == 15 || isLastDay) {
                             dayOfMonth.toString()
                         } else ""
                     } catch (e: Exception) { "" }
@@ -635,7 +671,8 @@ fun UsageBarScrollLineChart(
             }
             if (formattedDate.isNotEmpty()) {
                 val textLayoutResult = textMeasurer.measure(buildAnnotatedString { append(formattedDate) }, style = chartState.styles.axisLabelTextStyle)
-                val labelX = chartState.leftMargin + barSpacing + index * (barWidth + barSpacing) + barWidth / 2 - textLayoutResult.size.width / 2
+                val barLeft = chartState.leftMargin + startOffset + barSpacing + index * (barWidth + barSpacing)
+                val labelX = barLeft + barWidth / 2 - textLayoutResult.size.width / 2
                 axisLabelPaint.color = chartState.colors.labelColor.toArgb()
                 axisLabelPaint.textSize = chartState.styles.axisLabelTextStyle.fontSize.toPx()
                 drawContext.canvas.nativeCanvas.drawText(formattedDate, labelX, chartState.topMargin + chartHeight + 5f + textLayoutResult.size.height, axisLabelPaint)
@@ -673,7 +710,7 @@ fun UsageBarScrollLineChart(
             val tooltipTotalWidth = tooltipContentWidth + 2 * tooltipPaddingHorizontal
             val tooltipTotalHeight = tooltipContentHeight + 2 * tooltipPaddingVertical
 
-            val selectedBarLeft = chartState.leftMargin + barSpacing + index * (barWidth + barSpacing)
+            val selectedBarLeft = chartState.leftMargin + startOffset + barSpacing + index * (barWidth + barSpacing)
             val selectedBarCenterX = selectedBarLeft + barWidth / 2
             val selectedBarUsageNorm = ((selectedData.usageTimeMillis - chartState.minUsageTime).toFloat() / (chartState.maxUsageTime - chartState.minUsageTime).coerceAtLeast(1L).toFloat())
             val selectedBarActualHeight = (selectedBarUsageNorm * chartHeight).coerceAtLeast(0f)
