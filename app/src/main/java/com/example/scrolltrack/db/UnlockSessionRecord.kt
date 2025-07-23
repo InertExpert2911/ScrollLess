@@ -44,5 +44,8 @@ data class UnlockSessionRecord(
     val sessionEndReason: String? = null, // e.g., "LOCKED", "GHOST"
 
     @ColumnInfo(name = "is_compulsive", defaultValue = "0")
-    val isCompulsive: Boolean = false
+    val isCompulsive: Boolean = false,
+
+    @ColumnInfo(name = "triggering_notification_package_name", index = true)
+    val triggeringNotificationPackageName: String? = null
 )

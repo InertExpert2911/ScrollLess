@@ -152,17 +152,19 @@ class InsightsViewModel @Inject constructor(
 
     private suspend fun loadNotificationLeaderInsight(): InsightCardUiModel.NotificationLeader? {
         val today = DateUtil.getCurrentLocalDateString()
-        val notificationCounts = scrollDataRepository.getNotificationDrivenUnlockCounts(today, today).first()
+        // Call our new, more accurate method
+        val notificationCounts = scrollDataRepository.getNotificationDrivenUnlockCountsByPackage(today, today).first()
         val topApp = notificationCounts.maxByOrNull { it.count } ?: return null
 
-        // Fetch today's summary directly and wait for it if needed. This is more reliable.
-        val todaysSummary = scrollDataRepository.getDeviceSummaryForDate(today).first() ?: return null
-        val totalUnlocks = todaysSummary.totalUnlockCount
+        val todaysSummary = scrollDataRepository.getDeviceSummaryForDate(today).first()
+        val totalUnlocks = todaysSummary?.totalUnlockCount ?: 0
 
         if (totalUnlocks == 0) return null
 
         val percentage = (topApp.count.toDouble() / totalUnlocks.toDouble() * 100).toInt()
-        if (percentage < 10) return null // Only show if significant
+        
+        // Only show if the percentage is significant
+        if (percentage < 10) return null
 
         val appMetadata = appMetadataRepository.getAppMetadata(topApp.packageName)
         val iconFile = appMetadataRepository.getIconFile(topApp.packageName)

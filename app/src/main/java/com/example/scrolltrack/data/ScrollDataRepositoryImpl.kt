@@ -297,7 +297,6 @@ class ScrollDataRepositoryImpl @Inject constructor(
                         lockTimestamp = event.eventTimestamp,
                         duration = event.eventTimestamp - openSession.unlockTimestamp,
                         firstAppPackage = null,
-                        notificationKey = null,
                         sessionType = "Glance",
                         sessionEndReason = "GHOST"
                     )
@@ -340,20 +339,34 @@ class ScrollDataRepositoryImpl @Inject constructor(
                     }
                     // --- NEW LOGIC ENDS HERE ---
 
-                    val recentNotification = notifications.lastOrNull { n ->
-                        currentOpenSession.unlockTimestamp > n.postTimeUTC &&
-                                (currentOpenSession.unlockTimestamp - n.postTimeUTC) < AppConstants.NOTIFICATION_UNLOCK_WINDOW_MS
+                    // --- NEW NOTIFICATION LOGIC STARTS HERE ---
+                    var notificationPackageName: String? = null
+
+                    // Only proceed if an app was actually opened during the session.
+                    if (firstAppEvent != null) {
+                        // 1. Find the most recent notification that occurred *before* the unlock.
+                        val recentNotification = notifications.lastOrNull { n ->
+                            n.postTimeUTC < currentOpenSession.unlockTimestamp &&
+                                    (currentOpenSession.unlockTimestamp - n.postTimeUTC) < AppConstants.NOTIFICATION_UNLOCK_WINDOW_MS
+                        }
+
+                        // 2. Check if the app that sent the notification is the SAME as the app that was opened.
+                        if (recentNotification != null && recentNotification.packageName == firstAppEvent.packageName) {
+                            // 3. We have a match! This unlock was driven by the notification.
+                            notificationPackageName = recentNotification.packageName
+                        }
                     }
+                    // --- NEW NOTIFICATION LOGIC ENDS HERE ---
 
                     unlockSessionDao.closeSession(
                         sessionId = currentOpenSession.id,
                         lockTimestamp = event.eventTimestamp,
                         duration = duration,
                         firstAppPackage = firstAppEvent?.packageName,
-                        notificationKey = recentNotification?.notificationKey,
                         sessionType = sessionType,
                         sessionEndReason = "LOCKED",
-                        isCompulsive = isCompulsiveCheck // Pass our new flag
+                        isCompulsive = isCompulsiveCheck, // Pass our new flag
+                        triggeringNotificationPackageName = notificationPackageName
                     )
                 }
                 openSession = null
@@ -380,7 +393,6 @@ class ScrollDataRepositoryImpl @Inject constructor(
                     lockTimestamp = endTime,
                     duration = duration,
                     firstAppPackage = null,
-                    notificationKey = null,
                     sessionType = sessionType,
                     sessionEndReason = "END_OF_DAY"
                 )
@@ -542,8 +554,8 @@ class ScrollDataRepositoryImpl @Inject constructor(
         }
     }
 
-    override fun getNotificationDrivenUnlockCounts(startDate: String, endDate: String): Flow<List<PackageCount>> {
-        val notificationUnlocksFlow = unlockSessionDao.getNotificationDrivenUnlockCounts(startDate, endDate)
+    override fun getNotificationDrivenUnlockCountsByPackage(startDate: String, endDate: String): Flow<List<PackageCount>> {
+        val notificationUnlocksFlow = unlockSessionDao.getNotificationDrivenUnlockCountsByPackage(startDate, endDate)
         return combine(notificationUnlocksFlow, filterSet) { unlockCounts, currentFilterSet ->
             unlockCounts.filter { it.packageName !in currentFilterSet }
         }

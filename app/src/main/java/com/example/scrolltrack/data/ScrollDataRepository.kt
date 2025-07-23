@@ -52,6 +52,6 @@ interface ScrollDataRepository {
     suspend fun getFirstAppUsedAfter(timestamp: Long): RawAppEvent?
     suspend fun getLastAppUsedOn(dateString: String): RawAppEvent?
     fun getCompulsiveCheckCountsByPackage(startDate: String, endDate: String): Flow<List<PackageCount>>
-    fun getNotificationDrivenUnlockCounts(startDate: String, endDate: String): Flow<List<PackageCount>>
+    fun getNotificationDrivenUnlockCountsByPackage(startDate: String, endDate: String): Flow<List<PackageCount>>
     fun getUnlockSessionsForDateRange(startDate: String, endDate: String): Flow<List<UnlockSessionRecord>>
 }
