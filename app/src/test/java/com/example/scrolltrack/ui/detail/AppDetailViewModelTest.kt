@@ -42,7 +42,6 @@ class AppDetailViewModelTest {
         coEvery { appMetadataRepository.getIconFile(packageName) } returns null
         coEvery { conversionUtil.formatScrollDistance(any(), any()) } returns ("0" to "m")
 
-        // Default empty returns for suspend functions
         coEvery { scrollDataRepository.getUsageForPackageAndDates(any(), any()) } returns emptyList()
         coEvery { scrollDataRepository.getAggregatedScrollForPackageAndDates(any(), any()) } returns emptyList()
 
@@ -102,7 +101,7 @@ class AppDetailViewModelTest {
 
     @Test
     fun `loadAppDetailChartData combines usage and scroll data correctly`() = runTest {
-        val date = DateUtil.getPastDateString(2) // A date within the default weekly view
+        val date = DateUtil.getPastDateString(2)
         val referenceDate = DateUtil.getCurrentLocalDateString()
         val weeklyDates = DateUtil.getStartOfWeek(DateUtil.parseLocalDate(referenceDate)!!).let { start ->
             (0..6).map { start.plusDays(it.toLong()).toString() }
@@ -111,7 +110,7 @@ class AppDetailViewModelTest {
         coEvery {
             scrollDataRepository.getUsageForPackageAndDates(eq(packageName), eq(weeklyDates))
         } returns listOf(
-            DailyAppUsageRecord(packageName = packageName, dateString = date, usageTimeMillis = 3600000, activeTimeMillis = 1800000, appOpenCount = 5)
+            DailyAppUsageRecord(packageName = packageName, dateString = date, usageTimeMillis = 3600000, activeTimeMillis = 1800000, appOpenCount = 5, notificationCount = 0, lastUpdatedTimestamp = 0)
         )
         coEvery {
             scrollDataRepository.getAggregatedScrollForPackageAndDates(eq(packageName), eq(weeklyDates))
@@ -120,11 +119,11 @@ class AppDetailViewModelTest {
         )
         coEvery { conversionUtil.formatScrollDistance(500, 1000) } returns ("1.23" to "m")
 
-        viewModel.changeChartPeriod(ChartPeriodType.WEEKLY) // Trigger a reload with the correct period
+        viewModel.changeChartPeriod(ChartPeriodType.WEEKLY)
         testDispatcher.scheduler.advanceUntilIdle()
 
         val chartData = viewModel.appDetailChartData.value
-        assertThat(chartData).hasSize(7) // Weekly view has 7 days
+        assertThat(chartData).hasSize(7)
         val dayData = chartData.find { it.date == date }
         assertThat(dayData).isNotNull()
         assertThat(dayData!!.usageTimeMillis).isEqualTo(3600000)
@@ -132,9 +131,7 @@ class AppDetailViewModelTest {
         assertThat(dayData.scrollUnits).isEqualTo(1500)
         assertThat(dayData.openCount).isEqualTo(5)
 
-        // The summary now reflects an average, not the single day's data
-        // Let's test the individual focused day instead.
         viewModel.setFocusedDate(date)
         testDispatcher.scheduler.advanceUntilIdle()
     }
-} 
+}

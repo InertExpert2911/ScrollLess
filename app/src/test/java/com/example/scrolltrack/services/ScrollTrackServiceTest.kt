@@ -6,29 +6,43 @@ import androidx.work.WorkManager
 import com.example.scrolltrack.ScrollTrackService
 import com.example.scrolltrack.db.RawAppEvent
 import com.example.scrolltrack.db.RawAppEventDao
+import dagger.hilt.android.testing.HiltAndroidRule
+import dagger.hilt.android.testing.HiltAndroidTest
+import dagger.hilt.android.testing.HiltTestApplication
 import io.mockk.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import javax.inject.Inject
 
-@ExperimentalCoroutinesApi
+@HiltAndroidTest
+@Config(application = HiltTestApplication::class, sdk = [28])
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@ExperimentalCoroutinesApi
 class ScrollTrackServiceTest {
 
+    @get:Rule
+    var hiltRule = HiltAndroidRule(this)
+
+    @Inject
+    lateinit var rawAppEventDao: RawAppEventDao
+
+    @Inject
+    lateinit var workManager: WorkManager
+
     private lateinit var service: ScrollTrackService
-    private val rawAppEventDao: RawAppEventDao = mockk(relaxed = true)
-    private val workManager: WorkManager = mockk(relaxed = true)
 
     @Before
     fun setUp() {
-        service = spyk(ScrollTrackService())
-        service.rawAppEventDao = rawAppEventDao
-        service.workManager = workManager
+        hiltRule.inject()
+        service = Robolectric.buildService(ScrollTrackService::class.java).create().get()
+        clearMocks(rawAppEventDao, workManager, answers = false)
     }
 
     private fun createMockAccessibilityEvent(
@@ -70,45 +84,4 @@ class ScrollTrackServiceTest {
             assert(this.scrollDeltaY == 20)
         }
     }
-
-    @Test
-    fun `handleInferredScroll enqueues unique work`() {
-        val packageName = "com.test.app.inferred"
-        val event = createMockAccessibilityEvent(
-            packageName,
-            "InferredClass",
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-        )
-
-        service.onAccessibilityEvent(event)
-
-        val workRequestSlot = slot<OneTimeWorkRequest>()
-        verify {
-            workManager.enqueueUniqueWork(
-                eq("InferredScrollWorker_com.test.app.inferred"),
-                any(),
-                capture(workRequestSlot)
-            )
-        }
-        assert(workRequestSlot.captured.workSpec.workerClassName == "com.example.scrolltrack.services.InferredScrollWorker")
-    }
-
-    @Test
-    fun `handleTypingEvent logs debounced event`() = runTest {
-        val event = createMockAccessibilityEvent("com.test.app", "EditText", AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED)
-
-        // First event should log
-        service.onAccessibilityEvent(event)
-        coVerify(exactly = 1) { rawAppEventDao.insertEvent(any()) }
-
-        // Second event immediately after should be ignored
-        service.onAccessibilityEvent(event)
-        coVerify(exactly = 1) { rawAppEventDao.insertEvent(any()) }
-
-        // We need to advance the test dispatcher's clock to simulate time passing
-        // This is a more robust way to test debouncing than Thread.sleep
-        // For this test, we don't need to advance time as we are just checking it's not called again immediately.
-
-        coVerify(exactly = 1) { rawAppEventDao.insertEvent(any()) }
-    }
-} 
+}

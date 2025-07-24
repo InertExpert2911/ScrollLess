@@ -60,35 +60,32 @@ class UnlockSessionDaoTest {
 
     @Test
     fun `closeSession updates the correct session`() = runTest {
-        dao.insert(unlock1)
-        val inserted = dao.getOpenSessionBefore("2024-01-01", 1100L)
-        assertThat(inserted).isNotNull()
+        val insertedId = dao.insert(unlock1)
         
         val lockTime = 1500L
-        val duration = lockTime - inserted!!.unlockTimestamp
+        val duration = lockTime - unlock1.unlockTimestamp
         val pkg = "com.app.one"
         
-        dao.closeSession(inserted.id, lockTime, duration, pkg, null)
+        dao.closeSession(insertedId, lockTime, duration, pkg, "Intentional", "LOCKED")
         
-        // Check that it is indeed closed and not returned as an open session
         val closedSession = dao.getOpenSessionBefore("2024-01-01", 1600L)
         assertThat(closedSession).isNull()
 
-        val unlockCount = dao.getUnlockCountForDate("2024-01-01").first()
+        val unlockCount = dao.getUnlockCountForDateFlow("2024-01-01").first()
         assertThat(unlockCount).isEqualTo(1)
     }
 
     @Test
-    fun `getUnlockCountForDate returns correct count`() = runTest {
+    fun `getUnlockCountForDateFlow returns correct count`() = runTest {
         dao.insert(unlock1)
         dao.insert(unlock2)
         dao.insert(unlock3)
         
-        dao.getUnlockCountForDate("2024-01-01").test {
+        dao.getUnlockCountForDateFlow("2024-01-01").test {
             assertThat(awaitItem()).isEqualTo(2)
             cancelAndIgnoreRemainingEvents()
         }
-        dao.getUnlockCountForDate("2024-01-02").test {
+        dao.getUnlockCountForDateFlow("2024-01-02").test {
             assertThat(awaitItem()).isEqualTo(1)
             cancelAndIgnoreRemainingEvents()
         }
@@ -102,21 +99,37 @@ class UnlockSessionDaoTest {
 
         dao.deleteSessionsForDate("2024-01-01")
 
-        val day1Count = dao.getUnlockCountForDate("2024-01-01").first()
-        val day2Count = dao.getUnlockCountForDate("2024-01-02").first()
+        val day1Count = dao.getUnlockCountForDateFlow("2024-01-01").first()
+        val day2Count = dao.getUnlockCountForDateFlow("2024-01-02").first()
 
         assertThat(day1Count).isEqualTo(0)
         assertThat(day2Count).isEqualTo(1)
     }
-    
-    @Test
-    fun `getUnlockTimestampsForDate returns correct timestamps`() = runTest {
-        dao.insert(unlock1)
-        dao.insert(unlock2)
-        dao.insert(unlock3)
 
-        val timestamps = dao.getUnlockTimestampsForDate("2024-01-01")
-        assertThat(timestamps).hasSize(2)
-        assertThat(timestamps).containsExactly(1000L, 2000L)
+    @Test
+    fun getCompulsiveCheckCountsByPackage_returnsCorrectAggregatedCounts() = runTest {
+        // Given: Insert several unlock sessions
+        // App 1: 2 compulsive checks
+        dao.insert(UnlockSessionRecord(unlockTimestamp = 1, dateString = "2023-01-01", firstAppPackageName = "com.app1", isCompulsive = true, unlockEventType = "TEST"))
+        dao.insert(UnlockSessionRecord(unlockTimestamp = 2, dateString = "2023-01-01", firstAppPackageName = "com.app1", isCompulsive = true, unlockEventType = "TEST"))
+        // App 1: 1 non-compulsive check
+        dao.insert(UnlockSessionRecord(unlockTimestamp = 3, dateString = "2023-01-01", firstAppPackageName = "com.app1", isCompulsive = false, unlockEventType = "TEST"))
+        // App 2: 1 compulsive check
+        dao.insert(UnlockSessionRecord(unlockTimestamp = 4, dateString = "2023-01-01", firstAppPackageName = "com.app2", isCompulsive = true, unlockEventType = "TEST"))
+        // App 3: No compulsive checks
+        dao.insert(UnlockSessionRecord(unlockTimestamp = 5, dateString = "2023-01-01", firstAppPackageName = "com.app3", isCompulsive = false, unlockEventType = "TEST"))
+        // Another date to ensure the date range filter works
+        dao.insert(UnlockSessionRecord(unlockTimestamp = 6, dateString = "2023-01-02", firstAppPackageName = "com.app1", isCompulsive = true, unlockEventType = "TEST"))
+
+
+        // When
+        val compulsiveCounts = dao.getCompulsiveCheckCountsByPackage("2023-01-01", "2023-01-01").first()
+
+        // Then
+        assertThat(compulsiveCounts).hasSize(2) // Only app1 and app2 should be present
+        assertThat(compulsiveCounts).containsExactly(
+            PackageCount(packageName = "com.app1", count = 2),
+            PackageCount(packageName = "com.app2", count = 1)
+        ).inOrder() // The result should be ordered by count descending
     }
-} 
+}

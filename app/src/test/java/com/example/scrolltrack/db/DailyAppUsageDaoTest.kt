@@ -6,6 +6,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.cash.turbine.test
+import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -238,4 +239,5 @@ class DailyAppUsageDaoTest {
         assertThat(count1).isEqualTo(2)
         assertThat(count2).isEqualTo(0)
     }
+
 }

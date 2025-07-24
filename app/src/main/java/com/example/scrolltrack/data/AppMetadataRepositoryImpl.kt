@@ -14,7 +14,7 @@ import com.example.scrolltrack.db.AppMetadataDao
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
@@ -121,7 +121,7 @@ class AppMetadataRepositoryImpl @Inject constructor(
     }
 
     override suspend fun getNonVisiblePackageNames(): List<String> {
-        return appMetadataDao.getNonVisiblePackageNames()
+        return appMetadataDao.getNonVisiblePackageNames().first()
     }
 
     override suspend fun updateUserHidesOverride(packageName: String, userHidesOverride: Boolean?) {

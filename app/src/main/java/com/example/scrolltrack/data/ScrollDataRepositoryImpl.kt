@@ -538,7 +538,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
     override fun getAllNotificationSummaries(): Flow<List<NotificationSummary>> = notificationDao.getAllNotificationSummaries()
 
     override fun getInsightsForDate(dateString: String): Flow<List<DailyInsight>> {
-        return dailyInsightDao.getInsightsForDate(dateString)
+        return dailyInsightDao.getInsightsForDateAsFlow(dateString)
     }
 
     // --- Insight-Specific Implementations ---

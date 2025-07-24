@@ -11,8 +11,11 @@ interface DailyInsightDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertInsights(insights: List<DailyInsight>)
 
-    @Query("SELECT * FROM daily_insights WHERE date_string = :dateString")
-    fun getInsightsForDate(dateString: String): Flow<List<DailyInsight>>
+    @Query("SELECT * FROM daily_insights WHERE date_string = :dateString ORDER BY insight_key ASC")
+    fun getInsightsForDate(dateString: String): List<DailyInsight>
+
+    @Query("SELECT * FROM daily_insights WHERE date_string = :dateString ORDER BY insight_key ASC")
+    fun getInsightsForDateAsFlow(dateString: String): Flow<List<DailyInsight>>
 
     @Query("SELECT * FROM daily_insights WHERE date_string IN (:dateStrings)")
     fun getInsightsForDates(dateStrings: List<String>): Flow<List<DailyInsight>>

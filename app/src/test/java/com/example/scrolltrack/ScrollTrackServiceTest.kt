@@ -8,7 +8,6 @@ import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkManager
 import com.example.scrolltrack.db.RawAppEvent
 import com.example.scrolltrack.db.RawAppEventDao
-import com.example.scrolltrack.services.InferredScrollWorker
 import com.example.scrolltrack.util.AppConstants
 import com.google.common.truth.Truth.assertThat
 import dagger.hilt.android.testing.HiltAndroidRule
@@ -80,22 +79,6 @@ class ScrollTrackServiceTest {
     }
 
     @Test
-    fun `onAccessibilityEvent - enqueues inferred scroll worker on content change`() = runTest {
-        val packageName = "com.example.inferredapp"
-        val event: AccessibilityEvent = mockk(relaxed = true)
-        every { event.eventType } returns AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-        every { event.packageName } returns packageName
-
-        service.onAccessibilityEvent(event)
-
-        val workRequest = slot<OneTimeWorkRequest>()
-        verify { workManager.enqueueUniqueWork(any(), any(), capture(workRequest)) }
-
-        assertThat(workRequest.captured.workSpec.workerClassName).isEqualTo(InferredScrollWorker::class.java.name)
-        assertThat(workRequest.captured.workSpec.input.getString(InferredScrollWorker.KEY_PACKAGE_NAME)).isEqualTo(packageName)
-    }
-
-    @Test
     fun `isNodeScrollable - returns true for scrollable node`() {
         val scrollableNode: AccessibilityNodeInfo = mockk(relaxed = true)
         every { scrollableNode.isScrollable } returns true
@@ -141,4 +124,4 @@ class ScrollTrackServiceTest {
 
         coVerify(exactly = 0) { rawAppEventDao.insertEvent(any()) }
     }
-} 
+}

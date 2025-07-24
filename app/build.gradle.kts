@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.hilt.android)
+    alias(libs.plugins.jacoco)
 }
 
 android {
@@ -139,4 +140,50 @@ dependencies {
 
     // Robolectric for providing Android framework classes in local tests
     testImplementation(libs.robolectric)
+}
+
+jacoco {
+    toolVersion = libs.versions.jacoco.get()
+}
+
+tasks.register<JacocoReport>("jacocoTestReport") {
+    dependsOn("testDebugUnitTest")
+
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+
+    val fileFilter = listOf(
+        // Android generated classes
+        "**/R.class",
+        "**/R$*.class",
+        "**/BuildConfig.*",
+        "**/Manifest*.*",
+        // Hilt generated classes
+        "**/*_HiltModules*.*",
+        "**/*_Factory.*",
+        "**/*_MembersInjector.*",
+        "**/Dagger*Component.*",
+        // Files to exclude
+        "**/*Test*.*",
+        "android/**/*.*",
+        "**/*Application.*",
+        "**/*Activity.*"
+    )
+
+    val mainSrc = "${project.projectDir}/src/main/java"
+    val classFiles = fileTree(project.buildDir) {
+        include("**/tmp/kotlin-classes/debug/**/*.class")
+        exclude(fileFilter)
+    }
+
+    sourceDirectories.setFrom(files(mainSrc))
+    classDirectories.setFrom(classFiles)
+
+    executionData.setFrom(
+        fileTree(project.buildDir) {
+            include("**/outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
+        }
+    )
 }

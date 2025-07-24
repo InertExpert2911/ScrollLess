@@ -5,8 +5,10 @@ import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Before
@@ -24,9 +26,10 @@ class AppMetadataDaoTest {
     private lateinit var database: AppDatabase
     private lateinit var dao: AppMetadataDao
 
-    private val app1 = AppMetadata(packageName = "com.app.one", appName = "App One", versionCode = 1, versionName = "1.0", isSystemApp = false, isInstalled = true, installTimestamp = 1000L, lastUpdateTimestamp = 1000L)
+    private val app1 = AppMetadata(packageName = "com.app.one", appName = "App One", versionCode = 1, versionName = "1.0", isSystemApp = false, isInstalled = true, isUserVisible = true, installTimestamp = 1000L, lastUpdateTimestamp = 1000L)
     private val app2 = AppMetadata(packageName = "com.app.two", appName = "App Two", versionCode = 1, versionName = "1.0", isSystemApp = true, isInstalled = true, isUserVisible = false, installTimestamp = 2000L, lastUpdateTimestamp = 2000L)
-    private val app3 = AppMetadata(packageName = "com.app.three", appName = "App Three", versionCode = 1, versionName = "1.0", isSystemApp = false, isInstalled = true, installTimestamp = 3000L, lastUpdateTimestamp = 3000L)
+    private val app3 = AppMetadata(packageName = "com.app.three", appName = "App Three", versionCode = 1, versionName = "1.0", isSystemApp = false, isInstalled = true, isUserVisible = true, installTimestamp = 3000L, lastUpdateTimestamp = 3000L)
+
 
     @Before
     fun setup() {
@@ -43,17 +46,36 @@ class AppMetadataDaoTest {
     }
 
     @Test
-    fun `insertOrUpdate and getByPackageName work correctly`() = runTest {
+    fun `insertOrUpdate inserts a new record correctly`() = runTest {
         dao.insertOrUpdate(app1)
         val retrieved = dao.getByPackageName("com.app.one")
         assertThat(retrieved).isEqualTo(app1)
-
-        val updatedApp1 = app1.copy(versionCode = 2, lastUpdateTimestamp = 5000L)
-        dao.insertOrUpdate(updatedApp1)
-        val updatedRetrieved = dao.getByPackageName("com.app.one")
-        assertThat(updatedRetrieved?.versionCode).isEqualTo(2)
-        assertThat(updatedRetrieved?.lastUpdateTimestamp).isEqualTo(5000L)
     }
+
+    @Test
+    fun `insertOrUpdate updates an existing record correctly`() = runTest {
+        dao.insertOrUpdate(app1)
+        val updatedApp1 = app1.copy(
+            appName = "App One Updated",
+            versionCode = 2,
+            versionName = "1.1",
+            isSystemApp = true, // This shouldn't typically change, but we test it.
+            isInstalled = true,
+            isUserVisible = false,
+            lastUpdateTimestamp = 5000L,
+            isIconCached = true
+        )
+        dao.insertOrUpdate(updatedApp1)
+        val retrieved = dao.getByPackageName("com.app.one")
+        assertThat(retrieved).isEqualTo(updatedApp1)
+    }
+
+    @Test
+    fun `getByPackageName returns null for non-existent package`() = runTest {
+        val retrieved = dao.getByPackageName("com.app.nonexistent")
+        assertThat(retrieved).isNull()
+    }
+
 
     @Test
     fun `markAsUninstalled updates flags and timestamp`() = runTest {
@@ -69,6 +91,13 @@ class AppMetadataDaoTest {
     }
 
     @Test
+    fun `markAsUninstalled does nothing for non-existent package`() = runTest {
+        dao.markAsUninstalled("com.app.nonexistent", 9999L)
+        val allApps = dao.getAll().first()
+        assertThat(allApps).isEmpty()
+    }
+
+    @Test
     fun `getAllKnownPackageNames returns all package names`() = runTest {
         dao.insertOrUpdate(app1)
         dao.insertOrUpdate(app2)
@@ -79,25 +108,32 @@ class AppMetadataDaoTest {
     }
 
     @Test
-    fun `getNonVisiblePackageNames returns only non-visible apps`() = runTest {
-        dao.insertOrUpdate(app1) // visible by default
-        dao.insertOrUpdate(app2) // not visible
-        dao.insertOrUpdate(app3.copy(isUserVisible = false)) // not visible
+    fun `getNonVisiblePackageNames returns correct packages based on both flags`() = runTest {
+        // app1 is visible by default
+        dao.insertOrUpdate(app1)
+        // app2 is not visible by its property
+        dao.insertOrUpdate(app2)
+        // app3 is visible by its property, but we will hide it with the override
+        dao.insertOrUpdate(app3)
+        dao.updateUserHidesOverride(app3.packageName, true)
 
-        val nonVisibleNames = dao.getNonVisiblePackageNames()
+        val nonVisibleNames = dao.getNonVisiblePackageNames().first()
         assertThat(nonVisibleNames).hasSize(2)
-        assertThat(nonVisibleNames).containsExactly("com.app.two", "com.app.three")
+        assertThat(nonVisibleNames).containsExactly(app2.packageName, "com.app.three")
     }
 
     @Test
-    fun `getAll returns all metadata records`() = runTest {
+    fun `getAll returns all metadata records as flow`() = runTest {
         dao.insertOrUpdate(app1)
         dao.insertOrUpdate(app2)
         dao.insertOrUpdate(app3)
 
-        val all = dao.getAll()
-        assertThat(all).hasSize(3)
-        assertThat(all).containsExactly(app1, app2, app3)
+        dao.getAll().test {
+            val all = awaitItem()
+            assertThat(all).hasSize(3)
+            assertThat(all).containsExactly(app1, app2, app3)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test
@@ -119,4 +155,4 @@ class AppMetadataDaoTest {
         retrieved = dao.getByPackageName("com.app.one")
         assertThat(retrieved?.userHidesOverride).isNull()
     }
-} 
+}

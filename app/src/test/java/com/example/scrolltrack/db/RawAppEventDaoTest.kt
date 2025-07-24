@@ -158,4 +158,30 @@ class RawAppEventDaoTest {
         assertThat(remainingEvents).hasSize(2)
         assertThat(remainingEvents.map { it.eventTimestamp }).containsExactly(event3.eventTimestamp, event4.eventTimestamp)
     }
-} 
+
+    @Test
+    fun getEventsForPeriodFlow_emitsUpdatesWhenDataChanges() = runTest {
+        // Given
+        val event1 = RawAppEvent(id = 1, packageName = "pkg", className = "c1", eventType = 1, eventTimestamp = 100L, eventDateString = "d1", source = "s")
+        val event2 = RawAppEvent(id = 2, packageName = "pkg", className = "c1", eventType = 1, eventTimestamp = 200L, eventDateString = "d1", source = "s")
+        val eventOutsidePeriod = RawAppEvent(id = 3, packageName = "pkg", className = "c1", eventType = 1, eventTimestamp = 300L, eventDateString = "d1", source = "s")
+
+        // When / Then
+        dao.getEventsForPeriodFlow(50, 250).test {
+            assertThat(awaitItem()).isEmpty() // Initial state is empty
+
+            dao.insertEvent(event1)
+            assertThat(awaitItem()).containsExactly(event1) // First event emitted
+
+            dao.insertEvent(eventOutsidePeriod)
+            // After inserting an event outside the flow's window, Room re-triggers the query.
+            // The flow then re-emits the last valid result, which is still [event1].
+            assertThat(awaitItem()).containsExactly(event1)
+
+            dao.insertEvent(event2)
+            assertThat(awaitItem()).containsExactly(event1, event2) // Second event emitted, list is sorted
+
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+}

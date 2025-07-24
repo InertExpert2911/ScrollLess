@@ -9,6 +9,7 @@ import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -43,7 +44,7 @@ class AppVisibilityViewModelTest {
             AppMetadata("pkg3", "App 3", "1.0", 1, false, true, true, -1, true, true, 0, 0),
             AppMetadata("pkg4", "App 4", "1.0", 1, false, true, true, -1, true, false, 0, 0)
         )
-        coEvery { appMetadataRepository.getAllMetadata() } returns mockMetadata
+        coEvery { appMetadataRepository.getAllMetadata() } returns flowOf(mockMetadata)
         coEvery { appMetadataRepository.getIconFile(any()) } returns null
 
         viewModel.uiState.test {
@@ -67,4 +68,4 @@ class AppVisibilityViewModelTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
-} 
+}
