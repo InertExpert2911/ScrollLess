@@ -19,6 +19,7 @@ import com.example.scrolltrack.db.AppScrollDataPerDate
 import com.example.scrolltrack.db.UnlockSessionDao
 import com.example.scrolltrack.db.UnlockSessionRecord
 import com.example.scrolltrack.db.NotificationRecord
+import com.example.scrolltrack.db.DailyInsightDao
 import com.example.scrolltrack.di.IoDispatcher
 import com.example.scrolltrack.util.AppConstants
 import com.example.scrolltrack.util.DateUtil
@@ -41,6 +42,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlin.math.abs
 import com.example.scrolltrack.db.PackageCount
+import com.example.scrolltrack.db.DailyInsight
 
 @Singleton
 class ScrollDataRepositoryImpl @Inject constructor(
@@ -52,6 +54,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
     private val notificationDao: NotificationDao,
     private val dailyDeviceSummaryDao: DailyDeviceSummaryDao,
     private val unlockSessionDao: UnlockSessionDao,
+    private val dailyInsightDao: DailyInsightDao,
     @ApplicationContext private val context: Context,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ScrollDataRepository {
@@ -148,6 +151,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
             dailyAppUsageDao.deleteUsageForDate(dateString)
             scrollSessionDao.deleteSessionsForDate(dateString)
             dailyDeviceSummaryDao.deleteSummaryForDate(dateString)
+            dailyInsightDao.deleteInsightsForDate(dateString)
 
             if (events.isNotEmpty()) {
                 val filterSet = this@ScrollDataRepositoryImpl.filterSet.first()
@@ -180,6 +184,12 @@ class ScrollDataRepositoryImpl @Inject constructor(
                     dailyAppUsageDao.insertAllUsage(usageRecords)
                 }
                 deviceSummary?.let { dailyDeviceSummaryDao.insertOrUpdate(it) }
+
+                val unlockSessionsForInsights = unlockSessionDao.getUnlockSessionsForDate(dateString)
+                val insights = generateInsights(dateString, unlockSessionsForInsights, events, filterSet)
+                if (insights.isNotEmpty()) {
+                    dailyInsightDao.insertInsights(insights)
+                }
             } else {
                 Timber.i("No new events to process for $dateString. Existing data has been cleared.")
             }
@@ -527,6 +537,10 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
     override fun getAllNotificationSummaries(): Flow<List<NotificationSummary>> = notificationDao.getAllNotificationSummaries()
 
+    override fun getInsightsForDate(dateString: String): Flow<List<DailyInsight>> {
+        return dailyInsightDao.getInsightsForDate(dateString)
+    }
+
     // --- Insight-Specific Implementations ---
     override suspend fun getFirstAppUsedAfter(timestamp: Long): RawAppEvent? {
         val currentFilterSet = this.filterSet.first()
@@ -552,6 +566,71 @@ class ScrollDataRepositoryImpl @Inject constructor(
         return rawAppEventDao.getEventsForPeriod(startTime, endTime)
             .filter { it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED && it.packageName !in currentFilterSet }
             .lastOrNull()
+    }
+
+    private suspend fun generateInsights(
+        dateString: String,
+        unlockSessions: List<UnlockSessionRecord>,
+        allEvents: List<RawAppEvent>,
+        filterSet: Set<String>
+    ): List<DailyInsight> {
+        val insights = mutableListOf<DailyInsight>()
+
+        // --- Basic Unlock Insights ---
+        val glanceCount = unlockSessions.count { it.sessionType == "Glance" }.toLong()
+        val meaningfulCount = unlockSessions.count { it.sessionType == "Intentional" }.toLong()
+        insights.add(DailyInsight(dateString = dateString, insightKey = "glance_count", longValue = glanceCount))
+        insights.add(DailyInsight(dateString = dateString, insightKey = "meaningful_unlock_count", longValue = meaningfulCount))
+
+        val firstUnlockTime = unlockSessions.minOfOrNull { it.unlockTimestamp }
+        firstUnlockTime?.let {
+            insights.add(DailyInsight(dateString = dateString, insightKey = "first_unlock_time", longValue = it))
+        }
+        unlockSessions.maxOfOrNull { it.unlockTimestamp }?.let {
+            insights.add(DailyInsight(dateString = dateString, insightKey = "last_unlock_time", longValue = it))
+        }
+
+        // --- First & Last App Used ---
+        if (firstUnlockTime != null) {
+            // CORRECTED LOGIC: Find the first app event that occurs AFTER the first unlock event.
+            allEvents.firstOrNull { it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED && it.packageName !in filterSet && it.eventTimestamp > firstUnlockTime }?.let {
+                insights.add(DailyInsight(dateString = dateString, insightKey = "first_app_used", stringValue = it.packageName, longValue = it.eventTimestamp))
+            }
+        }
+        allEvents.lastOrNull { it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED && it.packageName !in filterSet }?.let {
+            insights.add(DailyInsight(dateString = dateString, insightKey = "last_app_used", stringValue = it.packageName, longValue = it.eventTimestamp))
+        }
+        
+        // --- Top Compulsive App Insight ---
+        unlockSessionDao.getCompulsiveCheckCountsByPackage(dateString, dateString).first().maxByOrNull { it.count }?.let {
+            insights.add(DailyInsight(dateString = dateString, insightKey = "top_compulsive_app", stringValue = it.packageName, longValue = it.count.toLong()))
+        }
+
+        // --- Top Notification-Driven App Insight ---
+        unlockSessionDao.getNotificationDrivenUnlockCountsByPackage(dateString, dateString).first().maxByOrNull { it.count }?.let {
+            insights.add(DailyInsight(dateString = dateString, insightKey = "top_notification_unlock_app", stringValue = it.packageName, longValue = it.count.toLong()))
+        }
+
+        // --- Busiest Hour Insight ---
+        if (unlockSessions.isNotEmpty()) {
+            val busiestHour = unlockSessions
+                .map { DateUtil.formatUtcTimestampToLocalDateTime(it.unlockTimestamp).hour }
+                .groupingBy { it }
+                .eachCount()
+                .maxByOrNull { it.value }?.key
+            busiestHour?.let {
+                insights.add(DailyInsight(dateString = dateString, insightKey = "busiest_unlock_hour", longValue = it.toLong()))
+            }
+        }
+
+        // --- Night Owl Insight ---
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(dateString)
+        val endOfNightWindow = startOfDay + TimeUnit.HOURS.toMillis(4)
+        allEvents.lastOrNull { it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED && it.packageName !in filterSet && it.eventTimestamp in startOfDay..endOfNightWindow }?.let {
+            insights.add(DailyInsight(dateString = dateString, insightKey = "night_owl_last_app", stringValue = it.packageName, longValue = it.eventTimestamp))
+        }
+
+        return insights
     }
 
     override fun getCompulsiveCheckCountsByPackage(startDate: String, endDate: String): Flow<List<PackageCount>> {

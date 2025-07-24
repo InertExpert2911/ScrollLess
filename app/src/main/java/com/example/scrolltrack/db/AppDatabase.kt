@@ -21,9 +21,10 @@ import com.example.scrolltrack.db.ScrollSessionDao
         DailyDeviceSummary::class,
         DailyAppUsageRecord::class,
         NotificationRecord::class,
-        UnlockSessionRecord::class
+        UnlockSessionRecord::class,
+        DailyInsight::class
     ],
-    version = 21,
+    version = 22,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -35,6 +36,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun dailyDeviceSummaryDao(): DailyDeviceSummaryDao
     abstract fun appMetadataDao(): AppMetadataDao
     abstract fun unlockSessionDao(): UnlockSessionDao
+    abstract fun dailyInsightDao(): DailyInsightDao
 
     // The companion object getDatabase() is now obsolete as Hilt provides the database.
 }

@@ -48,11 +48,8 @@ fun InsightsScreen(
     navController: NavController,
     viewModel: InsightsViewModel = hiltViewModel()
 ) {
-    val insights by viewModel.insights.collectAsStateWithLifecycle()
-    val intentionalUnlocks by viewModel.intentionalUnlocks.collectAsStateWithLifecycle()
-    val glanceUnlocks by viewModel.glanceUnlocks.collectAsStateWithLifecycle()
-    val firstUnlockTime by viewModel.firstUnlockTime.collectAsStateWithLifecycle()
-    val lastUnlockTime by viewModel.lastUnlockTime.collectAsStateWithLifecycle()
+    val insightCards by viewModel.insightCards.collectAsStateWithLifecycle()
+    val dailyInsights by viewModel.dailyInsights.collectAsStateWithLifecycle()
 
 
     Scaffold(
@@ -78,19 +75,19 @@ fun InsightsScreen(
                     DashboardCard(
                         modifier = Modifier.weight(1f),
                         title = "Meaningful Unlocks",
-                        value = intentionalUnlocks.toString(),
+                        value = dailyInsights.meaningfulUnlocks.toString(),
                         unit = "times",
                         comparison = null
                     )
-                    DashboardCard(
-                        modifier = Modifier.weight(1f),
-                        title = "Quick Glances",
-                        value = glanceUnlocks.toString(),
-                        unit = "times",
-                        comparison = null
-                    )
-                }
-            }
+                     DashboardCard(
+                         modifier = Modifier.weight(1f),
+                         title = "Quick Glances",
+                         value = dailyInsights.glanceCount.toString(),
+                         unit = "times",
+                         comparison = null
+                     )
+                 }
+             }
             item {
                 Row(
                     Modifier
@@ -100,28 +97,28 @@ fun InsightsScreen(
                     DashboardCard(
                         modifier = Modifier.weight(1f),
                         title = "First Unlock",
-                        value = firstUnlockTime,
+                        value = dailyInsights.firstUnlock,
                         unit = "",
                         comparison = null
                     )
                     DashboardCard(
                         modifier = Modifier.weight(1f),
                         title = "Last Unlock",
-                        value = lastUnlockTime,
+                        value = dailyInsights.lastUnlock,
                         unit = "",
                         comparison = null
                     )
                 }
             }
-            items(insights, key = { it.id }) { insight ->
-                when (insight) {
-                    is InsightCardUiModel.Loading -> LoadingInsightCard()
-                    is InsightCardUiModel.FirstApp -> FirstAppInsightCard(insight)
+             items(insightCards, key = { it.id }) { insight ->
+                 when (insight) {
+                     is InsightCardUiModel.FirstApp -> FirstAppInsightCard(insight)
                     is InsightCardUiModel.LastApp -> LastAppInsightCard(insight)
-                    is InsightCardUiModel.NightOwl -> NightOwlInsightCard(insight) // Add this line
+                    is InsightCardUiModel.NightOwl -> NightOwlInsightCard(insight)
                     is InsightCardUiModel.CompulsiveCheck -> CompulsiveCheckInsightCard(insight)
                     is InsightCardUiModel.NotificationLeader -> NotificationLeaderInsightCard(insight)
                     is InsightCardUiModel.TimePattern -> TimePatternInsightCard(insight)
+                    is InsightCardUiModel.Loading -> LoadingInsightCard()
                 }
             }
         }

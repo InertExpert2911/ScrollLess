@@ -41,3 +41,12 @@ sealed class InsightCardUiModel(val id: String) {
 
     data class Loading(val placeholderId: String) : InsightCardUiModel("loading_$placeholderId")
 }
+
+data class DailyInsightsUiModel(
+    val glanceCount: Int,
+    val firstUnlock: String,
+    val lastUnlock: String,
+    val meaningfulUnlocks: Int, // Add this
+    val firstUsedApp: String,
+    val lastUsedApp: String
+)

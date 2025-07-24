@@ -5,22 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.example.scrolltrack.data.AppMetadataRepository
 import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.util.DateUtil
-import com.example.scrolltrack.db.DailyDeviceSummary
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
-import java.util.concurrent.TimeUnit
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
-import java.util.*
+import kotlinx.coroutines.flow.*
 import javax.inject.Inject
+import com.example.scrolltrack.db.DailyInsight
 
 @HiltViewModel
 class InsightsViewModel @Inject constructor(
@@ -28,205 +16,120 @@ class InsightsViewModel @Inject constructor(
     private val appMetadataRepository: AppMetadataRepository
 ) : ViewModel() {
 
-    private val _insights = MutableStateFlow<List<InsightCardUiModel>>(emptyList())
-    val insights: StateFlow<List<InsightCardUiModel>> = _insights.asStateFlow()
+    private val todaysInsightsFlow: Flow<List<DailyInsight>> =
+        scrollDataRepository.getInsightsForDate(DateUtil.getCurrentLocalDateString())
 
-    private val todaySummary: StateFlow<DailyDeviceSummary?> =
-        scrollDataRepository.getDeviceSummaryForDate(DateUtil.getCurrentLocalDateString())
-            .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), null)
+    private val yesterdaysInsightsFlow: Flow<List<DailyInsight>> =
+        scrollDataRepository.getInsightsForDate(DateUtil.getPastDateString(1))
 
-    val intentionalUnlocks: StateFlow<Int> = todaySummary.map { it?.intentionalUnlockCount ?: 0 }
-        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), 0)
+    val dailyInsights: StateFlow<DailyInsightsUiModel> = todaysInsightsFlow
+        .map { insights ->
+            val glanceCount = insights.find { it.insightKey == "glance_count" }?.longValue?.toInt() ?: 0
+            val meaningfulUnlocks = insights.find { it.insightKey == "meaningful_unlock_count" }?.longValue?.toInt() ?: 0
+            val firstUnlock = insights.find { it.insightKey == "first_unlock_time" }?.longValue?.let {
+                DateUtil.formatUtcTimestampToTimeString(it)
+            } ?: "N/A"
+            val lastUnlock = insights.find { it.insightKey == "last_unlock_time" }?.longValue?.let {
+                DateUtil.formatUtcTimestampToTimeString(it)
+            } ?: "N/A"
 
-    val glanceUnlocks: StateFlow<Int> = todaySummary.map { it?.glanceUnlockCount ?: 0 }
-        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), 0)
+            val firstAppUsedInsight = insights.find { it.insightKey == "first_app_used" }
+            val firstUsedApp = firstAppUsedInsight?.let {
+                val appMetadata = appMetadataRepository.getAppMetadata(it.stringValue!!)
+                val time = it.longValue?.let { ts -> DateUtil.formatUtcTimestampToTimeString(ts) } ?: ""
+                "${appMetadata?.appName ?: it.stringValue} at $time"
+            } ?: "N/A"
 
-    val firstUnlockTime: StateFlow<String> = todaySummary.map {
-        it?.firstUnlockTimestampUtc?.let { ts ->
-            DateUtil.formatUtcTimestampToTimeString(ts)
-        } ?: "N/A"
-    }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), "N/A")
+            val lastAppUsedInsight = insights.find { it.insightKey == "last_app_used" }
+            val lastUsedApp = lastAppUsedInsight?.let {
+                val appMetadata = appMetadataRepository.getAppMetadata(it.stringValue!!)
+                val time = it.longValue?.let { ts -> DateUtil.formatUtcTimestampToTimeString(ts) } ?: ""
+                "${appMetadata?.appName ?: it.stringValue} at $time"
+            } ?: "N/A"
 
-    val lastUnlockTime: StateFlow<String> = todaySummary.map {
-        it?.lastUnlockTimestampUtc?.let { ts ->
-            DateUtil.formatUtcTimestampToTimeString(ts)
-        } ?: "N/A"
-    }.stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.WhileSubscribed(5000), "N/A")
+            DailyInsightsUiModel(glanceCount, firstUnlock, lastUnlock, meaningfulUnlocks, firstUsedApp, lastUsedApp)
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = DailyInsightsUiModel(0, "N/A", "N/A", 0, "N/A", "N/A")
+        )
 
+    val insightCards: StateFlow<List<InsightCardUiModel>> = combine(
+        todaysInsightsFlow,
+        yesterdaysInsightsFlow
+    ) { todaysInsights, yesterdaysInsights ->
+        buildUiModelsFromInsights(todaysInsights, yesterdaysInsights)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000L),
+        initialValue = emptyList()
+    )
 
-    init {
-        loadInsights()
-    }
+    private suspend fun buildUiModelsFromInsights(
+        todaysInsights: List<DailyInsight>,
+        yesterdaysInsights: List<DailyInsight>
+    ): List<InsightCardUiModel> {
+        val uiModels = mutableListOf<InsightCardUiModel>()
 
-    private fun loadInsights() {
-        viewModelScope.launch {
-            // Set a loading state initially for all insights
-            _insights.value = listOf(
-                InsightCardUiModel.Loading("first_app"),
-                InsightCardUiModel.Loading("last_app"),
-                InsightCardUiModel.Loading("compulsive_check"),
-                InsightCardUiModel.Loading("notification_leader"),
-                InsightCardUiModel.Loading("time_pattern")
-            )
+        // --- Cards using TODAY'S data ---
+        todaysInsights.find { it.insightKey == "first_app_used" }?.let { insight ->
+            val appName = appMetadataRepository.getAppMetadata(insight.stringValue!!)?.appName ?: insight.stringValue
+            val icon = appMetadataRepository.getIconFile(insight.stringValue!!)
+            val time = insight.longValue?.let { DateUtil.formatUtcTimestampToTimeString(it) } ?: ""
+            uiModels.add(InsightCardUiModel.FirstApp(appName, icon, time))
+        }
+        
+        todaysInsights.find { it.insightKey == "night_owl_last_app" }?.let { insight ->
+            val appName = appMetadataRepository.getAppMetadata(insight.stringValue!!)?.appName ?: insight.stringValue
+            val icon = appMetadataRepository.getIconFile(insight.stringValue!!)
+            val time = insight.longValue?.let { DateUtil.formatUtcTimestampToTimeString(it) } ?: ""
+            uiModels.add(InsightCardUiModel.NightOwl(appName, icon, time))
+        }
 
-            // Fetch all insights in parallel
-            val firstAppInsightDeferred = async { loadFirstAppInsight() }
-            val lastAppInsightDeferred = async { loadLastAppInsight() }
-            val compulsiveCheckInsightDeferred = async { loadCompulsiveCheckInsight() }
-            val notificationLeaderInsightDeferred = async { loadNotificationLeaderInsight() }
-            val timePatternInsightDeferred = async { loadTimePatternInsight() }
-            val nightOwlInsightDeferred = async { loadNightOwlInsight() } // Add this line
-
-
-            // Await all results and filter out any nulls (if an insight can't be generated)
-            val loadedInsights = listOfNotNull(
-                firstAppInsightDeferred.await(),
-                lastAppInsightDeferred.await(),
-                nightOwlInsightDeferred.await(), // Add this line
-                compulsiveCheckInsightDeferred.await(),
-                notificationLeaderInsightDeferred.await(),
-                timePatternInsightDeferred.await()
-            )
-
-            _insights.value = loadedInsights.ifEmpty {
-                // Handle case where no insights could be generated
-                // You could show a "Not enough data yet" message here
-                emptyList()
+        todaysInsights.find { it.insightKey == "top_compulsive_app" }?.let { insight ->
+             if ((insight.longValue ?: 0) >= 3) {
+                val appName = appMetadataRepository.getAppMetadata(insight.stringValue!!)?.appName ?: insight.stringValue
+                val icon = appMetadataRepository.getIconFile(insight.stringValue!!)
+                uiModels.add(InsightCardUiModel.CompulsiveCheck(appName, icon, insight.longValue!!.toInt()))
             }
         }
-    }
 
-    private suspend fun loadFirstAppInsight(): InsightCardUiModel.FirstApp? {
-        // Use the start of the user's local day (12:00 AM)
-        val startOfTodayTimestamp = DateUtil.getStartOfDayUtcMillis(DateUtil.getCurrentLocalDateString())
-        val firstAppEvent = scrollDataRepository.getFirstAppUsedAfter(startOfTodayTimestamp) ?: return null
-
-        val appMetadata = appMetadataRepository.getAppMetadata(firstAppEvent.packageName)
-        val iconFile = appMetadataRepository.getIconFile(firstAppEvent.packageName)
-
-        val timeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
-        val usageTime = DateUtil.formatUtcTimestampToLocalDateTime(firstAppEvent.eventTimestamp)
-            .format(timeFormatter)
-
-        return InsightCardUiModel.FirstApp(
-            appName = appMetadata?.appName ?: firstAppEvent.packageName,
-            icon = iconFile,
-            time = usageTime
-        )
-    }
-
-    private suspend fun loadLastAppInsight(): InsightCardUiModel.LastApp? {
-        val yesterday = DateUtil.getYesterdayDateString()
-        val lastAppEvent = scrollDataRepository.getLastAppUsedOn(yesterday) ?: return null
-
-        val appMetadata = appMetadataRepository.getAppMetadata(lastAppEvent.packageName)
-        val iconFile = appMetadataRepository.getIconFile(lastAppEvent.packageName)
-
-        val timeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
-        val usageTime = DateUtil.formatUtcTimestampToLocalDateTime(lastAppEvent.eventTimestamp)
-            .format(timeFormatter)
-
-        return InsightCardUiModel.LastApp(
-            appName = appMetadata?.appName ?: lastAppEvent.packageName,
-            icon = iconFile,
-            time = usageTime
-        )
-    }
-
-    private suspend fun loadCompulsiveCheckInsight(): InsightCardUiModel.CompulsiveCheck? {
-        val today = DateUtil.getCurrentLocalDateString()
-        // Call our new, more accurate method
-        val topCompulsiveApp = scrollDataRepository.getCompulsiveCheckCountsByPackage(today, today)
-            .first()
-            .maxByOrNull { it.count } ?: return null
-
-        // Only show if the count is significant
-        if (topCompulsiveApp.count < 3) return null
-
-        val appMetadata = appMetadataRepository.getAppMetadata(topCompulsiveApp.packageName)
-        val iconFile = appMetadataRepository.getIconFile(topCompulsiveApp.packageName)
-
-        return InsightCardUiModel.CompulsiveCheck(
-            appName = appMetadata?.appName ?: topCompulsiveApp.packageName,
-            icon = iconFile,
-            count = topCompulsiveApp.count
-        )
-    }
-
-    private suspend fun loadNotificationLeaderInsight(): InsightCardUiModel.NotificationLeader? {
-        val today = DateUtil.getCurrentLocalDateString()
-        // Call our new, more accurate method
-        val notificationCounts = scrollDataRepository.getNotificationDrivenUnlockCountsByPackage(today, today).first()
-        val topApp = notificationCounts.maxByOrNull { it.count } ?: return null
-
-        val todaysSummary = scrollDataRepository.getDeviceSummaryForDate(today).first()
-        val totalUnlocks = todaysSummary?.totalUnlockCount ?: 0
-
-        if (totalUnlocks == 0) return null
-
-        val percentage = (topApp.count.toDouble() / totalUnlocks.toDouble() * 100).toInt()
-        
-        // Only show if the percentage is significant
-        if (percentage < 10) return null
-
-        val appMetadata = appMetadataRepository.getAppMetadata(topApp.packageName)
-        val iconFile = appMetadataRepository.getIconFile(topApp.packageName)
-
-        return InsightCardUiModel.NotificationLeader(
-            appName = appMetadata?.appName ?: topApp.packageName,
-            icon = iconFile,
-            percentage = percentage
-        )
-    }
-
-    private suspend fun loadTimePatternInsight(): InsightCardUiModel.TimePattern? {
-        val today = DateUtil.getCurrentLocalDateString()
-        val sessions = scrollDataRepository.getUnlockSessionsForDateRange(today, today).first()
-        if (sessions.size < 10) return null // Need enough data
-
-        val hourlyCounts = sessions
-            .map { DateUtil.formatUtcTimestampToLocalDateTime(it.unlockTimestamp).hour }
-            .groupingBy { it }
-            .eachCount()
-
-        val busiestHour = hourlyCounts.maxByOrNull { it.value }?.key ?: return null
-
-        val (timeOfDay, period) = when (busiestHour) {
-            in 5..8 -> "Morning" to "5 AM - 9 AM"
-            in 9..11 -> "Late Morning" to "9 AM - 12 PM"
-            in 12..13 -> "Lunchtime" to "12 PM - 2 PM"
-            in 14..16 -> "Afternoon" to "2 PM - 5 PM"
-            in 17..20 -> "Evening" to "5 PM - 9 PM"
-            in 21..23 -> "Late Night" to "9 PM - 12 AM"
-            else -> "Night" to "12 AM - 5 AM"
+        todaysInsights.find { it.insightKey == "top_notification_unlock_app" }?.let { insight ->
+            val totalUnlocks = (todaysInsights.find { it.insightKey == "glance_count" }?.longValue ?: 0) +
+                               (todaysInsights.find { it.insightKey == "meaningful_unlock_count" }?.longValue ?: 0)
+            if (totalUnlocks > 0) {
+                val percentage = ((insight.longValue ?: 0).toDouble() / totalUnlocks.toDouble() * 100).toInt()
+                if (percentage >= 10) {
+                    val appName = appMetadataRepository.getAppMetadata(insight.stringValue!!)?.appName ?: insight.stringValue
+                    val icon = appMetadataRepository.getIconFile(insight.stringValue!!)
+                    uiModels.add(InsightCardUiModel.NotificationLeader(appName, icon, percentage))
+                }
+            }
         }
 
-        return InsightCardUiModel.TimePattern(
-            timeOfDay = timeOfDay,
-            metric = "unlocks",
-            period = period
-        )
-    }
+        todaysInsights.find { it.insightKey == "busiest_unlock_hour" }?.let { insight ->
+            val busiestHour = insight.longValue!!.toInt()
+            val (timeOfDay, period) = when (busiestHour) {
+                in 5..8 -> "Morning" to "5 AM - 9 AM"
+                in 9..11 -> "Late Morning" to "9 AM - 12 PM"
+                in 12..13 -> "Lunchtime" to "12 PM - 2 PM"
+                in 14..16 -> "Afternoon" to "2 PM - 5 PM"
+                in 17..20 -> "Evening" to "5 PM - 9 PM"
+                in 21..23 -> "Late Night" to "9 PM - 12 AM"
+                else -> "Night" to "12 AM - 5 AM"
+            }
+            uiModels.add(InsightCardUiModel.TimePattern(timeOfDay, "unlocks", period))
+        }
 
-    private suspend fun loadNightOwlInsight(): InsightCardUiModel.NightOwl? {
-        val today = DateUtil.getCurrentLocalDateString()
-        val startOfDay = DateUtil.getStartOfDayUtcMillis(today)
-        // Define our late-night window: 12 AM to 4 AM
-        val endOfWindow = startOfDay + TimeUnit.HOURS.toMillis(4)
+        // --- Cards using YESTERDAY'S data ---
+        yesterdaysInsights.find { it.insightKey == "last_app_used" }?.let { insight ->
+            val appName = appMetadataRepository.getAppMetadata(insight.stringValue!!)?.appName ?: insight.stringValue
+            val icon = appMetadataRepository.getIconFile(insight.stringValue!!)
+            val time = insight.longValue?.let { DateUtil.formatUtcTimestampToTimeString(it) } ?: ""
+            uiModels.add(InsightCardUiModel.LastApp(appName, icon, time))
+        }
 
-        val lastAppEvent = scrollDataRepository.getLastAppUsedBetween(startOfDay, endOfWindow) ?: return null
-
-        val appMetadata = appMetadataRepository.getAppMetadata(lastAppEvent.packageName)
-        val iconFile = appMetadataRepository.getIconFile(lastAppEvent.packageName)
-
-        val timeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
-        val usageTime = DateUtil.formatUtcTimestampToLocalDateTime(lastAppEvent.eventTimestamp)
-            .format(timeFormatter)
-
-        return InsightCardUiModel.NightOwl(
-            appName = appMetadata?.appName ?: lastAppEvent.packageName,
-            icon = iconFile,
-            time = usageTime
-        )
+        return uiModels.sortedBy { it.id } // Sort to maintain a consistent order
     }
 }

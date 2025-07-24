@@ -72,5 +72,9 @@ abstract class AppModule {
         @Singleton
         fun provideUnlockSessionDao(db: AppDatabase): UnlockSessionDao = db.unlockSessionDao()
 
+        @Provides
+        @Singleton
+        fun provideDailyInsightDao(db: AppDatabase): DailyInsightDao = db.dailyInsightDao()
+
     }
 }
