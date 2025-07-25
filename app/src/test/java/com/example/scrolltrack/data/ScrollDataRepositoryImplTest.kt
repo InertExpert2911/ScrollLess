@@ -127,11 +127,11 @@ class ScrollDataRepositoryImplTest {
 
         val events = listOf(
             createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfDay + 500),
-            createRawEvent(app1, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 1000), // Open 1 for App1
+            createRawEvent(app1, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 1000),
             createRawEvent(app1, RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, startOfDay + 2000, scrollDeltaY = 50),
             createRawEvent(app1, RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, startOfDay + 3000, scrollDeltaY = 50),
             createRawEvent(app1, RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startOfDay + 5000),
-            createRawEvent(app2, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 6000), // Open 1 for App2 (quick switch, not counted)
+            createRawEvent(app2, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 6000),
             createRawEvent(app2, RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, startOfDay + 7000, scrollDeltaX = 50),
             createRawEvent(app2, RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startOfDay + 9000),
             createRawEvent(filteredApp, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 10000),
@@ -145,6 +145,19 @@ class ScrollDataRepositoryImplTest {
         notificationDao.insert(NotificationRecord(notificationKey = "key3", packageName = app2, postTimeUTC = startOfDay + 6500, dateString = date, title = "t", text = "t", category = "c"))
 
         coEvery { mockAppMetadataRepository.getAllMetadata() } returns flowOf(listOf(createAppMeta(filteredApp, isUserVisible = false)))
+        repository = ScrollDataRepositoryImpl(
+            appDatabase = db,
+            appMetadataRepository = mockAppMetadataRepository,
+            scrollSessionDao = scrollSessionDao,
+            dailyAppUsageDao = dailyAppUsageDao,
+            rawAppEventDao = rawAppEventDao,
+            notificationDao = notificationDao,
+            dailyDeviceSummaryDao = dailyDeviceSummaryDao,
+            unlockSessionDao = unlockSessionDao,
+            dailyInsightDao = dailyInsightDao,
+            context = context,
+            ioDispatcher = UnconfinedTestDispatcher()
+        )
 
         repository.processAndSummarizeDate(date)
 
@@ -157,12 +170,12 @@ class ScrollDataRepositoryImplTest {
         val app2Usage = dailyAppUsageDao.getUsageForDate(date).first().find { it.packageName == app2 }
         assertThat(app1Usage?.usageTimeMillis).isEqualTo(4000L)
         assertThat(app1Usage?.activeTimeMillis).isGreaterThan(0L)
-        assertThat(app1Usage?.appOpenCount).isEqualTo(1) // Only the first open should be counted
+        assertThat(app1Usage?.appOpenCount).isEqualTo(1)
         assertThat(app1Usage?.notificationCount).isEqualTo(2)
 
         assertThat(app2Usage?.usageTimeMillis).isEqualTo(3000L)
         assertThat(app2Usage?.activeTimeMillis).isGreaterThan(0L)
-        assertThat(app2Usage?.appOpenCount).isEqualTo(0) // This should not be counted as an open due to debounce
+        assertThat(app2Usage?.appOpenCount).isEqualTo(0)
         assertThat(app2Usage?.notificationCount).isEqualTo(1)
 
         val summary = dailyDeviceSummaryDao.getSummaryForDate(date).first()
@@ -171,7 +184,7 @@ class ScrollDataRepositoryImplTest {
         assertThat(summary?.totalUnlockCount).isEqualTo(1)
         assertThat(summary?.totalAppOpens).isEqualTo(1)
         assertThat(summary?.totalNotificationCount).isEqualTo(3)
-        assertThat(summary?.totalUsageTimeMillis).isEqualTo(9000L)
+        assertThat(summary?.totalUsageTimeMillis).isEqualTo(7000L)
         assertThat(summary?.firstUnlockTimestampUtc).isEqualTo(startOfDay + 500)
     }
 
@@ -202,51 +215,42 @@ class ScrollDataRepositoryImplTest {
         val startOfToday = DateUtil.getStartOfDayUtcMillis(today)
         val startOfYesterday = DateUtil.getStartOfDayUtcMillis(yesterday)
 
-        // Events for yesterday
         val eventsYesterday = mutableListOf(
-            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfYesterday + 1000), // Unlock 1
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfYesterday + 1000),
             createRawEvent("com.app.one", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfYesterday + 2000),
-            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, startOfYesterday + 5000) // Lock 1
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, startOfYesterday + 5000)
         )
-        // Events for today - includes an open session that carries over midnight
         val eventsToday = mutableListOf(
-            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfToday - 5000), // Unlock 2 (yesterday's session)
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfToday - 5000),
             createRawEvent("com.app.two", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfToday - 4000),
-            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, startOfToday + 1000), // Lock 2 (closes yesterday's session)
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, startOfToday + 1000),
 
-            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfToday + 2000), // Unlock 3 (today)
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfToday + 2000),
             createRawEvent("com.app.one", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfToday + 3000),
-            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, startOfToday + 6000) // Lock 3
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, startOfToday + 6000)
         )
 
-        // Simulate backfill: insert all events, then process day by day (past to present)
         rawAppEventDao.insertEvents(eventsYesterday + eventsToday)
 
-        // Process yesterday first
         repository.processAndSummarizeDate(yesterday)
         var yesterdaySummary = dailyDeviceSummaryDao.getSummaryForDate(yesterday).first()
-        // Should have 2 unlocks: the one fully within yesterday, and the one that started yesterday and ended today
         assertThat(yesterdaySummary?.totalUnlockCount).isEqualTo(2)
 
-
-        // Now process today
         repository.processAndSummarizeDate(today)
         var todaySummary = dailyDeviceSummaryDao.getSummaryForDate(today).first()
         assertThat(todaySummary?.totalUnlockCount).isEqualTo(1)
 
-        // Re-process yesterday and check for data corruption
         repository.processAndSummarizeDate(yesterday)
         yesterdaySummary = dailyDeviceSummaryDao.getSummaryForDate(yesterday).first()
-        assertThat(yesterdaySummary?.totalUnlockCount).isEqualTo(2) // This should NOT change
+        assertThat(yesterdaySummary?.totalUnlockCount).isEqualTo(2)
     }
 
-    // --- Unlock Session Logic Tests ---
     @Test
     fun `processUnlockEvents - glance session - correctly identifies glance`() = runTest {
         val date = "2024-01-20"
         val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
         val unlockTime = startOfDay + 1000L
-        val lockTime = unlockTime + AppConstants.MINIMUM_GLANCE_DURATION_MS - 1 // Just under the threshold
+        val lockTime = unlockTime + AppConstants.MINIMUM_GLANCE_DURATION_MS - 1
 
         val events = listOf(
             createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, unlockTime),
@@ -265,7 +269,7 @@ class ScrollDataRepositoryImplTest {
         val date = "2024-01-20"
         val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
         val unlockTime = startOfDay + 1000L
-        val lockTime = unlockTime + AppConstants.MINIMUM_GLANCE_DURATION_MS + 1 // Just over the threshold
+        val lockTime = unlockTime + AppConstants.MINIMUM_GLANCE_DURATION_MS + 1
 
         val events = listOf(
             createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, unlockTime),
@@ -327,33 +331,30 @@ class ScrollDataRepositoryImplTest {
         assertThat(sessions.first().triggeringNotificationPackageName).isEqualTo(appA)
     }
 
-    // --- Active Time Calculation Tests ---
     @Test
     fun `calculateActiveTimeFromInteractions - merges overlapping intervals`() = runTest {
         val sessionStart = 10000L
-        val scrollTime = sessionStart + 1000L // Active window: [11000, 14000]
-        val tapTime = sessionStart + 2000L    // Active window: [12000, 14000] (fully overlapped by scroll and type)
-        val typeTime = sessionStart + 3500L   // Active window: [13500, 21500] (partially overlaps scroll)
+        val scrollTime = sessionStart + 1000L
+        val tapTime = sessionStart + 2000L
+        val typeTime = sessionStart + 3500L
         val sessionEnd = sessionStart + 25000L
 
         val events = listOf(
-            createRawEvent("app", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, scrollTime), // Window: 3000ms
-            createRawEvent("app", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, tapTime), // Window: 2000ms
-            createRawEvent("app", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_TYPING, typeTime) // Window: 8000ms
+            createRawEvent("app", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, scrollTime),
+            createRawEvent("app", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, tapTime),
+            createRawEvent("app", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_TYPING, typeTime)
         )
 
-        // Make the method accessible for testing
         val activeTime = repository.calculateActiveTimeFromInteractions(events, sessionStart, sessionEnd)
 
-        // Expected merged interval: [11000, 21500]. Duration is 10500ms.
         assertThat(activeTime).isEqualTo(10500L)
     }
 
     @Test
     fun `calculateActiveTimeFromInteractions - caps time at session boundaries`() = runTest {
         val sessionStart = 10000L
-        val sessionEnd = 12000L // A very short session
-        val scrollTime = sessionStart + 1000L // Active window: [11000, 14000]
+        val sessionEnd = 12000L
+        val scrollTime = sessionStart + 1000L
 
         val events = listOf(
             createRawEvent("app", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, scrollTime)
@@ -361,18 +362,14 @@ class ScrollDataRepositoryImplTest {
 
         val activeTime = repository.calculateActiveTimeFromInteractions(events, sessionStart, sessionEnd)
 
-        // The active window [11000, 14000] should be clipped to the session boundary [10000, 12000].
-        // The effective interval is [11000, 12000], duration is 1000ms.
         assertThat(activeTime).isEqualTo(1000L)
     }
-
-    // --- Insight Generation Tests ---
 
     @Test
     fun `generateInsights - night owl - correctly identifies last app used after midnight`() = runTest {
         val date = "2024-01-20"
         val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
-        val nightOwlTime = startOfDay + TimeUnit.HOURS.toMillis(2) // 2 AM
+        val nightOwlTime = startOfDay + TimeUnit.HOURS.toMillis(2)
         val appA = "com.night.app"
 
         val events = listOf(
@@ -396,8 +393,8 @@ class ScrollDataRepositoryImplTest {
         val appA = "com.morning.app"
 
         val events = listOf(
-            createRawEvent("app", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 1000), // Before unlock, should be ignored
-            createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, firstAppTime)      // After unlock, this is the one
+            createRawEvent("app", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 1000),
+            createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, firstAppTime)
         )
         val unlockSessions = listOf(
             UnlockSessionRecord(id=1, unlockTimestamp = firstUnlockTime, dateString = date, unlockEventType = "TEST")
@@ -411,25 +408,21 @@ class ScrollDataRepositoryImplTest {
         assertThat(firstAppInsight?.longValue).isEqualTo(firstAppTime)
     }
 
-    // --- System Event Mapping Tests ---
     @Test
     fun `mapUsageEventToRawAppEvent - maps all event types correctly`() {
         val testTime = System.currentTimeMillis()
         val testPkg = "com.test.package"
         val testCls = "com.test.package.TestClass"
 
-        // Helper to create a real UsageEvents.Event using reflection, as it's a final class with private fields.
         fun createUsageEvent(pkg: String, cls: String, ts: Long, type: Int): UsageEvents.Event {
             val event = UsageEvents.Event()
             val eventClass = UsageEvents.Event::class.java
 
-            // Use reflection to set private fields. This is brittle but necessary for this final class.
             try {
-                val packageField = eventClass.getDeclaredField("mPackageName") // The actual field name in Android S+
+                val packageField = eventClass.getDeclaredField("mPackageName")
                 packageField.isAccessible = true
                 packageField.set(event, pkg)
             } catch (e: NoSuchFieldException) {
-                // Fallback for older Android versions if the field name is different
                 val packageField = eventClass.getDeclaredField("mPackage")
                 packageField.isAccessible = true
                 packageField.set(event, pkg)
@@ -450,7 +443,6 @@ class ScrollDataRepositoryImplTest {
             return event
         }
 
-        // Test each mapping by creating a new event each time
         val eventResume = createUsageEvent(testPkg, testCls, testTime, UsageEvents.Event.ACTIVITY_RESUMED)
         val mappedResume = repository.mapUsageEventToRawAppEvent(eventResume)
         assertThat(mappedResume?.eventType).isEqualTo(RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED)
@@ -463,7 +455,7 @@ class ScrollDataRepositoryImplTest {
         val mappedScreenOn = repository.mapUsageEventToRawAppEvent(eventScreenOn)
         assertThat(mappedScreenOn?.eventType).isEqualTo(RawAppEvent.EVENT_TYPE_SCREEN_INTERACTIVE)
 
-        val eventUnknown = createUsageEvent(testPkg, testCls, testTime, -1) // Unknown event
+        val eventUnknown = createUsageEvent(testPkg, testCls, testTime, -1)
         val mappedUnknown = repository.mapUsageEventToRawAppEvent(eventUnknown)
         assertThat(mappedUnknown).isNull()
     }
@@ -487,7 +479,7 @@ class ScrollDataRepositoryImplTest {
         val appA = "com.app.a"
         val events = listOf(
             createRawEvent(appA, RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 1000, scrollDeltaY = 100),
-            createRawEvent(appA, RawAppEvent.EVENT_TYPE_SCROLL_INFERRED, 2000, scrollDeltaY = 500) // This should be ignored
+            createRawEvent(appA, RawAppEvent.EVENT_TYPE_SCROLL_INFERRED, 2000, scrollDeltaY = 500)
         )
 
         val sessions = repository.processScrollEvents(events, emptySet())
@@ -500,8 +492,8 @@ class ScrollDataRepositoryImplTest {
 
     @Test
     fun `processScrollEvents - mixed events for multiple apps - handles each app independently`() = runTest {
-        val appA = "com.app.a" // Has mixed events
-        val appB = "com.app.b" // Has inferred only
+        val appA = "com.app.a"
+        val appB = "com.app.b"
         val events = listOf(
             createRawEvent(appA, RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 1000, scrollDeltaY = 100),
             createRawEvent(appA, RawAppEvent.EVENT_TYPE_SCROLL_INFERRED, 2000, scrollDeltaY = 500),
@@ -522,8 +514,6 @@ class ScrollDataRepositoryImplTest {
         assertThat(sessionB!!.dataType).isEqualTo("INFERRED")
         assertThat(sessionB.scrollAmountY).isEqualTo(200)
     }
-
-    // --- Phase 3: Scroll Calculation & Session Merging Tests ---
 
     @Test
     fun `processScrollEvents - measured scroll - correctly calculates and merges session`() = runTest {
@@ -591,8 +581,6 @@ class ScrollDataRepositoryImplTest {
         assertThat(sessions).hasSize(2)
     }
 
-    // --- calculateAppOpens Tests ---
-
     @Test
     fun `calculateAppOpens - app resumed after unlock - counts as one open`() = runTest {
         val appA = "com.app.a"
@@ -625,10 +613,10 @@ class ScrollDataRepositoryImplTest {
         val appA = "com.app.a"
         val appB = "com.app.b"
         val events = listOf(
-            createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 1000), // First open -> A=1
-            createRawEvent(appB, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 1500), // Rapid switch, should not count as new open
-            createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 2000), // Rapid switch back
-            createRawEvent(appB, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 2000 + AppConstants.CONTEXTUAL_APP_OPEN_DEBOUNCE_MS + 1) // Long pause, should count -> B=1
+            createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 1000),
+            createRawEvent(appB, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 1500),
+            createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 2000),
+            createRawEvent(appB, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 2000 + AppConstants.CONTEXTUAL_APP_OPEN_DEBOUNCE_MS + 1)
         )
 
         val appOpens = repository.calculateAppOpens(events)
@@ -642,9 +630,9 @@ class ScrollDataRepositoryImplTest {
         val appA = "com.app.a"
         val appB = "com.app.b"
         val events = listOf(
-            createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 1000), // Open A
-            createRawEvent(appB, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 2000), // Switch to B
-            createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 3000)  // Switch back to A
+            createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 1000),
+            createRawEvent(appB, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 2000),
+            createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 3000)
         )
 
         val appOpens = repository.calculateAppOpens(events)
@@ -663,16 +651,14 @@ class ScrollDataRepositoryImplTest {
         assertThat(appOpens[appA]).isEqualTo(1)
     }
 
-    // --- generateInsights Tests ---
-
     @Test
     fun `generateInsights - busiest hour - calculates correctly`() = runTest {
         val date = "2024-01-20"
         val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
         val unlockSessions = listOf(
-            UnlockSessionRecord(unlockTimestamp = startOfDay + 20 * 3600 * 1000, dateString = date, unlockEventType = "TEST"), // 8 PM
-            UnlockSessionRecord(unlockTimestamp = startOfDay + 20 * 3600 * 1000 + 1, dateString = date, unlockEventType = "TEST"), // 8 PM
-            UnlockSessionRecord(unlockTimestamp = startOfDay + 10 * 3600 * 1000, dateString = date, unlockEventType = "TEST")  // 10 AM
+            UnlockSessionRecord(unlockTimestamp = startOfDay + 20 * 3600 * 1000, dateString = date, unlockEventType = "TEST"),
+            UnlockSessionRecord(unlockTimestamp = startOfDay + 20 * 3600 * 1000 + 1, dateString = date, unlockEventType = "TEST"),
+            UnlockSessionRecord(unlockTimestamp = startOfDay + 10 * 3600 * 1000, dateString = date, unlockEventType = "TEST")
         )
 
         val insights = repository.generateInsights(date, unlockSessions, emptyList(), emptySet())
@@ -708,9 +694,9 @@ class ScrollDataRepositoryImplTest {
             UnlockSessionRecord(unlockTimestamp = startOfDay + 80000000, dateString = date, unlockEventType = "TEST")
         )
         val events = listOf(
-            createRawEvent("com.app.first", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 2000), // First app after first unlock
-            createRawEvent("com.app.night", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + TimeUnit.HOURS.toMillis(3)), // 3 AM, night owl
-            createRawEvent("com.app.last", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + TimeUnit.HOURS.toMillis(22)) // 10 PM, last app
+            createRawEvent("com.app.first", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 2000),
+            createRawEvent("com.app.night", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + TimeUnit.HOURS.toMillis(3)),
+            createRawEvent("com.app.last", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + TimeUnit.HOURS.toMillis(22))
         )
 
         val insights = repository.generateInsights(date, unlockSessions, events, emptySet())
@@ -722,8 +708,6 @@ class ScrollDataRepositoryImplTest {
         assertThat(insights.find { it.insightKey == "top_notification_unlock_app" }?.stringValue).isEqualTo("com.app.notify")
         assertThat(insights.find { it.insightKey == "night_owl_last_app" }?.stringValue).isEqualTo("com.app.night")
     }
-
-    // --- processUnlockEvents Tests ---
 
     @Test
     fun `processUnlockEvents - glance vs intentional - flags correctly`() = runTest {
@@ -745,7 +729,6 @@ class ScrollDataRepositoryImplTest {
             ioDispatcher = UnconfinedTestDispatcher()
         )
 
-        // Act & Assert for Glance session
         val glanceUnlockTime = startOfDay + 1000L
         val glanceLockTime = glanceUnlockTime + AppConstants.MINIMUM_GLANCE_DURATION_MS - 1
         val glanceEvents = listOf(
@@ -758,7 +741,6 @@ class ScrollDataRepositoryImplTest {
         assertThat(glanceSessions).hasSize(1)
         assertThat(glanceSessions.first().sessionType).isEqualTo("Glance")
 
-        // Act & Assert for Intentional session
         val intentionalUnlockTime = startOfDay + 10000L
         val intentionalLockTime = intentionalUnlockTime + AppConstants.MINIMUM_GLANCE_DURATION_MS
         val intentionalEvents = listOf(
@@ -785,10 +767,8 @@ class ScrollDataRepositoryImplTest {
             createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, lockTime)
         )
 
-        // Act
         repository.processUnlockEvents(events, emptyList(), emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
 
-        // Assert
         val sessions = unlockSessionDao.getUnlockSessionsForDate(date)
         assertThat(sessions).hasSize(1)
         assertThat(sessions.first().isCompulsive).isTrue()
@@ -833,16 +813,12 @@ class ScrollDataRepositoryImplTest {
             NotificationRecord(notificationKey = "key", packageName = appA, postTimeUTC = unlockTime - 1000, dateString = date, title = "t", text = "t", category = "c")
         )
 
-        // Act
         repository.processUnlockEvents(events, notifications, emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
 
-        // Assert
         val sessions = unlockSessionDao.getUnlockSessionsForDate(date)
         assertThat(sessions).hasSize(1)
         assertThat(sessions.first().triggeringNotificationPackageName).isEqualTo(appA)
     }
-
-    // --- calculateActiveTimeFromInteractions Tests ---
 
     @Test
     fun `calculateActiveTime - no events - returns zero`() = runTest {
@@ -862,10 +838,9 @@ class ScrollDataRepositoryImplTest {
     @Test
     fun `calculateActiveTime - overlapping windows - merges correctly`() = runTest {
         val events = listOf(
-            createRawEvent("app", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 1000), // Window: [1000, 4000]
-            createRawEvent("app", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, 1500) // Window: [1500, 3500]
+            createRawEvent("app", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 1000),
+            createRawEvent("app", RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, 1500)
         )
-        // Merged window should be [1000, 4000], total time is 3000ms.
         val expectedTotalTime = (1000 + AppConstants.ACTIVE_TIME_SCROLL_WINDOW_MS) - 1000
         val activeTime = repository.calculateActiveTimeFromInteractions(events, 0, 10000)
         assertThat(activeTime).isEqualTo(expectedTotalTime)
@@ -876,7 +851,6 @@ class ScrollDataRepositoryImplTest {
         val events = listOf(
             createRawEvent("app", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 1000)
         )
-        // Session ends before the active time window does
         val activeTime = repository.calculateActiveTimeFromInteractions(events, 500, 1000 + AppConstants.ACTIVE_TIME_SCROLL_WINDOW_MS / 2)
         assertThat(activeTime).isEqualTo(AppConstants.ACTIVE_TIME_SCROLL_WINDOW_MS / 2)
     }
@@ -900,5 +874,144 @@ class ScrollDataRepositoryImplTest {
     fun `generateInsights - no data scenarios`() = runTest {
         val insights = repository.generateInsights("2024-01-20", emptyList(), emptyList(), emptySet())
         assertThat(insights).isEmpty()
+    }
+
+    @Test
+    fun `processAndSummarizeDate - hidden apps are excluded from summaries`() = runTest {
+        val date = "2024-03-10"
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
+        val visibleApp = "com.app.visible"
+        val hiddenApp = "com.app.hidden"
+
+        val visibleAppMeta = createAppMeta(visibleApp, isUserVisible = true)
+        val hiddenAppMeta = createAppMeta(hiddenApp, isUserVisible = true, userHidesOverride = true)
+        coEvery { mockAppMetadataRepository.getAppMetadata(visibleApp) } returns visibleAppMeta
+        coEvery { mockAppMetadataRepository.getAppMetadata(hiddenApp) } returns hiddenAppMeta
+        coEvery { mockAppMetadataRepository.getAllMetadata() } returns flowOf(listOf(visibleAppMeta, hiddenAppMeta))
+        repository = ScrollDataRepositoryImpl(
+            appDatabase = db,
+            appMetadataRepository = mockAppMetadataRepository,
+            scrollSessionDao = scrollSessionDao,
+            dailyAppUsageDao = dailyAppUsageDao,
+            rawAppEventDao = rawAppEventDao,
+            notificationDao = notificationDao,
+            dailyDeviceSummaryDao = dailyDeviceSummaryDao,
+            unlockSessionDao = unlockSessionDao,
+            dailyInsightDao = dailyInsightDao,
+            context = context,
+            ioDispatcher = UnconfinedTestDispatcher()
+        )
+
+
+        val events = listOf(
+            createRawEvent(visibleApp, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 1000),
+            createRawEvent(visibleApp, RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, startOfDay + 2000, scrollDeltaY = 100),
+            createRawEvent(visibleApp, RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startOfDay + 3000),
+            createRawEvent(hiddenApp, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 4000),
+            createRawEvent(hiddenApp, RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, startOfDay + 5000, scrollDeltaY = 200),
+            createRawEvent(hiddenApp, RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startOfDay + 6000)
+        )
+        rawAppEventDao.insertEvents(events)
+        notificationDao.insert(NotificationRecord(notificationKey = "key1", packageName = hiddenApp, postTimeUTC = startOfDay + 4500, dateString = date, title = "t", text = "t", category = "c"))
+
+        repository.processAndSummarizeDate(date)
+
+        val appUsage = dailyAppUsageDao.getUsageForDate(date).first()
+        assertThat(appUsage.find { it.packageName == hiddenApp }).isNull()
+        assertThat(appUsage.find { it.packageName == visibleApp }).isNotNull()
+
+        val scrollData = scrollSessionDao.getScrollDataForDate(date).first()
+        assertThat(scrollData.find { it.packageName == hiddenApp }).isNull()
+        assertThat(scrollData.find { it.packageName == visibleApp }).isNotNull()
+
+        val summary = dailyDeviceSummaryDao.getSummaryForDate(date).first()
+        assertThat(summary?.totalUsageTimeMillis).isEqualTo(2000L)
+        assertThat(summary?.totalNotificationCount).isEqualTo(0)
+    }
+
+    @Test
+    fun `processAndSummarizeDate - session closes at midnight`() = runTest {
+        val date = "2024-03-11"
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
+        val endOfDay = DateUtil.getEndOfDayUtcMillis(date)
+        val appA = "com.app.midnight"
+
+        val events = listOf(
+            createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, endOfDay - 5000)
+        )
+        rawAppEventDao.insertEvents(events)
+
+        repository.processAndSummarizeDate(date)
+
+        val usage = dailyAppUsageDao.getUsageForDate(date).first().find { it.packageName == appA }
+        assertThat(usage).isNotNull()
+        assertThat(usage?.usageTimeMillis).isEqualTo(5000L)
+    }
+
+    @Test
+    fun `processAndSummarizeDate - infers RETURN_TO_HOME event`() = runTest {
+        val date = "2024-03-12"
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
+        val appA = "com.app.a"
+        val appB = "com.app.b"
+
+        val events = listOf(
+            createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 1000),
+            createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startOfDay + 2000),
+            createRawEvent(appB, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 2000 + 501)
+        )
+        rawAppEventDao.insertEvents(events)
+
+        repository.processAndSummarizeDate(date)
+
+        val usageForB = dailyAppUsageDao.getUsageForDate(date).first().find { it.packageName == appB }
+        assertThat(usageForB?.appOpenCount).isEqualTo(0)
+    }
+
+    @Test
+    fun `generateInsights - with no data - does not crash`() = runTest {
+        val date = "2024-03-13"
+        val insights = repository.generateInsights(date, emptyList(), emptyList(), emptySet())
+        assertThat(insights).isEmpty()
+    }
+
+    @Test
+    fun `getFirstAppUsedAfter - skips hidden app`() = runTest {
+        val date = "2024-03-14"
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
+        val hiddenApp = "com.app.hidden"
+        val visibleApp = "com.app.visible"
+
+        val hiddenAppMeta = createAppMeta(hiddenApp, userHidesOverride = true)
+        coEvery { mockAppMetadataRepository.getAppMetadata(hiddenApp) } returns hiddenAppMeta
+        coEvery { mockAppMetadataRepository.getAppMetadata(visibleApp) } returns createAppMeta(visibleApp)
+        coEvery { mockAppMetadataRepository.getAllMetadata() } returns flowOf(listOf(hiddenAppMeta, createAppMeta(visibleApp)))
+        repository = ScrollDataRepositoryImpl(
+            appDatabase = db,
+            appMetadataRepository = mockAppMetadataRepository,
+            scrollSessionDao = scrollSessionDao,
+            dailyAppUsageDao = dailyAppUsageDao,
+            rawAppEventDao = rawAppEventDao,
+            notificationDao = notificationDao,
+            dailyDeviceSummaryDao = dailyDeviceSummaryDao,
+            unlockSessionDao = unlockSessionDao,
+            dailyInsightDao = dailyInsightDao,
+            context = context,
+            ioDispatcher = UnconfinedTestDispatcher()
+        )
+
+        val events = listOf(
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfDay + 1000),
+            createRawEvent(hiddenApp, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 2000),
+            createRawEvent(visibleApp, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 3000)
+        )
+        rawAppEventDao.insertEvents(events)
+
+        repository.processAndSummarizeDate(date)
+
+        val insights = dailyInsightDao.getInsightsForDateAsFlow(date).first()
+        val firstAppInsight = insights.find { it.insightKey == "first_app_used" }
+        assertThat(firstAppInsight).isNotNull()
+        assertThat(firstAppInsight?.stringValue).isEqualTo(visibleApp)
     }
 }

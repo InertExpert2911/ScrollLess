@@ -36,6 +36,7 @@ lottieCompose = "6.6.7"
 timber = "5.0.1"
 material3 = "1.4.0-alpha18"
 jacoco = "0.8.13"
+datastore = "1.1.7"
 
 [libraries]
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
@@ -87,6 +88,7 @@ lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "
 timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
 androidx-material3-expressive = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
+androidx-datastore = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -14,7 +14,6 @@ import com.example.scrolltrack.db.AppMetadata
 import com.example.scrolltrack.db.AppMetadataDao
 import com.google.common.truth.Truth.assertThat
 import io.mockk.*
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
 import org.junit.After
@@ -39,13 +38,10 @@ class AppMetadataRepositoryImplTest {
 
     @Before
     fun setUp() {
-        // No longer mock context, we don't need it if we mock PackageManager directly
         context = ApplicationProvider.getApplicationContext()
         mockDao = mockk(relaxUnitFun = true)
         mockPackageManager = mockk(relaxed = true)
 
-        // We can't directly replace the packageManager on a real context.
-        // So we will spy on the real context and stub the packageManager call.
         val spiedContext = spyk(context)
         every { spiedContext.packageManager } returns mockPackageManager
         every { spiedContext.filesDir } returns File("build/tmp/test-files")
@@ -109,7 +105,6 @@ class AppMetadataRepositoryImplTest {
             emptyList()
         }
         
-        // Simplified queryIntentActivities mocking
         every { mockPackageManager.queryIntentActivities(any(), any<Int>()) } returns resolveInfoList
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             every { mockPackageManager.queryIntentActivities(any(), any<PackageManager.ResolveInfoFlags>()) } returns resolveInfoList
@@ -204,10 +199,9 @@ class AppMetadataRepositoryImplTest {
     @Test
     fun `getIconFile - icon exists - returns File`() = runTest {
         val pkg = "com.test.app.icon"
-        // Simulate icon saving by fetching it first (which saves it)
         coEvery { mockDao.getByPackageName(pkg) } returns null
         mockPmApp(pkg)
-        repository.getAppMetadata(pkg) // This should save the icon
+        repository.getAppMetadata(pkg)
 
         val iconFile = repository.getIconFile(pkg)
         assertThat(iconFile).isNotNull()
@@ -265,11 +259,11 @@ class AppMetadataRepositoryImplTest {
     @Test
     fun `fetchFromPackageManagerAndCache - non-system app - isUserVisible true`() = runTest {
         val pkg = "com.non.system"
-        mockPmApp(pkg, isSystem = false, hasLauncher = true) // Launcher status doesn't matter for non-system
+        mockPmApp(pkg, isSystem = false, hasLauncher = true)
         coEvery { mockDao.getByPackageName(pkg) } returns null
         coEvery { mockDao.insertOrUpdate(any()) } just Runs
 
-        repository.handleAppInstalledOrUpdated(pkg) // Triggers fetch
+        repository.handleAppInstalledOrUpdated(pkg)
 
         val slot = slot<AppMetadata>()
         coVerify { mockDao.insertOrUpdate(capture(slot)) }
@@ -302,5 +296,70 @@ class AppMetadataRepositoryImplTest {
         val slot = slot<AppMetadata>()
         coVerify { mockDao.insertOrUpdate(capture(slot)) }
         assertThat(slot.captured.isUserVisible).isFalse()
+    }
+
+    // --- handleAppUninstalled Tests ---
+    @Test
+    fun `handleAppUninstalled - icon file is deleted`() = runTest {
+        val pkg = "com.test.app.to.uninstall"
+        coEvery { mockDao.getByPackageName(pkg) } returns null
+        mockPmApp(pkg)
+        repository.getAppMetadata(pkg)
+
+        val iconFile = repository.getIconFile(pkg)
+        assertThat(iconFile).isNotNull()
+        assertThat(iconFile!!.exists()).isTrue()
+
+        repository.handleAppUninstalled(pkg)
+
+        assertThat(iconFile.exists()).isFalse()
+        coVerify { mockDao.markAsUninstalled(pkg, any()) }
+    }
+
+    @Test
+    fun `fetchFromPackageManagerAndCache - icon save fails - isIconCached is false`() = runTest {
+        val pkg = "com.test.icon.fail"
+        mockPmApp(pkg)
+        coEvery { mockDao.getByPackageName(pkg) } returns null
+        coEvery { mockDao.insertOrUpdate(any()) } just Runs
+
+        val spiedRepository = spyk(repository, recordPrivateCalls = true)
+        every { spiedRepository["saveIconToFile"](any<String>(), any<android.graphics.drawable.Drawable>()) } returns false
+
+        spiedRepository.handleAppInstalledOrUpdated(pkg)
+
+        val slot = slot<AppMetadata>()
+        coVerify { mockDao.insertOrUpdate(capture(slot)) }
+        assertThat(slot.captured.isIconCached).isFalse()
+    }
+
+    @Test
+    fun `getAppMetadata - app uninstalled during fetch - returns null`() = runTest {
+        val pkg = "com.test.ghost.app"
+        coEvery { mockDao.getByPackageName(pkg) } returns null
+        every { mockPackageManager.getPackageInfo(pkg, 0) } throws PackageManager.NameNotFoundException()
+
+        val result = repository.getAppMetadata(pkg)
+
+        assertThat(result).isNull()
+        coVerify(exactly = 0) { mockDao.insertOrUpdate(any()) }
+    }
+
+    @Test
+    fun `syncAllInstalledApps - handles null ApplicationInfo from PM gracefully`() = runTest {
+        val pkg1 = "com.good.app"
+        val goodAppInfo = ApplicationInfo().apply { packageName = pkg1 }
+        val badAppInfo = ApplicationInfo().apply { packageName = null }
+
+        mockPmApp(pkg1)
+        every { mockPackageManager.getInstalledApplications(any<Int>()) } returns listOf(goodAppInfo, badAppInfo)
+        coEvery { mockDao.getAllKnownPackageNames() } returns emptyList()
+        coEvery { mockDao.getByPackageName(any()) } returns null
+        coEvery { mockDao.insertOrUpdate(any()) } just Runs
+
+        repository.syncAllInstalledApps()
+
+        coVerify(exactly = 1) { mockDao.insertOrUpdate(match { it.packageName == pkg1 }) }
+        coVerify(exactly = 0) { mockDao.insertOrUpdate(match { it.packageName == null }) }
     }
 }

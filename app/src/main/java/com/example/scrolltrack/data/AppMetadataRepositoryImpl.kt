@@ -92,7 +92,9 @@ class AppMetadataRepositoryImpl @Inject constructor(
         // Add new apps
         val newApps = allPmPackageNames - allDbPackageNames
         for (pkgName in newApps) {
-            fetchFromPackageManagerAndCache(pkgName)
+            if (pkgName != null) {
+                fetchFromPackageManagerAndCache(pkgName)
+            }
         }
         Timber.tag(TAG).d("Found and cached ${newApps.size} new apps.")
 
