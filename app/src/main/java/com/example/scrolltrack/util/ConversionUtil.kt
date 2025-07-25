@@ -88,8 +88,11 @@ class ConversionUtil @Inject constructor(
                 "${numberFormat.format(millions)}M"
             }
             units >= 1_000 -> {
+                val thousands = units / 1000.0
+                if (thousands % 1.0 == 0.0) {
+                    numberFormat.minimumFractionDigits = 1
+                }
                 numberFormat.maximumFractionDigits = 1
-                val thousands = units / 1_000.0
                 "${numberFormat.format(thousands)}K"
             }
             else -> {

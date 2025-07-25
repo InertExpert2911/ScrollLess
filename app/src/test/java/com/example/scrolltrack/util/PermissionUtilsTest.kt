@@ -17,9 +17,11 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-
-@RunWith(RobolectricTestRunner::class)
-class PermissionUtilsTest {
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+ 
+ @RunWith(RobolectricTestRunner::class)
+ class PermissionUtilsTest {
 
     private lateinit var mockContext: Context
     private lateinit var mockAppOpsManager: AppOpsManager
@@ -195,5 +197,63 @@ class PermissionUtilsTest {
 
         val result = PermissionUtils.isAccessibilityServiceEnabled(mockContext, ScrollTrackService::class.java)
         assertThat(result).isFalse()
+    }
+
+    // --- Flow-based Tests ---
+
+    @Test
+    fun `isUsageStatsPermissionGrantedFlow emits true when permission is granted`() = runTest {
+        every {
+            mockAppOpsManager.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
+        } returns AppOpsManager.MODE_ALLOWED
+
+        val hasPermission = PermissionUtils.isUsageStatsPermissionGrantedFlow(mockContext).first()
+        assertThat(hasPermission).isTrue()
+    }
+
+    @Test
+    fun `isUsageStatsPermissionGrantedFlow emits false when permission is denied`() = runTest {
+        every {
+            mockAppOpsManager.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, Process.myUid(), packageName)
+        } returns AppOpsManager.MODE_ERRORED
+
+        val hasPermission = PermissionUtils.isUsageStatsPermissionGrantedFlow(mockContext).first()
+        assertThat(hasPermission).isFalse()
+    }
+
+    @Test
+    fun `isAccessibilityServiceEnabledFlow emits true when service is enabled`() = runTest {
+        val mockServiceInfo = mockk<AccessibilityServiceInfo>()
+        val expectedId = ComponentName(packageName, ScrollTrackService::class.java.name).flattenToString()
+        every { mockServiceInfo.id } returns expectedId
+        every { mockAccessibilityManager.getEnabledAccessibilityServiceList(any()) } returns listOf(mockServiceInfo)
+
+        val isEnabled = PermissionUtils.isAccessibilityServiceEnabledFlow(mockContext).first()
+        assertThat(isEnabled).isTrue()
+    }
+
+    @Test
+    fun `isAccessibilityServiceEnabledFlow emits false when service is disabled`() = runTest {
+        every { mockAccessibilityManager.getEnabledAccessibilityServiceList(any()) } returns emptyList()
+
+        val isEnabled = PermissionUtils.isAccessibilityServiceEnabledFlow(mockContext).first()
+        assertThat(isEnabled).isFalse()
+    }
+
+    @Test
+    fun `isNotificationListenerEnabledFlow emits true when listener is enabled`() = runTest {
+        val componentName = ComponentName(packageName, NotificationListener::class.java.name).flattenToString()
+        Settings.Secure.putString(mockContext.contentResolver, "enabled_notification_listeners", componentName)
+
+        val isEnabled = PermissionUtils.isNotificationListenerEnabledFlow(mockContext).first()
+        assertThat(isEnabled).isTrue()
+    }
+
+    @Test
+    fun `isNotificationListenerEnabledFlow emits false when listener is disabled`() = runTest {
+        Settings.Secure.putString(mockContext.contentResolver, "enabled_notification_listeners", "")
+
+        val isEnabled = PermissionUtils.isNotificationListenerEnabledFlow(mockContext).first()
+        assertThat(isEnabled).isFalse()
     }
 }

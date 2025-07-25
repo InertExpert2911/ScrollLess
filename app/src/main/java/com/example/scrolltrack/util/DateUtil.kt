@@ -17,7 +17,7 @@ object DateUtil {
 
     val localTimeZone = ZoneId.systemDefault()
     private val YYYY_MM_DD_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.US)
-    private val HH_MM_FORMATTER = DateTimeFormatter.ofPattern("HH:mm", Locale.getDefault())
+    private val HH_MM_FORMATTER = DateTimeFormatter.ofPattern("h:mm a", Locale.getDefault())
 
     fun getUtcTimestamp(): Long {
         return Instant.now().toEpochMilli()
@@ -61,13 +61,11 @@ object DateUtil {
     }
 
     fun getStartOfWeek(date: LocalDate): LocalDate {
-        val firstDayOfWeek = WeekFields.of(Locale.getDefault()).firstDayOfWeek
-        return date.with(TemporalAdjusters.previousOrSame(firstDayOfWeek))
+        return date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
     }
 
     fun getEndOfWeek(date: LocalDate): LocalDate {
-        val lastDayOfWeek = DayOfWeek.of(((WeekFields.of(Locale.getDefault()).firstDayOfWeek.value + 5) % 7) + 1)
-        return date.with(TemporalAdjusters.nextOrSame(lastDayOfWeek))
+        return date.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY))
     }
 
     fun getStartOfMonth(date: LocalDate): LocalDate {
@@ -107,7 +105,7 @@ object DateUtil {
     }
 
     fun getWeekOfYear(date: LocalDate): Int {
-        val weekFields = WeekFields.of(Locale.getDefault())
+        val weekFields = WeekFields.ISO
         return date.get(weekFields.weekOfYear())
     }
 
@@ -137,10 +135,13 @@ object DateUtil {
         return date.minusDays(daysAgo.toLong()).format(YYYY_MM_DD_FORMATTER)
     }
 
-    fun getFormattedDate(): String {
-        val today = LocalDate.now()
+    fun getFormattedDate(date: LocalDate): String {
         val formatter = DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy", Locale.getDefault())
-        return today.format(formatter)
+        return date.format(formatter)
+    }
+
+    fun getFormattedDate(): String {
+        return getFormattedDate(LocalDate.now())
     }
 
     fun formatLocalDateToString(date: LocalDate): String {

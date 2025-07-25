@@ -70,4 +70,80 @@ class ConversionUtilTest {
         assertThat(unit).isEqualTo("km")
         assertThat(value.replace(",", "").toDouble()).isWithin(0.01).of(1.0)
     }
+
+    @Test
+    fun `formatScrollDistance with high DPI returns smaller distance`() = runBlocking {
+        coEvery { settingsRepository.screenDpi } returns flowOf(480) // High DPI
+
+        val (value, unit) = conversionUtil.formatScrollDistance(160, 0)
+
+        assertThat(unit).isEqualTo("m")
+        assertThat(value.toDouble()).isWithin(0.01).of(0.01) // Smaller distance
+    }
+
+    @Test
+    fun `formatScrollDistance with low DPI returns larger distance`() = runBlocking {
+        coEvery { settingsRepository.screenDpi } returns flowOf(120) // Low DPI
+
+        val (value, unit) = conversionUtil.formatScrollDistance(160, 0)
+
+        assertThat(unit).isEqualTo("m")
+        assertThat(value.toDouble()).isWithin(0.01).of(0.03) // Larger distance
+    }
+
+    @Test
+    fun `formatScrollDistance with zero DPI falls back to default`() = runBlocking {
+        coEvery { settingsRepository.screenDpi } returns flowOf(0) // Fallback DPI
+
+        val (value, unit) = conversionUtil.formatScrollDistance(160, 0)
+
+        assertThat(unit).isEqualTo("m")
+        assertThat(value.toDouble()).isWithin(0.01).of(0.03)
+    }
+
+    @Test
+    fun `formatUnits below 1000 returns number`() {
+        val result = conversionUtil.formatUnits(999)
+        assertThat(result).isEqualTo("999")
+    }
+
+    @Test
+    fun `formatUnits for thousands returns K`() {
+        val result = conversionUtil.formatUnits(12345)
+        assertThat(result).isEqualTo("12.3K")
+    }
+
+    @Test
+    fun `formatUnits for millions returns M`() {
+        val result = conversionUtil.formatUnits(1234567)
+        assertThat(result).isEqualTo("1.2M")
+    }
+
+    @Test
+    fun `formatUnits with 1000 returns 1K`() {
+        val result = conversionUtil.formatUnits(1000)
+        assertThat(result).isEqualTo("1.0K")
+    }
+
+    @Test
+    fun `formatUnits with 0 returns 0`() {
+        val result = conversionUtil.formatUnits(0)
+        assertThat(result).isEqualTo("0")
+    }
+
+    @Test
+    fun `formatScrollDistance with X-only scroll`() = runBlocking {
+        coEvery { settingsRepository.screenDpi } returns flowOf(160)
+        val (value, unit) = conversionUtil.formatScrollDistance(160, 0)
+        assertThat(unit).isEqualTo("m")
+        assertThat(value.toDouble()).isWithin(0.01).of(0.03)
+    }
+
+    @Test
+    fun `formatScrollDistance with Y-only scroll`() = runBlocking {
+        coEvery { settingsRepository.screenDpi } returns flowOf(160)
+        val (value, unit) = conversionUtil.formatScrollDistance(0, 160)
+        assertThat(unit).isEqualTo("m")
+        assertThat(value.toDouble()).isWithin(0.01).of(0.03)
+    }
 }
