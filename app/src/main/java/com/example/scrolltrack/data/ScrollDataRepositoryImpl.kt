@@ -283,7 +283,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
         return mergedSessions
     }
 
-    private suspend fun processUnlockEvents(
+    internal suspend fun processUnlockEvents(
         events: List<RawAppEvent>,
         notifications: List<NotificationRecord>,
         hiddenAppsSet: Set<String>,
@@ -421,7 +421,9 @@ class ScrollDataRepositoryImpl @Inject constructor(
         val firstUnlockTime = unlockSessions.minOfOrNull { it.unlockTimestamp }
         val lastUnlockTime = unlockSessions.maxOfOrNull { it.unlockTimestamp }
 
-        val allPackages = usageAggregates.keys.union(appOpens.keys).union(notificationsByPackage.keys)
+        val filteredAppOpens = appOpens.filterKeys { it !in filterSet }
+
+        val allPackages = usageAggregates.keys.union(filteredAppOpens.keys).union(notificationsByPackage.keys)
         val usageRecords = allPackages.mapNotNull { pkg ->
             val (usage, active) = usageAggregates[pkg] ?: (0L to 0L)
             if (usage < AppConstants.MINIMUM_SIGNIFICANT_SESSION_DURATION_MS && (notificationsByPackage[pkg] ?: 0) == 0) null
@@ -430,7 +432,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
                 dateString = dateString,
                 usageTimeMillis = usage,
                 activeTimeMillis = active,
-                appOpenCount = appOpens.getOrDefault(pkg, 0),
+                appOpenCount = filteredAppOpens.getOrDefault(pkg, 0),
                 notificationCount = notificationsByPackage.getOrDefault(pkg, 0),
                 lastUpdatedTimestamp = System.currentTimeMillis()
             )
@@ -450,7 +452,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
             firstUnlockTimestampUtc = firstUnlockTime,
             lastUnlockTimestampUtc = lastUnlockTime,
             totalNotificationCount = totalNotifications,
-            totalAppOpens = appOpens.values.sum(),
+            totalAppOpens = filteredAppOpens.values.sum(),
             lastUpdatedTimestamp = System.currentTimeMillis()
         )
         return Pair(usageRecords, deviceSummary)
@@ -568,13 +570,16 @@ class ScrollDataRepositoryImpl @Inject constructor(
             .lastOrNull()
     }
 
-    private suspend fun generateInsights(
+    internal suspend fun generateInsights(
         dateString: String,
         unlockSessions: List<UnlockSessionRecord>,
         allEvents: List<RawAppEvent>,
         filterSet: Set<String>
     ): List<DailyInsight> {
+        if (unlockSessions.isEmpty() && allEvents.isEmpty()) return emptyList()
+
         val insights = mutableListOf<DailyInsight>()
+        val sortedEvents = allEvents.sortedBy { it.eventTimestamp }
 
         // --- Basic Unlock Insights ---
         val glanceCount = unlockSessions.count { it.sessionType == "Glance" }.toLong()
@@ -593,23 +598,31 @@ class ScrollDataRepositoryImpl @Inject constructor(
         // --- First & Last App Used ---
         if (firstUnlockTime != null) {
             // CORRECTED LOGIC: Find the first app event that occurs AFTER the first unlock event.
-            allEvents.firstOrNull { it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED && it.packageName !in filterSet && it.eventTimestamp > firstUnlockTime }?.let {
+            sortedEvents.firstOrNull { it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED && it.packageName !in filterSet && it.eventTimestamp > firstUnlockTime }?.let {
                 insights.add(DailyInsight(dateString = dateString, insightKey = "first_app_used", stringValue = it.packageName, longValue = it.eventTimestamp))
             }
         }
-        allEvents.lastOrNull { it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED && it.packageName !in filterSet }?.let {
+        sortedEvents.lastOrNull { it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED && it.packageName !in filterSet }?.let {
             insights.add(DailyInsight(dateString = dateString, insightKey = "last_app_used", stringValue = it.packageName, longValue = it.eventTimestamp))
         }
         
         // --- Top Compulsive App Insight ---
-        unlockSessionDao.getCompulsiveCheckCountsByPackage(dateString, dateString).first().maxByOrNull { it.count }?.let {
-            insights.add(DailyInsight(dateString = dateString, insightKey = "top_compulsive_app", stringValue = it.packageName, longValue = it.count.toLong()))
-        }
+        unlockSessions
+            .filter { it.isCompulsive && it.firstAppPackageName != null }
+            .groupingBy { it.firstAppPackageName!! }
+            .eachCount()
+            .maxByOrNull { it.value }?.let { (packageName, count) ->
+                insights.add(DailyInsight(dateString = dateString, insightKey = "top_compulsive_app", stringValue = packageName, longValue = count.toLong()))
+            }
 
         // --- Top Notification-Driven App Insight ---
-        unlockSessionDao.getNotificationDrivenUnlockCountsByPackage(dateString, dateString).first().maxByOrNull { it.count }?.let {
-            insights.add(DailyInsight(dateString = dateString, insightKey = "top_notification_unlock_app", stringValue = it.packageName, longValue = it.count.toLong()))
-        }
+        unlockSessions
+            .filter { it.triggeringNotificationPackageName != null }
+            .groupingBy { it.triggeringNotificationPackageName!! }
+            .eachCount()
+            .maxByOrNull { it.value }?.let { (packageName, count) ->
+                insights.add(DailyInsight(dateString = dateString, insightKey = "top_notification_unlock_app", stringValue = packageName, longValue = count.toLong()))
+            }
 
         // --- Busiest Hour Insight ---
         if (unlockSessions.isNotEmpty()) {
@@ -626,7 +639,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
         // --- Night Owl Insight ---
         val startOfDay = DateUtil.getStartOfDayUtcMillis(dateString)
         val endOfNightWindow = startOfDay + TimeUnit.HOURS.toMillis(4)
-        allEvents.lastOrNull { it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED && it.packageName !in filterSet && it.eventTimestamp in startOfDay..endOfNightWindow }?.let {
+        sortedEvents.lastOrNull { it.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED && it.packageName !in filterSet && it.eventTimestamp in startOfDay..endOfNightWindow }?.let {
             insights.add(DailyInsight(dateString = dateString, insightKey = "night_owl_last_app", stringValue = it.packageName, longValue = it.eventTimestamp))
         }
 
@@ -659,22 +672,26 @@ class ScrollDataRepositoryImpl @Inject constructor(
         if (sortedEvents.isEmpty()) return emptyMap()
 
         val appOpens = mutableMapOf<String, Int>()
-        var lastEventType: Int? = null
+        var lastRelevantEventType: Int? = null
         var lastAppOpenTimestamp = 0L
 
+        val relevantEventTypes = setOf(
+            RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED,
+            RawAppEvent.EVENT_TYPE_USER_UNLOCKED,
+            RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN,
+            RawAppEvent.EVENT_TYPE_RETURN_TO_HOME
+        )
+
         for (event in sortedEvents) {
-            var isAppOpen = false
             if (event.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED) {
-                // Rule 1: First app launched after an unlock is always an open.
-                if (lastEventType == RawAppEvent.EVENT_TYPE_USER_UNLOCKED || lastEventType == RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN) {
+                var isAppOpen = false
+                if (lastAppOpenTimestamp == 0L) { // First open ever
                     isAppOpen = true
-                }
-                // Rule 2: App launch after returning to home is an open.
-                else if (lastEventType == RawAppEvent.EVENT_TYPE_RETURN_TO_HOME) {
+                } else if (lastRelevantEventType == RawAppEvent.EVENT_TYPE_USER_UNLOCKED || lastRelevantEventType == RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN) {
                     isAppOpen = true
-                }
-                // Rule 3: Debounce for app-to-app switches.
-                else if (event.eventTimestamp - lastAppOpenTimestamp > AppConstants.CONTEXTUAL_APP_OPEN_DEBOUNCE_MS) {
+                } else if (lastRelevantEventType == RawAppEvent.EVENT_TYPE_RETURN_TO_HOME) {
+                    isAppOpen = true
+                } else if (event.eventTimestamp - lastAppOpenTimestamp > AppConstants.CONTEXTUAL_APP_OPEN_DEBOUNCE_MS) {
                     isAppOpen = true
                 }
 
@@ -683,7 +700,10 @@ class ScrollDataRepositoryImpl @Inject constructor(
                     lastAppOpenTimestamp = event.eventTimestamp
                 }
             }
-            lastEventType = event.eventType
+
+            if (event.eventType in relevantEventTypes) {
+                lastRelevantEventType = event.eventType
+            }
         }
         return appOpens
     }
@@ -794,7 +814,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
         return aggregator to inferredEvents
     }
 
-    private fun calculateActiveTimeFromInteractions(events: List<RawAppEvent>, sessionStart: Long, sessionEnd: Long): Long {
+    internal fun calculateActiveTimeFromInteractions(events: List<RawAppEvent>, sessionStart: Long, sessionEnd: Long): Long {
         if (events.isEmpty()) return 0L
 
         val intervals = events.map { event ->
