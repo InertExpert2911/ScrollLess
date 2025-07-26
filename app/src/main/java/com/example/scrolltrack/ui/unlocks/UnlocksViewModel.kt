@@ -6,9 +6,11 @@ import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.db.DailyDeviceSummary
 import com.example.scrolltrack.ui.mappers.AppUiModelMapper
+import com.example.scrolltrack.di.IoDispatcher
 import com.example.scrolltrack.ui.model.AppOpenUiItem
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -42,7 +44,8 @@ data class UnlocksUiState(
 @HiltViewModel
 class UnlocksViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
-    private val mapper: AppUiModelMapper
+    private val mapper: AppUiModelMapper,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private val _selectedDate = MutableStateFlow(LocalDate.now())

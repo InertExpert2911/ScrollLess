@@ -33,7 +33,7 @@ class ScrollTrackService : AccessibilityService() {
     private val SERVICE_NOTIFICATION_ID = 1
 
     private val serviceJob = SupervisorJob()
-    private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
+    internal var serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
 
     @Inject
     lateinit var rawAppEventDao: RawAppEventDao
@@ -154,28 +154,30 @@ class ScrollTrackService : AccessibilityService() {
     private fun handleMeasuredScroll(event: AccessibilityEvent, packageName: String) {
         if (!isNodeScrollable(event.source)) return
 
-        if (event.scrollDeltaX == 0 && event.scrollDeltaY == 0) return
-
         val activePackage = currentForegroundPackage ?: packageName
-        
-        // Cancel any pending inferred scroll job for this package
+
+        // Always cancel inferred scrolls and update timestamp on a measured scroll.
         inferredScrollJobs[activePackage]?.cancel()
         inferredScrollJobs.remove(activePackage)
         inferredScrollEventCounter.remove(activePackage)
-
         lastMeasuredScrollTimestamp[activePackage] = System.currentTimeMillis()
 
-        val calibratedDeltaX = (event.scrollDeltaX * scrollFactor).toInt()
-        val calibratedDeltaY = (event.scrollDeltaY * scrollFactor).toInt()
+        // Only log the event if we can get delta values.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            if (event.scrollDeltaX == 0 && event.scrollDeltaY == 0) return
 
-        logRawEvent(
-            activePackage,
-            event.className?.toString(),
-            RawAppEvent.EVENT_TYPE_SCROLL_MEASURED,
-            null, // The 'value' field is no longer needed for scroll
-            calibratedDeltaX,
-            calibratedDeltaY
-        )
+            val calibratedDeltaX = (event.scrollDeltaX * scrollFactor).toInt()
+            val calibratedDeltaY = (event.scrollDeltaY * scrollFactor).toInt()
+
+            logRawEvent(
+                activePackage,
+                event.className?.toString(),
+                RawAppEvent.EVENT_TYPE_SCROLL_MEASURED,
+                null, // The 'value' field is no longer needed for scroll
+                calibratedDeltaX,
+                calibratedDeltaY
+            )
+        }
     }
 
     private fun handleTypingEvent(event: AccessibilityEvent, packageName: String) {

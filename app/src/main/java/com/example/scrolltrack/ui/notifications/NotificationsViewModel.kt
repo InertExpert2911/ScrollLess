@@ -6,9 +6,10 @@ import com.example.scrolltrack.data.AppMetadataRepository
 import com.example.scrolltrack.data.NotificationCountPerApp
 import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.db.AppMetadata
+import com.example.scrolltrack.di.IoDispatcher
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
@@ -37,7 +38,8 @@ sealed interface NotificationsUiState {
 @HiltViewModel
 class NotificationsViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
-    private val appMetadataRepository: AppMetadataRepository
+    private val appMetadataRepository: AppMetadataRepository,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
     private data class PeriodDetails(val startDate: String, val endDate: String, val title: String, val dateRange: List<String>)
@@ -74,7 +76,7 @@ class NotificationsViewModel @Inject constructor(
 
         val appNotificationCounts = repository.getNotificationCountPerAppForPeriod(periodDetails.startDate, periodDetails.endDate).first()
 
-        val notificationItems = withContext(Dispatchers.Default) {
+        val notificationItems = withContext(ioDispatcher) {
             appNotificationCounts
                 .mapNotNull { countPerApp ->
                     appMetadataRepository.getAppMetadata(countPerApp.packageName)?.let { metadata ->
@@ -123,7 +125,7 @@ fun onDateSelected(date: LocalDate) {
     _selectedDate.value = date
 }
 
-    suspend fun getIcon(packageName: String): Drawable? = withContext(Dispatchers.IO) {
+    suspend fun getIcon(packageName: String): Drawable? = withContext(ioDispatcher) {
         appMetadataRepository.getIconFile(packageName)?.let {
             Drawable.createFromPath(it.absolutePath)
         }

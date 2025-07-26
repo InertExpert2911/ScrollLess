@@ -1,36 +1,41 @@
 package com.example.scrolltrack.ui.unlocks
 
-import app.cash.turbine.test
 import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.db.DailyDeviceSummary
 import com.example.scrolltrack.ui.mappers.AppUiModelMapper
 import com.google.common.truth.Truth.assertThat
-import io.mockk.every
+import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import java.time.LocalDate
 
 @ExperimentalCoroutinesApi
+@RunWith(RobolectricTestRunner::class)
 class UnlocksViewModelTest {
+
     private lateinit var viewModel: UnlocksViewModel
-    private val scrollDataRepository: ScrollDataRepository = mockk()
-    private val appUiModelMapper: AppUiModelMapper = mockk()
+    private lateinit var scrollDataRepository: ScrollDataRepository
     private val testDispatcher = StandardTestDispatcher()
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        every { scrollDataRepository.getAllDeviceSummaries() } returns flowOf(emptyList())
-        viewModel = UnlocksViewModel(scrollDataRepository, appUiModelMapper)
+        scrollDataRepository = mockk(relaxed = true)
+        val mapper: AppUiModelMapper = mockk(relaxed = true)
+        viewModel = UnlocksViewModel(scrollDataRepository, mapper, testDispatcher)
     }
 
     @After
@@ -39,30 +44,29 @@ class UnlocksViewModelTest {
     }
 
     @Test
-    fun `initial state is loading`() = runTest {
-        viewModel.uiState.test {
-            val state = awaitItem()
-            assertThat(state.unlockStat).isEqualTo(0)
-            assertThat(state.appOpens).isEmpty()
-        }
+    fun `test date range calculation`() = runTest(testDispatcher) {
+        val date = LocalDate.of(2023, 10, 26)
+        viewModel.onDateSelected(date)
+        viewModel.onPeriodChanged(UnlockPeriod.Weekly)
+        advanceUntilIdle()
+
+        val uiState = viewModel.uiState.value
+        assertThat(uiState.periodDisplay).contains("Oct 23")
+        assertThat(uiState.periodDisplay).contains("29, 2023")
     }
 
     @Test
-    fun `unlock count is updated`() = runTest {
-        val today = LocalDate.now().toString()
-        val summary = DailyDeviceSummary(dateString = today, totalUnlockCount = 10)
-        every { scrollDataRepository.getAllDeviceSummaries() } returns flowOf(listOf(summary))
-        every { scrollDataRepository.getUsageRecordsForDateRange(any(), any()) } returns flowOf(emptyList())
+    fun `test data averaging`() = runTest(testDispatcher) {
+        val summaries = listOf(
+            DailyDeviceSummary("2023-10-23", 10, 0, 0, 0, 0),
+            DailyDeviceSummary("2023-10-24", 20, 0, 0, 0, 0)
+        )
+        coEvery { scrollDataRepository.getAllDeviceSummaries() } returns flowOf(summaries)
+        viewModel.onDateSelected(LocalDate.of(2023, 10, 26))
+        viewModel.onPeriodChanged(UnlockPeriod.Weekly)
+        advanceUntilIdle()
 
-        // Re-create ViewModel to observe changes after mocks are updated
-        viewModel = UnlocksViewModel(scrollDataRepository, appUiModelMapper)
-        testDispatcher.scheduler.advanceUntilIdle()
-
-        viewModel.uiState.test {
-            val initialState = awaitItem()
-            assertThat(initialState.unlockStat).isEqualTo(0)
-            val state = awaitItem()
-            assertThat(state.unlockStat).isEqualTo(10)
-        }
+        val uiState = viewModel.uiState.value
+        assertThat(uiState.unlockStat).isEqualTo(4) // (10 + 20) / 7
     }
-} 
+}

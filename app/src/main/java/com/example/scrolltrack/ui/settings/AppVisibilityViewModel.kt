@@ -82,12 +82,18 @@ class AppVisibilityViewModel @Inject constructor(
                                 null
                             }
                         }
-                        .filter { if (_showNonInteractiveApps.value) true else it.isDefaultVisible }
-                        .filter {
-                            when (_visibilityFilter.value) {
+                        .filter { item ->
+                            val visibilityFilterResult = when (_visibilityFilter.value) {
                                 VisibilityFilter.ALL -> true
-                                VisibilityFilter.VISIBLE -> it.visibilityState == VisibilityState.VISIBLE || (it.visibilityState == VisibilityState.DEFAULT && it.isDefaultVisible)
-                                VisibilityFilter.HIDDEN -> it.visibilityState == VisibilityState.HIDDEN || (it.visibilityState == VisibilityState.DEFAULT && !it.isDefaultVisible)
+                                VisibilityFilter.VISIBLE -> item.visibilityState == VisibilityState.VISIBLE || (item.visibilityState == VisibilityState.DEFAULT && item.isDefaultVisible)
+                                VisibilityFilter.HIDDEN -> item.visibilityState == VisibilityState.HIDDEN || (item.visibilityState == VisibilityState.DEFAULT && !item.isDefaultVisible)
+                            }
+                            val interactiveFilterResult = if (_showNonInteractiveApps.value) true else item.isDefaultVisible
+
+                            if (_visibilityFilter.value == VisibilityFilter.HIDDEN) {
+                                visibilityFilterResult
+                            } else {
+                                visibilityFilterResult && interactiveFilterResult
                             }
                         }
                         .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.appName })
