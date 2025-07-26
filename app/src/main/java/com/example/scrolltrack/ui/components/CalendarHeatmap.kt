@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -53,6 +54,23 @@ fun InteractiveCalendarHeatmap(
     monthsWithData: List<YearMonth>,
     modifier: Modifier = Modifier
 ) {
+    if (monthsWithData.isEmpty()) {
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(vertical = 56.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "No data yet. Check back soon!",
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        return
+    }
+
     val scrollState = rememberLazyListState()
 
     LaunchedEffect(monthsWithData.size) {

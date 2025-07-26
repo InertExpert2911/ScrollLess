@@ -96,7 +96,7 @@ class ScrollTrackService : AccessibilityService() {
         return NotificationCompat.Builder(this, ScrollTrackApplication.SERVICE_NOTIFICATION_CHANNEL_ID)
             .setContentTitle("ScrollTrack is running")
             .setContentText("Actively monitoring scroll events.")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_notification_mono) // Use the new icon here
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
