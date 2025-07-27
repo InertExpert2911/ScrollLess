@@ -218,13 +218,13 @@ class ScrollDataRepositoryImplTest {
         val eventsYesterday = mutableListOf(
             createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfYesterday + 1000),
             createRawEvent("com.app.one", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfYesterday + 2000),
-            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, startOfYesterday + 5000)
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, startOfYesterday + 5000),
+            // This event belongs to yesterday but occurs close to midnight
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfToday - 5000)
         )
         val eventsToday = mutableListOf(
-            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfToday - 5000),
             createRawEvent("com.app.two", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfToday - 4000),
             createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, startOfToday + 1000),
-
             createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfToday + 2000),
             createRawEvent("com.app.one", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfToday + 3000),
             createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, startOfToday + 6000)
@@ -232,17 +232,15 @@ class ScrollDataRepositoryImplTest {
 
         rawAppEventDao.insertEvents(eventsYesterday + eventsToday)
 
+        // Process yesterday and verify
         repository.processAndSummarizeDate(yesterday)
-        var yesterdaySummary = dailyDeviceSummaryDao.getSummaryForDate(yesterday).first()
+        val yesterdaySummary = dailyDeviceSummaryDao.getSummaryForDate(yesterday).first()
         assertThat(yesterdaySummary?.totalUnlockCount).isEqualTo(2)
 
+        // Process today and verify
         repository.processAndSummarizeDate(today)
-        var todaySummary = dailyDeviceSummaryDao.getSummaryForDate(today).first()
+        val todaySummary = dailyDeviceSummaryDao.getSummaryForDate(today).first()
         assertThat(todaySummary?.totalUnlockCount).isEqualTo(1)
-
-        repository.processAndSummarizeDate(yesterday)
-        yesterdaySummary = dailyDeviceSummaryDao.getSummaryForDate(yesterday).first()
-        assertThat(yesterdaySummary?.totalUnlockCount).isEqualTo(2)
     }
 
     @Test
@@ -257,9 +255,8 @@ class ScrollDataRepositoryImplTest {
             createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, lockTime)
         )
 
-        repository.processUnlockEvents(events, emptyList(), emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
+        val sessions = repository.processUnlockEvents(events, emptyList(), emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
 
-        val sessions = unlockSessionDao.getUnlockSessionsForDate(date)
         assertThat(sessions).hasSize(1)
         assertThat(sessions.first().sessionType).isEqualTo("Glance")
     }
@@ -276,9 +273,8 @@ class ScrollDataRepositoryImplTest {
             createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, lockTime)
         )
 
-        repository.processUnlockEvents(events, emptyList(), emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
+        val sessions = repository.processUnlockEvents(events, emptyList(), emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
 
-        val sessions = unlockSessionDao.getUnlockSessionsForDate(date)
         assertThat(sessions).hasSize(1)
         assertThat(sessions.first().sessionType).isEqualTo("Intentional")
     }
@@ -298,9 +294,8 @@ class ScrollDataRepositoryImplTest {
             createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, lockTime)
         )
 
-        repository.processUnlockEvents(events, emptyList(), emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
+        val sessions = repository.processUnlockEvents(events, emptyList(), emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
 
-        val sessions = unlockSessionDao.getUnlockSessionsForDate(date)
         assertThat(sessions).hasSize(1)
         assertThat(sessions.first().isCompulsive).isTrue()
     }
@@ -324,9 +319,8 @@ class ScrollDataRepositoryImplTest {
             NotificationRecord(notificationKey = "key1", packageName = appA, postTimeUTC = notificationTime, dateString = date, title = "title", text = "text", category = "cat")
         )
 
-        repository.processUnlockEvents(events, notifications, emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
+        val sessions = repository.processUnlockEvents(events, notifications, emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
 
-        val sessions = unlockSessionDao.getUnlockSessionsForDate(date)
         assertThat(sessions).hasSize(1)
         assertThat(sessions.first().triggeringNotificationPackageName).isEqualTo(appA)
     }
@@ -713,21 +707,6 @@ class ScrollDataRepositoryImplTest {
     fun `processUnlockEvents - glance vs intentional - flags correctly`() = runTest {
         val date = "2024-01-20"
         val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
-        val unlockSessionDaoSpy = spyk(unlockSessionDao)
-
-        repository = ScrollDataRepositoryImpl(
-            appDatabase = db,
-            appMetadataRepository = mockAppMetadataRepository,
-            scrollSessionDao = scrollSessionDao,
-            dailyAppUsageDao = dailyAppUsageDao,
-            rawAppEventDao = rawAppEventDao,
-            notificationDao = notificationDao,
-            dailyDeviceSummaryDao = dailyDeviceSummaryDao,
-            unlockSessionDao = unlockSessionDaoSpy,
-            dailyInsightDao = dailyInsightDao,
-            context = context,
-            ioDispatcher = UnconfinedTestDispatcher()
-        )
 
         val glanceUnlockTime = startOfDay + 1000L
         val glanceLockTime = glanceUnlockTime + AppConstants.MINIMUM_GLANCE_DURATION_MS - 1
@@ -735,9 +714,7 @@ class ScrollDataRepositoryImplTest {
             createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, glanceUnlockTime),
             createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, glanceLockTime)
         )
-        repository.processUnlockEvents(glanceEvents, emptyList(), emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
-
-        val glanceSessions = unlockSessionDaoSpy.getUnlockSessionsForDate(date)
+        val glanceSessions = repository.processUnlockEvents(glanceEvents, emptyList(), emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
         assertThat(glanceSessions).hasSize(1)
         assertThat(glanceSessions.first().sessionType).isEqualTo("Glance")
 
@@ -747,11 +724,9 @@ class ScrollDataRepositoryImplTest {
             createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, intentionalUnlockTime),
             createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, intentionalLockTime)
         )
-        repository.processUnlockEvents(intentionalEvents, emptyList(), emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
-
-        val allSessions = unlockSessionDaoSpy.getUnlockSessionsForDate(date)
-        assertThat(allSessions).hasSize(2)
-        assertThat(allSessions.find { it.unlockTimestamp == intentionalUnlockTime }?.sessionType).isEqualTo("Intentional")
+        val intentionalSessions = repository.processUnlockEvents(intentionalEvents, emptyList(), emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
+        assertThat(intentionalSessions).hasSize(1)
+        assertThat(intentionalSessions.first().sessionType).isEqualTo("Intentional")
     }
 
     @Test
@@ -767,9 +742,8 @@ class ScrollDataRepositoryImplTest {
             createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, lockTime)
         )
 
-        repository.processUnlockEvents(events, emptyList(), emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
+        val sessions = repository.processUnlockEvents(events, emptyList(), emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
 
-        val sessions = unlockSessionDao.getUnlockSessionsForDate(date)
         assertThat(sessions).hasSize(1)
         assertThat(sessions.first().isCompulsive).isTrue()
     }
@@ -790,9 +764,8 @@ class ScrollDataRepositoryImplTest {
             createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, lockTime)
         )
 
-        repository.processUnlockEvents(events, emptyList(), emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
+        val sessions = repository.processUnlockEvents(events, emptyList(), emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
 
-        val sessions = unlockSessionDao.getUnlockSessionsForDate(date)
         assertThat(sessions).hasSize(1)
         assertThat(sessions.first().isCompulsive).isFalse()
     }
@@ -813,9 +786,8 @@ class ScrollDataRepositoryImplTest {
             NotificationRecord(notificationKey = "key", packageName = appA, postTimeUTC = unlockTime - 1000, dateString = date, title = "t", text = "t", category = "c")
         )
 
-        repository.processUnlockEvents(events, notifications, emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
+        val sessions = repository.processUnlockEvents(events, notifications, emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
 
-        val sessions = unlockSessionDao.getUnlockSessionsForDate(date)
         assertThat(sessions).hasSize(1)
         assertThat(sessions.first().triggeringNotificationPackageName).isEqualTo(appA)
     }

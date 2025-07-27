@@ -145,55 +145,67 @@ class ScrollDataRepositoryImpl @Inject constructor(
         val events = rawAppEventDao.getEventsForPeriod(startTime, endTime)
             .distinctBy { Triple(it.eventTimestamp, it.eventType, it.packageName) }
         val notifications = notificationDao.getNotificationsForDateList(dateString)
+        val filterSet = this@ScrollDataRepositoryImpl.filterSet.first()
 
+        if (events.isEmpty()) {
+            Timber.i("No new events to process for $dateString. Clearing any existing data.")
+            appDatabase.withTransaction {
+                unlockSessionDao.deleteSessionsForDate(dateString)
+                dailyAppUsageDao.deleteUsageForDate(dateString)
+                scrollSessionDao.deleteSessionsForDate(dateString)
+                dailyDeviceSummaryDao.deleteSummaryForDate(dateString)
+                dailyInsightDao.deleteInsightsForDate(dateString)
+            }
+            return@withContext
+        }
+
+        // --- Step 1: Calculate all new data in memory FIRST ---
+        val unlockRelatedEvents = events.filter {
+            it.eventType in setOf(
+                RawAppEvent.EVENT_TYPE_USER_UNLOCKED,
+                RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN,
+                RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN,
+                RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE,
+                RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED
+            )
+        }
+        val calculatedUnlockSessions = processUnlockEvents(
+            unlockRelatedEvents,
+            notifications,
+            filterSet,
+            unlockEventTypes = setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED, RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN),
+            lockEventTypes = setOf(RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN, RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE)
+        )
+
+        val scrollSessions = processScrollEvents(events, filterSet)
+        val (usageRecords, deviceSummary) = processUsageAndDeviceSummary(events, filterSet, dateString, calculatedUnlockSessions)
+        val insights = generateInsights(dateString, calculatedUnlockSessions, events, filterSet)
+
+        // --- Step 2: Perform an atomic write transaction ---
         appDatabase.withTransaction {
+            // 2a: Delete old data
             unlockSessionDao.deleteSessionsForDate(dateString)
             dailyAppUsageDao.deleteUsageForDate(dateString)
             scrollSessionDao.deleteSessionsForDate(dateString)
             dailyDeviceSummaryDao.deleteSummaryForDate(dateString)
             dailyInsightDao.deleteInsightsForDate(dateString)
 
-            if (events.isNotEmpty()) {
-                val filterSet = this@ScrollDataRepositoryImpl.filterSet.first()
-
-                // Process the unlock timeline FIRST. This is critical.
-                val unlockRelatedEvents = events.filter {
-                    it.eventType in setOf(
-                        RawAppEvent.EVENT_TYPE_USER_UNLOCKED,
-                        RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN,
-                        RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN,
-                        RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE,
-                        RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED
-                    )
-                }
-                processUnlockEvents(
-                    unlockRelatedEvents,
-                    notifications,
-                    filterSet, // Pass the filter set
-                    unlockEventTypes = setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED, RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN),
-                    lockEventTypes = setOf(RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN, RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE)
-                )
-
-                val scrollSessions = processScrollEvents(events, filterSet)
-                if (scrollSessions.isNotEmpty()) {
-                    scrollSessionDao.insertSessions(scrollSessions)
-                }
-
-                val (usageRecords, deviceSummary) = processUsageAndDeviceSummary(events, filterSet, dateString)
-                if (usageRecords.isNotEmpty()) {
-                    dailyAppUsageDao.insertAllUsage(usageRecords)
-                }
-                deviceSummary?.let { dailyDeviceSummaryDao.insertOrUpdate(it) }
-
-                val unlockSessionsForInsights = unlockSessionDao.getUnlockSessionsForDate(dateString)
-                val insights = generateInsights(dateString, unlockSessionsForInsights, events, filterSet)
-                if (insights.isNotEmpty()) {
-                    dailyInsightDao.insertInsights(insights)
-                }
-            } else {
-                Timber.i("No new events to process for $dateString. Existing data has been cleared.")
+            // 2b: Insert new, pre-calculated data
+            if (calculatedUnlockSessions.isNotEmpty()) {
+                unlockSessionDao.insertSessions(calculatedUnlockSessions)
+            }
+            if (scrollSessions.isNotEmpty()) {
+                scrollSessionDao.insertSessions(scrollSessions)
+            }
+            if (usageRecords.isNotEmpty()) {
+                dailyAppUsageDao.insertAllUsage(usageRecords)
+            }
+            deviceSummary?.let { dailyDeviceSummaryDao.insertOrUpdate(it) }
+            if (insights.isNotEmpty()) {
+                dailyInsightDao.insertInsights(insights)
             }
         }
+
         Timber.i("Finished processing for date: $dateString.")
     }
 
@@ -283,17 +295,18 @@ class ScrollDataRepositoryImpl @Inject constructor(
         return mergedSessions
     }
 
-    internal suspend fun processUnlockEvents(
+    internal fun processUnlockEvents(
         events: List<RawAppEvent>,
         notifications: List<NotificationRecord>,
         hiddenAppsSet: Set<String>,
         unlockEventTypes: Set<Int>,
         lockEventTypes: Set<Int>
-    ) {
-        if (events.isEmpty()) return
+    ): List<UnlockSessionRecord> {
+        if (events.isEmpty()) return emptyList()
 
         val sortedEvents = events.sortedBy { it.eventTimestamp }
-        var openSession = unlockSessionDao.getLatestOpenSession()
+        val sessions = mutableListOf<UnlockSessionRecord>()
+        var openSession: UnlockSessionRecord? = null
 
         for (event in sortedEvents) {
             val isUnlock = event.eventType in unlockEventTypes
@@ -301,24 +314,21 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
             if (isUnlock) {
                 if (openSession != null) {
-                    Timber.w("Found a ghost session (ID: ${openSession.id}). Closing it before starting a new one.")
-                    unlockSessionDao.closeSession(
-                        sessionId = openSession.id,
+                    Timber.w("Found a ghost session. Closing it before starting a new one.")
+                    sessions.add(openSession.copy(
                         lockTimestamp = event.eventTimestamp,
-                        duration = event.eventTimestamp - openSession.unlockTimestamp,
-                        firstAppPackage = null,
+                        durationMillis = event.eventTimestamp - openSession.unlockTimestamp,
+                        firstAppPackageName = null,
                         sessionType = "Glance",
                         sessionEndReason = "GHOST"
-                    )
+                    ))
                 }
 
-                val newSession = UnlockSessionRecord(
+                openSession = UnlockSessionRecord(
                     unlockTimestamp = event.eventTimestamp,
                     dateString = event.eventDateString,
                     unlockEventType = event.eventType.toString()
                 )
-                val id = unlockSessionDao.insert(newSession)
-                openSession = newSession.copy(id = id)
 
             } else if (isLock && openSession != null) {
                 val currentOpenSession = openSession
@@ -326,7 +336,6 @@ class ScrollDataRepositoryImpl @Inject constructor(
                 if (duration >= 0) {
                     val sessionType = if (duration < AppConstants.MINIMUM_GLANCE_DURATION_MS) "Glance" else "Intentional"
 
-                    // --- NEW LOGIC STARTS HERE ---
                     var isCompulsiveCheck = false
                     val firstAppEvent = events.find { e ->
                         e.eventTimestamp > currentOpenSession.unlockTimestamp &&
@@ -336,56 +345,52 @@ class ScrollDataRepositoryImpl @Inject constructor(
                     }
 
                     if (firstAppEvent != null) {
-                        // Check if any OTHER app was resumed during this session.
                         val otherAppOpened = events.any { e ->
                             e.eventTimestamp > firstAppEvent.eventTimestamp &&
                                     e.eventTimestamp < event.eventTimestamp &&
                                     e.eventType == RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED
                         }
-                        // A compulsive check is a short session where only ONE app was opened.
                         if (!otherAppOpened && duration < AppConstants.COMPULSIVE_UNLOCK_THRESHOLD_MS) {
                             isCompulsiveCheck = true
                         }
                     }
-                    // --- NEW LOGIC ENDS HERE ---
 
-                    // --- NEW NOTIFICATION LOGIC STARTS HERE ---
                     var notificationPackageName: String? = null
-
-                    // Only proceed if an app was actually opened during the session.
                     if (firstAppEvent != null) {
-                        // 1. Find the most recent notification that occurred *before* the unlock.
                         val recentNotification = notifications.lastOrNull { n ->
                             n.postTimeUTC < currentOpenSession.unlockTimestamp &&
                                     (currentOpenSession.unlockTimestamp - n.postTimeUTC) < AppConstants.NOTIFICATION_UNLOCK_WINDOW_MS
                         }
-
-                        // 2. Check if the app that sent the notification is the SAME as the app that was opened.
                         if (recentNotification != null && recentNotification.packageName == firstAppEvent.packageName) {
-                            // 3. We have a match! This unlock was driven by the notification.
                             notificationPackageName = recentNotification.packageName
                         }
                     }
-                    // --- NEW NOTIFICATION LOGIC ENDS HERE ---
 
-                    unlockSessionDao.closeSession(
-                        sessionId = currentOpenSession.id,
+                    sessions.add(currentOpenSession.copy(
                         lockTimestamp = event.eventTimestamp,
-                        duration = duration,
-                        firstAppPackage = firstAppEvent?.packageName,
+                        durationMillis = duration,
+                        firstAppPackageName = firstAppEvent?.packageName,
                         sessionType = sessionType,
                         sessionEndReason = "LOCKED",
-                        isCompulsive = isCompulsiveCheck, // Pass our new flag
+                        isCompulsive = isCompulsiveCheck,
                         triggeringNotificationPackageName = notificationPackageName
-                    )
+                    ))
                 }
                 openSession = null
             }
         }
+        // Add the last open session if it exists
+        openSession?.let { sessions.add(it) }
+        return sessions
     }
 
 
-    internal suspend fun processUsageAndDeviceSummary(events: List<RawAppEvent>, filterSet: Set<String>, dateString: String): Pair<List<DailyAppUsageRecord>, DailyDeviceSummary?> {
+    internal suspend fun processUsageAndDeviceSummary(
+        events: List<RawAppEvent>,
+        filterSet: Set<String>,
+        dateString: String,
+        unlockSessions: List<UnlockSessionRecord>
+    ): Pair<List<DailyAppUsageRecord>, DailyDeviceSummary?> {
         val endTime = DateUtil.getEndOfDayUtcMillis(dateString)
         val filteredEvents = events.filter { it.packageName !in filterSet }
 
@@ -393,28 +398,11 @@ class ScrollDataRepositoryImpl @Inject constructor(
         val allEventsForAppOpens = filteredEvents + inferredEvents
         val appOpens = calculateAppOpens(allEventsForAppOpens)
 
-        // Close any open unlock session at the end of the day
-        unlockSessionDao.getLatestOpenSession()?.let { openSession ->
-            if (openSession.dateString == dateString) {
-                val duration = endTime - openSession.unlockTimestamp
-                val sessionType = if (duration < AppConstants.MINIMUM_GLANCE_DURATION_MS) "Glance" else "Intentional"
-                unlockSessionDao.closeSession(
-                    sessionId = openSession.id,
-                    lockTimestamp = endTime,
-                    duration = duration,
-                    firstAppPackage = null,
-                    sessionType = sessionType,
-                    sessionEndReason = "END_OF_DAY"
-                )
-            }
-        }
-
         val notificationsByPackage = notificationDao.getNotificationCountsPerAppForDate(dateString)
             .filter { it.packageName !in filterSet }
             .associate { it.packageName to it.count }
         val totalNotifications = notificationsByPackage.values.sum()
 
-        val unlockSessions = unlockSessionDao.getUnlockSessionsForDate(dateString)
         val totalUnlocks = unlockSessions.size
         val intentionalUnlocks = unlockSessions.count { it.sessionType == "Intentional" }
         val glanceUnlocks = unlockSessions.count { it.sessionType == "Glance" }
@@ -907,73 +895,73 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
     private suspend fun processBackfillForDate(dateString: String, events: List<RawAppEvent>) {
         val currentFilterSet = this.filterSet.first()
+
+        // --- 1. Calculate everything in memory ---
+        val unlockRelatedEvents = events.filter {
+            it.eventType in setOf(
+                RawAppEvent.EVENT_TYPE_USER_UNLOCKED,
+                RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN,
+                RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE
+            )
+        }.sortedBy { it.eventTimestamp }
+
+        val unlockSessions = if (unlockRelatedEvents.isNotEmpty()) {
+            processUnlockEvents(
+                unlockRelatedEvents,
+                emptyList(), // No notification data for this specific backfill
+                currentFilterSet,
+                unlockEventTypes = setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED, RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN),
+                lockEventTypes = setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE)
+            )
+        } else {
+            emptyList()
+        }
+
+        val filteredEvents = events.filter { it.packageName !in currentFilterSet }
+        val (usageAggregates, inferredEvents) = aggregateUsage(filteredEvents, DateUtil.getEndOfDayUtcMillis(dateString))
+        val allEventsForAppOpens = filteredEvents + inferredEvents
+        val appOpens = calculateAppOpens(allEventsForAppOpens)
+
+        val allPackages = usageAggregates.keys.union(appOpens.keys)
+        val usageRecords = allPackages.map { pkg ->
+            val (usage, active) = usageAggregates[pkg] ?: (0L to 0L)
+            DailyAppUsageRecord(
+                packageName = pkg,
+                dateString = dateString,
+                usageTimeMillis = usage,
+                activeTimeMillis = active,
+                appOpenCount = appOpens.getOrDefault(pkg, 0),
+                notificationCount = 0, // Not calculated in this backfill
+                lastUpdatedTimestamp = System.currentTimeMillis()
+            )
+        }
+
+        val intentionalUnlocks = unlockSessions.count { it.sessionType == "Intentional" }
+        val glanceUnlocks = unlockSessions.count { it.sessionType == "Glance" }
+        val deviceSummary = DailyDeviceSummary(
+            dateString = dateString,
+            totalUsageTimeMillis = usageRecords.sumOf { it.usageTimeMillis },
+            totalUnlockedDurationMillis = unlockSessions.sumOf { it.durationMillis ?: 0L },
+            totalUnlockCount = unlockSessions.size,
+            intentionalUnlockCount = intentionalUnlocks,
+            glanceUnlockCount = glanceUnlocks,
+            totalAppOpens = appOpens.values.sum(),
+            lastUpdatedTimestamp = System.currentTimeMillis()
+        )
+
+        // --- 2. Atomic write to database ---
         appDatabase.withTransaction {
-            // Clear any partial data for today to ensure a clean slate
             unlockSessionDao.deleteSessionsForDate(dateString)
             dailyAppUsageDao.deleteUsageForDate(dateString)
             dailyDeviceSummaryDao.deleteSummaryForDate(dateString)
 
-            // --- 1. Process Unlocks ---
-            val unlockRelatedEvents = events.filter {
-                it.eventType in setOf(
-                    RawAppEvent.EVENT_TYPE_USER_UNLOCKED,
-                    RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN,
-                    RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE
-                )
-            }.sortedBy { it.eventTimestamp }
-
-            if (unlockRelatedEvents.isNotEmpty()) {
-                processUnlockEvents(
-                    unlockRelatedEvents,
-                    emptyList(), // No notification data for this specific backfill
-                    currentFilterSet,
-                    unlockEventTypes = setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED, RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN),
-                    lockEventTypes = setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE)
-                )
-            }
-            val unlockSessions = unlockSessionDao.getUnlockSessionsForDate(dateString)
-            val totalUnlocks = unlockSessions.size
-
-            // --- 2. Process App Opens and Usage ---
-            val filteredEvents = events.filter { it.packageName !in currentFilterSet }
-            val (usageAggregates, inferredEvents) = aggregateUsage(filteredEvents, DateUtil.getEndOfDayUtcMillis(dateString))
-            val allEventsForAppOpens = filteredEvents + inferredEvents
-            val appOpens = calculateAppOpens(allEventsForAppOpens)
-            val totalAppOpens = appOpens.values.sum()
-
-            // --- 3. Save App-Specific Usage Records ---
-            val allPackages = usageAggregates.keys.union(appOpens.keys)
-            val usageRecords = allPackages.map { pkg ->
-                val (usage, active) = usageAggregates[pkg] ?: (0L to 0L)
-                DailyAppUsageRecord(
-                    packageName = pkg,
-                    dateString = dateString,
-                    usageTimeMillis = usage,
-                    activeTimeMillis = active,
-                    appOpenCount = appOpens.getOrDefault(pkg, 0),
-                    notificationCount = 0, // Not calculated in this backfill
-                    lastUpdatedTimestamp = System.currentTimeMillis()
-                )
+            if (unlockSessions.isNotEmpty()) {
+                unlockSessionDao.insertSessions(unlockSessions)
             }
             if (usageRecords.isNotEmpty()) {
                 dailyAppUsageDao.insertAllUsage(usageRecords)
             }
-
-            // --- 4. Save the Daily Device Summary ---
-            val intentionalUnlocks = unlockSessions.count { it.sessionType == "Intentional" }
-            val glanceUnlocks = unlockSessions.count { it.sessionType == "Glance" }
-            dailyDeviceSummaryDao.insertOrUpdate(
-                DailyDeviceSummary(
-                    dateString = dateString,
-                    totalUsageTimeMillis = usageRecords.sumOf { it.usageTimeMillis },
-                    totalUnlockedDurationMillis = unlockSessions.sumOf { it.durationMillis ?: 0L },
-                    totalUnlockCount = totalUnlocks,
-                    intentionalUnlockCount = intentionalUnlocks,
-                    glanceUnlockCount = glanceUnlocks,
-                    totalAppOpens = totalAppOpens,
-                    lastUpdatedTimestamp = System.currentTimeMillis()
-                )
-            )
+            dailyDeviceSummaryDao.insertOrUpdate(deviceSummary)
         }
     }
 }

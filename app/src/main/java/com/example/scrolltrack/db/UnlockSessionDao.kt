@@ -11,6 +11,11 @@ interface UnlockSessionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(unlockSession: UnlockSessionRecord): Long
 
+@Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSessions(sessions: List<UnlockSessionRecord>)
+
+    @androidx.room.Update
+    suspend fun updateSession(session: UnlockSessionRecord)
     @Query("SELECT * FROM unlock_sessions WHERE date_string = :dateString AND lock_timestamp IS NULL AND unlock_timestamp < :beforeTimestamp ORDER BY unlock_timestamp DESC LIMIT 1")
     suspend fun getOpenSessionBefore(dateString: String, beforeTimestamp: Long): UnlockSessionRecord?
 
