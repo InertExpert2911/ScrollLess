@@ -3,9 +3,12 @@ package com.example.scrolltrack.data.processors
 import com.example.scrolltrack.db.*
 import com.example.scrolltrack.util.AppConstants
 import com.example.scrolltrack.util.DateUtil
+import com.example.scrolltrack.util.Clock
 import javax.inject.Inject
 
-class AppUsageCalculator @Inject constructor() {
+class AppUsageCalculator @Inject constructor(
+    private val clock: Clock
+) {
     suspend operator fun invoke(
         events: List<RawAppEvent>,
         filterSet: Set<String>,
@@ -46,7 +49,7 @@ class AppUsageCalculator @Inject constructor() {
                 activeTimeMillis = active,
                 appOpenCount = visibleAppOpens.getOrDefault(pkg, 0),
                 notificationCount = visibleNotifications.getOrDefault(pkg, 0),
-                lastUpdatedTimestamp = System.currentTimeMillis()
+                lastUpdatedTimestamp = clock.currentTimeMillis()
             )
         }
 
@@ -72,7 +75,7 @@ class AppUsageCalculator @Inject constructor() {
             lastUnlockTimestampUtc = lastUnlockTime,
             totalNotificationCount = visibleNotifications.values.sum(),
             totalAppOpens = visibleAppOpens.values.sum(),
-            lastUpdatedTimestamp = System.currentTimeMillis()
+            lastUpdatedTimestamp = clock.currentTimeMillis()
         )
         return Pair(usageRecords, deviceSummary)
     }
@@ -150,6 +153,18 @@ class AppUsageCalculator @Inject constructor() {
 
         var lastEventTimestamp = periodStartDate
         var currentForegroundApp: String? = initialForegroundApp
+
+        if (stateChangeEvents.isNotEmpty()) {
+            // To make this robust against timezone issues where periodStartDate might be calculated
+            // in a different zone than the event timestamps, we anchor our timeline to the
+            // start of the day of the *first event*, calculated via UTC timestamp arithmetic.
+            val firstEventTimestamp = stateChangeEvents.first().eventTimestamp
+            // A UTC timestamp is ms from epoch. A day is 86,400,000 ms.
+            // The remainder when dividing by a day's worth of ms gives the time since UTC midnight.
+            // Subtracting this remainder aligns the timestamp to UTC midnight of that day.
+            lastEventTimestamp = firstEventTimestamp - (firstEventTimestamp % 86400000L)
+        }
+
 
         // 2. Walk the timeline, event by event.
         for (event in stateChangeEvents) {

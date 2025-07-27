@@ -5,14 +5,25 @@ import com.example.scrolltrack.db.UnlockSessionRecord
 import com.example.scrolltrack.util.AppConstants
 import com.example.scrolltrack.util.DateUtil
 import com.google.common.truth.Truth.assertThat
+import com.example.scrolltrack.util.TestClock
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
+import org.junit.Before
 import org.junit.Test
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
 
 @ExperimentalCoroutinesApi
 class AppUsageCalculatorTest {
 
-    private val calculator = AppUsageCalculator()
+    private lateinit var testClock: TestClock
+    private lateinit var calculator: AppUsageCalculator
+
+    @Before
+    fun setUp() {
+        testClock = TestClock()
+        calculator = AppUsageCalculator(testClock)
+    }
 
     private fun createRawEvent(
         pkg: String,
@@ -276,5 +287,113 @@ class AppUsageCalculatorTest {
         // The total usage must equal the sum of individual usages. No double counting.
         val totalUsage = deviceSummary?.totalUsageTimeMillis
         assertThat(totalUsage).isEqualTo(10000L + 5000L + expectedCTime)
+    }
+
+    // --- NEW MIDNIGHT & EDGE CASE TESTS ---
+
+    @Test
+    fun `aggregateUsage - with initial state - correctly calculates overnight session`() = runTest {
+        // SCENARIO: Chrome was running at the end of the previous day.
+        // The first event for today is at 00:10, pausing Chrome.
+        val today = "2023-01-02"
+        val startOfToday = ZonedDateTime.of(2023, 1, 2, 0, 0, 0, 0, ZoneOffset.UTC).toInstant().toEpochMilli()
+        val endOfToday = startOfToday + 86400000L - 1
+
+        val testEvents = listOf(
+            createRawEvent("com.android.chrome", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startOfToday + 600000L) // 10 minutes past midnight
+        )
+        val initialApp = "com.android.chrome"
+
+        // Act
+        val (usage, _) = calculator.invoke(
+            events = testEvents,
+            filterSet = emptySet(),
+            dateString = today,
+            unlockSessions = emptyList(),
+            notificationsByPackage = emptyMap(),
+            initialForegroundApp = initialApp
+        )
+
+        // Assert: Chrome should be credited with the first 10 minutes of the day.
+        val chromeUsage = usage.first { it.packageName == "com.android.chrome" }.usageTimeMillis
+        assertThat(chromeUsage).isEqualTo(600000L)
+    }
+
+    @Test
+    fun `aggregateUsage - no events but with initial state - credits usage for the full day`() = runTest {
+        // SCENARIO: A phone is left on overnight with an app open. No other events occur for the entire day.
+        val today = "2023-01-03"
+        val startOfToday = ZonedDateTime.of(2023, 1, 3, 0, 0, 0, 0, ZoneOffset.UTC).toInstant().toEpochMilli()
+        val endOfToday = startOfToday + 86400000L - 1
+        val initialApp = "com.example.longrunning"
+
+        // Act
+        val (usage, _) = calculator.invoke(
+            events = emptyList(), // No events for today
+            filterSet = emptySet(),
+            dateString = today,
+            unlockSessions = emptyList(),
+            notificationsByPackage = emptyMap(),
+            initialForegroundApp = initialApp
+        )
+
+        // Assert: The app should be credited with the full duration of the day.
+        val appUsage = usage.first { it.packageName == initialApp }.usageTimeMillis
+        assertThat(appUsage).isEqualTo(86400000L - 1)
+    }
+
+    @Test
+    fun `aggregateUsage - session ends exactly at midnight - credited to correct day`() = runTest {
+        // SCENARIO: A session ends at the exact first millisecond of the new day.
+        // This time should be credited to the PREVIOUS day's calculation, so today's should be zero.
+        val today = "2023-01-04"
+        val startOfToday = ZonedDateTime.of(2023, 1, 4, 0, 0, 0, 0, ZoneOffset.UTC).toInstant().toEpochMilli()
+        val endOfToday = startOfToday + 86400000L - 1
+
+        val testEvents = listOf(
+            createRawEvent("com.example.nightowl", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startOfToday)
+        )
+        val initialApp = "com.example.nightowl" // This app was running from yesterday
+
+        // Act
+        val (usage, _) = calculator.invoke(
+            events = testEvents,
+            filterSet = emptySet(),
+            dateString = today,
+            unlockSessions = emptyList(),
+            notificationsByPackage = emptyMap(),
+            initialForegroundApp = initialApp
+        )
+
+        // Assert: The usage for today should be effectively zero because the session ended AT midnight, not after.
+        val appUsage = usage.firstOrNull { it.packageName == "com.example.nightowl" }?.usageTimeMillis ?: 0L
+        assertThat(appUsage).isEqualTo(0L)
+    }
+
+    @Test
+    fun `aggregateUsage - correctly uses injected clock for timestamps`() = runTest {
+        // SCENARIO: Verify that the lastUpdatedTimestamp is sourced from the injected clock.
+        val today = "2023-01-05"
+        val startOfToday = ZonedDateTime.of(2023, 1, 5, 0, 0, 0, 0, ZoneOffset.UTC).toInstant().toEpochMilli()
+        val testTimestamp = 123456789L
+        testClock.setCurrentTimeMillis(testTimestamp) // Set our fake clock
+
+        val testEvents = listOf(
+            createRawEvent("com.example.app", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfToday)
+        )
+
+        // Act
+        val (usageRecords, deviceSummary) = calculator.invoke(
+            events = testEvents,
+            filterSet = emptySet(),
+            dateString = today,
+            unlockSessions = emptyList(),
+            notificationsByPackage = emptyMap(),
+            initialForegroundApp = null
+        )
+
+        // Assert: Check that the model's timestamp matches our fake clock's time.
+        assertThat(usageRecords.first().lastUpdatedTimestamp).isEqualTo(testTimestamp)
+        assertThat(deviceSummary?.lastUpdatedTimestamp).isEqualTo(testTimestamp)
     }
 }
