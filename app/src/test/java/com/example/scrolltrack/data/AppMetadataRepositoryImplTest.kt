@@ -15,6 +15,8 @@ import com.example.scrolltrack.db.AppMetadataDao
 import com.google.common.truth.Truth.assertThat
 import io.mockk.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Before
@@ -361,5 +363,52 @@ class AppMetadataRepositoryImplTest {
 
         coVerify(exactly = 1) { mockDao.insertOrUpdate(match { it.packageName == pkg1 }) }
         coVerify(exactly = 0) { mockDao.insertOrUpdate(match { it.packageName == null }) }
+    }
+    @Test
+    fun `updateUserHidesOverride - calls dao with correct parameters`() = runTest {
+        val pkg = "com.test.app"
+        val hide = true
+        coEvery { mockDao.updateUserHidesOverride(pkg, hide) } just Runs
+
+        repository.updateUserHidesOverride(pkg, hide)
+
+        coVerify { mockDao.updateUserHidesOverride(pkg, hide) }
+    }
+
+    @Test
+    fun `getNonVisiblePackageNames - returns list from dao`() = runTest {
+        val hiddenPackages = listOf("com.hidden.one", "com.hidden.two")
+        coEvery { mockDao.getNonVisiblePackageNames() } returns flowOf(hiddenPackages)
+
+        val result = repository.getNonVisiblePackageNames()
+
+        assertThat(result).isEqualTo(hiddenPackages)
+    }
+
+    @Test
+    fun `getAllMetadata - returns flow from dao`() = runTest {
+        val allMetadata = listOf(createAppMetadata("com.app.one"), createAppMetadata("com.app.two"))
+        coEvery { mockDao.getAll() } returns flowOf(allMetadata)
+
+        val resultFlow = repository.getAllMetadata()
+        val resultList = resultFlow.first()
+
+        assertThat(resultList).isEqualTo(allMetadata)
+    }
+
+    @Test
+    fun `fetchFromPackageManagerAndCache - preserves userHidesOverride from existing metadata`() = runTest {
+        val pkg = "com.test.preserve"
+        val existingMeta = createAppMetadata(pkg, userHidesOverride = true)
+        coEvery { mockDao.getByPackageName(pkg) } returns existingMeta
+        mockPmApp(pkg, appName = "Updated Name")
+        coEvery { mockDao.insertOrUpdate(any()) } just Runs
+
+        repository.handleAppInstalledOrUpdated(pkg)
+
+        val slot = slot<AppMetadata>()
+        coVerify { mockDao.insertOrUpdate(capture(slot)) }
+        assertThat(slot.captured.appName).isEqualTo("Updated Name")
+        assertThat(slot.captured.userHidesOverride).isTrue()
     }
 }
