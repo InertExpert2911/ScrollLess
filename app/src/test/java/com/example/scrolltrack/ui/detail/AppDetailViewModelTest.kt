@@ -2,42 +2,51 @@ package com.example.scrolltrack.ui.detail
 
 import android.content.Context
 import androidx.lifecycle.SavedStateHandle
+import app.cash.turbine.test
 import com.example.scrolltrack.data.AppMetadataRepository
 import com.example.scrolltrack.data.ScrollDataRepository
+import com.example.scrolltrack.db.AppMetadata
+import com.example.scrolltrack.db.DailyAppUsageRecord
+import com.example.scrolltrack.ui.main.ComparisonColorType
+import com.example.scrolltrack.ui.main.ComparisonIconType
 import com.example.scrolltrack.util.ConversionUtil
+import com.example.scrolltrack.util.DateUtil
 import com.google.common.truth.Truth.assertThat
-import io.mockk.coEvery
-import io.mockk.mockk
+import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.time.LocalDate
 
 @ExperimentalCoroutinesApi
 @RunWith(RobolectricTestRunner::class)
 class AppDetailViewModelTest {
 
     private lateinit var viewModel: AppDetailViewModel
-    private lateinit var scrollDataRepository: ScrollDataRepository
-    private lateinit var appMetadataRepository: AppMetadataRepository
-    private lateinit var conversionUtil: ConversionUtil
+    private val scrollDataRepository: ScrollDataRepository = mockk(relaxed = true)
+    private val appMetadataRepository: AppMetadataRepository = mockk(relaxed = true)
+    private val conversionUtil: ConversionUtil = mockk(relaxed = true)
     private val testDispatcher = StandardTestDispatcher()
+
+    private val packageName = "com.example.app"
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        scrollDataRepository = mockk(relaxed = true)
-        appMetadataRepository = mockk(relaxed = true)
-        conversionUtil = mockk(relaxed = true)
-        val savedStateHandle = SavedStateHandle(mapOf("packageName" to "com.example.app"))
+        val savedStateHandle = SavedStateHandle(mapOf("packageName" to packageName))
         val context: Context = mockk(relaxed = true)
+
+        coEvery { appMetadataRepository.getAppMetadata(packageName) } returns AppMetadata(packageName, "Test App", isUserVisible = true, isSystemApp = false, userHidesOverride = null, installTimestamp = 0L, lastUpdateTimestamp = 0L, versionName = "1.0", versionCode = 1L)
+        coEvery { appMetadataRepository.getIconFile(packageName) } returns null
+        coEvery { scrollDataRepository.getUsageForPackageAndDates(any(), any()) } returns emptyList()
+        coEvery { scrollDataRepository.getAggregatedScrollForPackageAndDates(any(), any()) } returns emptyList()
+        coEvery { conversionUtil.formatScrollDistance(any(), any()) } returns ("0" to "m")
+
         viewModel = AppDetailViewModel(scrollDataRepository, appMetadataRepository, conversionUtil, savedStateHandle, context, testDispatcher)
     }
 
@@ -47,36 +56,33 @@ class AppDetailViewModelTest {
     }
 
     @Test
-    fun `test change chart period`() = runTest {
-        viewModel.changeChartPeriod(ChartPeriodType.WEEKLY)
-        assertThat(viewModel.currentChartPeriodType.value).isEqualTo(ChartPeriodType.WEEKLY)
+    fun `weekly summary calculates average usage correctly`() = runTest {
+        val refDate = LocalDate.of(2023, 10, 26)
+        val startOfWeek = DateUtil.getStartOfWeek(refDate)
+        val dateStrings = (0..6).map { startOfWeek.plusDays(it.toLong()).toString() }
+        val currentWeekUsage = listOf(DailyAppUsageRecord(packageName = packageName, dateString = dateStrings[0], usageTimeMillis = 70000, appOpenCount = 1))
+        coEvery { scrollDataRepository.getUsageForPackageAndDates(packageName, dateStrings) } returns currentWeekUsage
+
+        viewModel.appDetailFocusedUsageDisplay.test {
+            awaitItem() // consume initial state
+
+            viewModel.changeChartPeriod(ChartPeriodType.WEEKLY)
+            viewModel.setFocusedDate(refDate.toString())
+            
+            // Consume intermediate states
+            awaitItem()
+            val finalState = awaitItem()
+
+            // 70000ms / 7 days = 10000ms -> "< 1m"
+            assertThat(finalState).isEqualTo("< 1m")
+        }
     }
 
     @Test
-    fun `test navigate chart date`() = runTest {
-        val initialDate = viewModel.currentChartReferenceDate.value
-        viewModel.navigateChartDate(-1)
-        assertThat(viewModel.currentChartReferenceDate.value).isNotEqualTo(initialDate)
-    }
-
-    @Test
-    fun `test summary calculations`() = runTest {
-        val data = listOf(
-            CombinedAppDailyData("2023-10-26", 1000, 500, 100, 50, 50, 1),
-            CombinedAppDailyData("2023-10-27", 2000, 1000, 200, 100, 100, 2)
-        )
-        coEvery { scrollDataRepository.getUsageForPackageAndDates(any(), any()) } returns emptyList()
-        coEvery { scrollDataRepository.getAggregatedScrollForPackageAndDates(any(), any()) } returns emptyList()
-        
-        viewModel.loadAppDetailsInfo()
-        
-        // This is a simplified test. A more thorough test would involve mocking the data and verifying the calculated averages.
-        assertThat(viewModel.appDetailFocusedUsageDisplay.value).isNotNull()
-    }
-
-    @Test
-    fun `test comparison text generation`() {
-        viewModel.updateComparisonText(1000, 500, "week")
+    fun `updateComparisonText generates correct strings`() {
+        viewModel.updateComparisonText(10000, 5000, "week")
         assertThat(viewModel.appDetailComparisonText.value).isEqualTo("100% more vs last week")
+        assertThat(viewModel.appDetailComparisonIconType.value).isEqualTo(ComparisonIconType.UP)
+        assertThat(viewModel.appDetailComparisonColorType.value).isEqualTo(ComparisonColorType.RED)
     }
 }

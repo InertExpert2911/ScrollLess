@@ -1,21 +1,18 @@
 package com.example.scrolltrack.ui.notifications
 
+import app.cash.turbine.test
 import com.example.scrolltrack.data.AppMetadataRepository
 import com.example.scrolltrack.data.NotificationCountPerApp
 import com.example.scrolltrack.data.ScrollDataRepository
+import com.example.scrolltrack.db.AppMetadata
 import com.google.common.truth.Truth.assertThat
 import io.mockk.coEvery
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -28,14 +25,27 @@ import java.time.LocalDate
 class NotificationsViewModelTest {
 
     private lateinit var viewModel: NotificationsViewModel
-    private lateinit var scrollDataRepository: ScrollDataRepository
+    private val scrollDataRepository: ScrollDataRepository = mockk(relaxed = true)
+    private val appMetadataRepository: AppMetadataRepository = mockk(relaxed = true)
     private val testDispatcher = StandardTestDispatcher()
+
+    private val notificationCountsFlow = MutableStateFlow<List<NotificationCountPerApp>>(emptyList())
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        scrollDataRepository = mockk(relaxed = true)
-        val appMetadataRepository: AppMetadataRepository = mockk(relaxed = true)
+        coEvery { scrollDataRepository.getNotificationCountPerAppForPeriod(any(), any()) } returns notificationCountsFlow
+        coEvery { scrollDataRepository.getAllNotificationSummaries() } returns MutableStateFlow(emptyList())
+
+        coEvery { appMetadataRepository.getAppMetadata(any()) } answers {
+            val packageName = firstArg<String>()
+            mockk<AppMetadata> {
+                every { this@mockk.packageName } returns packageName
+                every { appName } returns packageName.substringAfterLast('.')
+                every { isUserVisible } returns true
+                every { isInstalled } returns true
+            }
+        }
         viewModel = NotificationsViewModel(scrollDataRepository, appMetadataRepository, testDispatcher)
     }
 
@@ -45,29 +55,27 @@ class NotificationsViewModelTest {
     }
 
     @Test
-    fun `test date range calculation`() = runTest(testDispatcher) {
-        val date = LocalDate.of(2023, 10, 26)
-        viewModel.onDateSelected(date)
-        viewModel.selectPeriod(NotificationPeriod.Weekly)
-        advanceUntilIdle()
+    fun `period changes update title and data correctly`() = runTest {
+        val date = LocalDate.of(2023, 10, 26) // A Thursday in Week 43, October has 31 days
+        notificationCountsFlow.value = listOf(NotificationCountPerApp("com.app", 217)) // 217 total
 
-        val uiState = viewModel.uiState.value as NotificationsUiState.Success
-        assertThat(uiState.periodTitle).contains("Week 43")
-    }
+        viewModel.uiState.test {
+            assertThat(awaitItem()).isInstanceOf(NotificationsUiState.Loading::class.java)
+            
+            val dailyState = awaitItem() as NotificationsUiState.Success
+            assertThat(dailyState.selectedPeriod).isEqualTo(NotificationPeriod.Daily)
+            assertThat(dailyState.totalCount).isEqualTo(217)
 
-    @Test
-    fun `test data averaging`() = runTest(testDispatcher) {
-        coEvery { scrollDataRepository.getAllNotificationSummaries() } returns flowOf(emptyList())
-        coEvery { scrollDataRepository.getNotificationCountPerAppForPeriod(any(), any()) } returns flowOf(
-            listOf(
-                NotificationCountPerApp("com.example.app", 30)
-            )
-        )
-        viewModel.onDateSelected(LocalDate.of(2023, 10, 26))
-        viewModel.selectPeriod(NotificationPeriod.Weekly)
-        advanceUntilIdle()
+            viewModel.onDateSelected(date)
+            viewModel.selectPeriod(NotificationPeriod.Weekly)
+            val weeklyState = awaitItem() as NotificationsUiState.Success
+            assertThat(weeklyState.periodTitle).contains("Week 43")
+            assertThat(weeklyState.totalCount).isEqualTo(31) // 217 / 7 = 31
 
-        val uiState = viewModel.uiState.value as NotificationsUiState.Success
-        assertThat(uiState.totalCount).isEqualTo(4) // (10 + 20) / 7
+            viewModel.selectPeriod(NotificationPeriod.Monthly)
+            val monthlyState = awaitItem() as NotificationsUiState.Success
+            assertThat(monthlyState.periodTitle).isEqualTo("October 2023")
+            assertThat(monthlyState.totalCount).isEqualTo(7) // 217 / 31 = 7
+        }
     }
 }

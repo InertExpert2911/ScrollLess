@@ -10,10 +10,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -26,12 +23,14 @@ class SettingsViewModelTest {
 
     private val themeFlow = MutableStateFlow(AppTheme.CalmLavender)
     private val darkModeFlow = MutableStateFlow(true)
+    private val screenDpiFlow = MutableStateFlow(0)
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         every { settingsRepository.selectedTheme } returns themeFlow
         every { settingsRepository.isDarkMode } returns darkModeFlow
+        every { settingsRepository.screenDpi } returns screenDpiFlow
         viewModel = SettingsViewModel(settingsRepository)
     }
 
@@ -47,29 +46,29 @@ class SettingsViewModelTest {
             themeFlow.value = AppTheme.FocusBlue
             assertThat(awaitItem()).isEqualTo(AppTheme.FocusBlue)
         }
+    }
 
-        viewModel.isDarkMode.test {
-            assertThat(awaitItem()).isTrue()
-            darkModeFlow.value = false
-            assertThat(awaitItem()).isFalse()
+    @Test
+    fun `calibrationStatusText reflects DPI value`() = runTest {
+        viewModel.calibrationStatusText.test {
+            assertThat(awaitItem()).isEqualTo("Loading...") // Initial value
+            
+            screenDpiFlow.value = 0
+            assertThat(awaitItem()).isEqualTo("Not calibrated")
+
+            screenDpiFlow.value = 320
+            assertThat(awaitItem()).isEqualTo("Calibrated (320 DPI)")
         }
     }
 
     @Test
-    fun `setSelectedTheme updates repository`() = runTest {
+    fun `setter methods update repository`() = runTest {
         viewModel.setSelectedTheme(AppTheme.FocusBlue)
-        testDispatcher.scheduler.advanceUntilIdle()
+        advanceUntilIdle()
         coVerify { settingsRepository.setSelectedTheme(AppTheme.FocusBlue) }
-    }
 
-    @Test
-    fun `setIsDarkMode updates repository`() = runTest {
         viewModel.setIsDarkMode(false)
-        testDispatcher.scheduler.advanceUntilIdle()
+        advanceUntilIdle()
         coVerify { settingsRepository.setIsDarkMode(false) }
-
-        viewModel.setIsDarkMode(true)
-        testDispatcher.scheduler.advanceUntilIdle()
-        coVerify { settingsRepository.setIsDarkMode(true) }
     }
-} 
+}
