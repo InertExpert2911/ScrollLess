@@ -22,8 +22,6 @@ truth = "1.4.4"
 mockk = "1.14.5"
 coroutinesTest = "1.10.2"
 turbine = "1.2.1"
-mockito = "5.18.0"
-mockitoInline = "5.2.0"
 androidxArchCore = "2.2.0"
 robolectric = "4.15.1"
 hilt = "2.57"
@@ -71,8 +69,6 @@ google-truth = { group = "com.google.truth", name = "truth", version.ref = "trut
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutinesTest" }
 cash-turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
-mockito-core = { group = "org.mockito", name = "mockito-core", version.ref = "mockito" }
-mockito-inline = { group = "org.mockito", name = "mockito-inline", version.ref = "mockitoInline" }
 androidx-arch-core-testing = { group = "androidx.arch.core", name = "core-testing", version.ref = "androidxArchCore" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
