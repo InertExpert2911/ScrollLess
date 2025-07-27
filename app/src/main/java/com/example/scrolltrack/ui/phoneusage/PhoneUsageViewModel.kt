@@ -99,11 +99,12 @@ class PhoneUsageViewModel @Inject constructor(
     private fun getWeeklyUsage(date: LocalDate): Flow<PhoneUsageUiState> {
         val weekRange = DateUtil.getWeekRange(date)
         return repository.getAppUsageForDateRange(weekRange.first, weekRange.second).map { usageRecords ->
-            val totalUsage = usageRecords.sumOf { it.usageTimeMillis } / 7
+            val appUsage = mapper.mapToAppUsageUiItems(usageRecords, 7)
+            val totalUsage = appUsage.sumOf { it.usageTimeMillis }
             _uiState.value.copy(
                 periodDisplay = "Week ${DateUtil.getWeekOfYear(date)} (${weekRange.first.format(DateTimeFormatter.ofPattern("MMM d"))} - ${weekRange.second.format(DateTimeFormatter.ofPattern("d, yyyy"))})",
                 usageStat = DateUtil.formatDuration(totalUsage),
-                appUsage = mapper.mapToAppUsageUiItems(usageRecords, 7)
+                appUsage = appUsage
             )
         }
     }
@@ -112,11 +113,12 @@ class PhoneUsageViewModel @Inject constructor(
         val monthRange = DateUtil.getMonthRange(date)
         return repository.getAppUsageForDateRange(monthRange.first, monthRange.second).map { usageRecords ->
             val daysInMonth = YearMonth.from(date).lengthOfMonth()
-            val totalUsage = usageRecords.sumOf { it.usageTimeMillis } / daysInMonth
+            val appUsage = mapper.mapToAppUsageUiItems(usageRecords, daysInMonth)
+            val totalUsage = appUsage.sumOf { it.usageTimeMillis }
             _uiState.value.copy(
                 periodDisplay = YearMonth.from(date).format(DateTimeFormatter.ofPattern("MMMM yyyy")),
                 usageStat = DateUtil.formatDuration(totalUsage),
-                appUsage = mapper.mapToAppUsageUiItems(usageRecords, daysInMonth)
+                appUsage = appUsage
             )
         }
     }
