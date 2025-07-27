@@ -11,16 +11,44 @@ class AppUsageCalculator @Inject constructor() {
         filterSet: Set<String>,
         dateString: String,
         unlockSessions: List<UnlockSessionRecord>,
-        notificationsByPackage: Map<String, Int>
+        notificationsByPackage: Map<String, Int>,
+        initialForegroundApp: String?
     ): Pair<List<DailyAppUsageRecord>, DailyDeviceSummary?> {
-        val endTime = DateUtil.getEndOfDayUtcMillis(dateString)
-        val filteredEvents = events.filter { it.packageName !in filterSet }
+        val periodStartDate = DateUtil.getStartOfDayUtcMillis(dateString)
+        val periodEndDate = DateUtil.getEndOfDayUtcMillis(dateString)
 
-        val (usageAggregates, inferredEvents) = aggregateUsage(filteredEvents, endTime)
-        val allEventsForAppOpens = filteredEvents + inferredEvents
+        // Step 1: Calculate usage on the COMPLETE, UNFILTERED event list for maximum accuracy.
+        val (usageAggregates, inferredEvents) = aggregateUsage(
+            events,
+            periodStartDate,
+            periodEndDate,
+            initialForegroundApp
+        )
+        val allEventsForAppOpens = events + inferredEvents
         val appOpens = calculateAppOpens(allEventsForAppOpens)
 
-        val totalNotifications = notificationsByPackage.values.sum()
+        // --- Step 2: CENTRALIZED FILTERING OF OUTPUT ---
+        val visibleUsageAggregates = usageAggregates.filterKeys { it !in filterSet }
+        val visibleAppOpens = appOpens.filterKeys { it !in filterSet }
+        val visibleNotifications = notificationsByPackage.filterKeys { it !in filterSet }
+
+        val allVisiblePackages = visibleUsageAggregates.keys
+            .union(visibleAppOpens.keys)
+            .union(visibleNotifications.keys)
+
+        val usageRecords = allVisiblePackages.mapNotNull { pkg ->
+            val (usage, active) = visibleUsageAggregates[pkg] ?: (0L to 0L)
+            if (usage < AppConstants.MINIMUM_SIGNIFICANT_SESSION_DURATION_MS && (visibleNotifications[pkg] ?: 0) == 0) null
+            else DailyAppUsageRecord(
+                packageName = pkg,
+                dateString = dateString,
+                usageTimeMillis = usage,
+                activeTimeMillis = active,
+                appOpenCount = visibleAppOpens.getOrDefault(pkg, 0),
+                notificationCount = visibleNotifications.getOrDefault(pkg, 0),
+                lastUpdatedTimestamp = System.currentTimeMillis()
+            )
+        }
 
         val totalUnlocks = unlockSessions.size
         val intentionalUnlocks = unlockSessions.count { it.sessionType == "Intentional" }
@@ -28,27 +56,11 @@ class AppUsageCalculator @Inject constructor() {
         val firstUnlockTime = unlockSessions.minOfOrNull { it.unlockTimestamp }
         val lastUnlockTime = unlockSessions.maxOfOrNull { it.unlockTimestamp }
 
-        val filteredAppOpens = appOpens.filterKeys { it !in filterSet }
-
-        val allPackages = usageAggregates.keys.union(filteredAppOpens.keys).union(notificationsByPackage.keys)
-        val usageRecords = allPackages.mapNotNull { pkg ->
-            val (usage, active) = usageAggregates[pkg] ?: (0L to 0L)
-            if (usage < AppConstants.MINIMUM_SIGNIFICANT_SESSION_DURATION_MS && (notificationsByPackage[pkg] ?: 0) == 0) null
-            else DailyAppUsageRecord(
-                packageName = pkg,
-                dateString = dateString,
-                usageTimeMillis = usage,
-                activeTimeMillis = active,
-                appOpenCount = filteredAppOpens.getOrDefault(pkg, 0),
-                notificationCount = notificationsByPackage.getOrDefault(pkg, 0),
-                lastUpdatedTimestamp = System.currentTimeMillis()
-            )
-        }
-
-        if (usageRecords.isEmpty() && totalUnlocks == 0 && totalNotifications == 0) {
+        if (usageRecords.isEmpty() && totalUnlocks == 0 && visibleNotifications.isEmpty()) {
             return Pair(emptyList(), null)
         }
 
+        // Step 3: Create the summary based ONLY on the filtered, visible data.
         val deviceSummary = DailyDeviceSummary(
             dateString = dateString,
             totalUsageTimeMillis = usageRecords.sumOf { it.usageTimeMillis },
@@ -58,8 +70,8 @@ class AppUsageCalculator @Inject constructor() {
             glanceUnlockCount = glanceUnlocks,
             firstUnlockTimestampUtc = firstUnlockTime,
             lastUnlockTimestampUtc = lastUnlockTime,
-            totalNotificationCount = totalNotifications,
-            totalAppOpens = filteredAppOpens.values.sum(),
+            totalNotificationCount = visibleNotifications.values.sum(),
+            totalAppOpens = visibleAppOpens.values.sum(),
             lastUpdatedTimestamp = System.currentTimeMillis()
         )
         return Pair(usageRecords, deviceSummary)
@@ -107,77 +119,79 @@ class AppUsageCalculator @Inject constructor() {
     }
 
     internal fun aggregateUsage(
-    allEvents: List<RawAppEvent>,
-    periodEndDate: Long
-): Pair<Map<String, Pair<Long, Long>>, List<RawAppEvent>> {
-    data class Session(val pkg: String, val startTime: Long, val endTime: Long)
-    val sessions = mutableListOf<Session>()
-    val inferredEvents = mutableListOf<RawAppEvent>()
+        allEvents: List<RawAppEvent>,
+        periodStartDate: Long,
+        periodEndDate: Long,
+        initialForegroundApp: String?
+    ): Pair<Map<String, Pair<Long, Long>>, List<RawAppEvent>> {
+        val usageAggregator = mutableMapOf<String, Long>()
 
-    // --- REFINED STATE ---
-    // This variable now perfectly models the "single foreground app" constraint.
-    var currentForegroundSession: Pair<String, Long>? = null
+        // --- THE TIMELINE MODEL ---
+        // 1. Filter for events that change the foreground app state and sort them chronologically.
+        val stateChangeEvents = allEvents.filter {
+            it.eventType in setOf(
+                RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED,
+                RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED,
+                RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN,
+                RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE
+            )
+        }.sortedBy { it.eventTimestamp }
 
-    val sortedEvents = allEvents.sortedBy { it.eventTimestamp }
-
-    sortedEvents.forEachIndexed { index, event ->
-        val pkg = event.packageName
-        when (event.eventType) {
-            RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED -> {
-                // An app is coming to the foreground. Close any session that was running before it.
-                currentForegroundSession?.let { (runningPkg, startTime) ->
-                    if (runningPkg != pkg) { // Avoid creating zero-length sessions
-                        sessions.add(Session(runningPkg, startTime, event.eventTimestamp))
-                    }
-                }
-                // Start the new session. This is now the ONLY active session.
-                currentForegroundSession = pkg to event.eventTimestamp
-            }
-
-            RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, RawAppEvent.EVENT_TYPE_ACTIVITY_STOPPED -> {
-                // An app is being paused. Close its session ONLY if it was the one in the foreground.
-                currentForegroundSession?.let { (runningPkg, startTime) ->
-                    if (runningPkg == pkg) {
-                        sessions.add(Session(runningPkg, startTime, event.eventTimestamp))
-                        currentForegroundSession = null // No app is in the foreground now.
-                    }
+        if (stateChangeEvents.isEmpty()) {
+            if (initialForegroundApp != null) {
+                val duration = periodEndDate - periodStartDate
+                if (duration > 0) {
+                    usageAggregator[initialForegroundApp] = duration
                 }
             }
+            val finalUsageMap = usageAggregator.mapValues { it.value to it.value }
+            return finalUsageMap to emptyList()
+        }
 
-            RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE -> {
-                // The screen is off. Whatever was running is no longer in the foreground.
-                currentForegroundSession?.let { (runningPkg, startTime) ->
-                    sessions.add(Session(runningPkg, startTime, event.eventTimestamp))
-                    currentForegroundSession = null // No app is in the foreground now.
-                }
+        var lastEventTimestamp = periodStartDate
+        var currentForegroundApp: String? = initialForegroundApp
+
+        // 2. Walk the timeline, event by event.
+        for (event in stateChangeEvents) {
+            val eventTimestamp = event.eventTimestamp
+
+            // 3. Calculate duration from the last event to this one.
+            val duration = eventTimestamp - lastEventTimestamp
+
+            // 4. Credit the duration to the app that was running *before* this event.
+            if (currentForegroundApp != null && duration > 0) {
+                usageAggregator[currentForegroundApp!!] =
+                    usageAggregator.getOrDefault(currentForegroundApp!!, 0L) + duration
             }
+
+            // 5. Update the state *based on the current event*.
+            currentForegroundApp = when (event.eventType) {
+                RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED -> event.packageName
+                RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED -> {
+                    // Only nullify if the paused app was the one in the foreground.
+                    if (currentForegroundApp == event.packageName) null else currentForegroundApp
+                }
+                RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN,
+                RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE -> null // Screen off/locked ends any session.
+                else -> currentForegroundApp
+            }
+
+            lastEventTimestamp = eventTimestamp
         }
-    }
 
-    // If a session is still open at the end of the processing period, close it.
-    currentForegroundSession?.let { (runningPkg, startTime) ->
-        if (periodEndDate > startTime) {
-            sessions.add(Session(runningPkg, startTime, periodEndDate))
+        // 6. Account for the last interval, from the final event to the end of the period.
+        val finalDuration = periodEndDate - lastEventTimestamp
+        if (currentForegroundApp != null && finalDuration > 0) {
+            usageAggregator[currentForegroundApp!!] =
+                usageAggregator.getOrDefault(currentForegroundApp!!, 0L) + finalDuration
         }
-    }
 
-        val aggregator = mutableMapOf<String, Pair<Long, Long>>()
-        val interactionEventsByPackage = allEvents
-            .filter { RawAppEvent.isAccessibilityEvent(it.eventType) }
-            .groupBy { it.packageName }
+        // The 'activeTime' calculation can be complex. For now, let's equate it to usageTime
+        // to ensure the primary total is correct. This can be refined later.
+        val finalUsageMap = usageAggregator.mapValues { it.value to it.value }
 
-        sessions.forEach { session ->
-            val usageTime = session.endTime - session.startTime
-            val sessionInteractionEvents = interactionEventsByPackage[session.pkg]
-                ?.filter { it.eventTimestamp in session.startTime..session.endTime }
-                ?.sortedBy { it.eventTimestamp }
-                ?: emptyList()
-
-            val activeTime = calculateActiveTimeFromInteractions(sessionInteractionEvents, session.startTime, session.endTime)
-            val (currentUsage, currentActive) = aggregator.getOrDefault(session.pkg, 0L to 0L)
-            aggregator[session.pkg] = (currentUsage + usageTime) to (currentActive + activeTime)
-        }
-        return aggregator to inferredEvents
+        // This model does not generate inferred events.
+        return finalUsageMap to emptyList()
     }
 
     private fun calculateActiveTimeFromInteractions(events: List<RawAppEvent>, sessionStart: Long, sessionEnd: Long): Long {

@@ -63,7 +63,7 @@ class DailyDataProcessorTest {
 
         coEvery { unlockCalculator.invoke(any(), any(), any(), any(), any()) } returns emptyList()
         coEvery { scrollCalculator.invoke(capture(scrollEventsSlot), any()) } returns emptyList()
-        coEvery { usageCalculator.invoke(capture(usageEventsSlot), any(), any(), any(), any()) } returns Pair(emptyList(), null)
+        coEvery { usageCalculator.invoke(capture(usageEventsSlot), any(), any(), any(), any(), any()) } returns Pair(emptyList(), null)
         coEvery { insightGenerator.invoke(any(), any(), capture(insightEventsSlot), any()) } returns emptyList()
 
         processor.invoke(date, events, emptyList(), filterSet, emptyMap())
@@ -89,7 +89,7 @@ class DailyDataProcessorTest {
 
         coEvery { unlockCalculator.invoke(any(), any(), any(), any(), any()) } returns mockUnlockSessions
         coEvery { scrollCalculator.invoke(any(), any()) } returns mockScrollSessions
-        coEvery { usageCalculator.invoke(any(), any(), any(), any(), any()) } returns Pair(mockUsageRecords, mockDeviceSummary)
+        coEvery { usageCalculator.invoke(any(), any(), any(), any(), any(), any()) } returns Pair(mockUsageRecords, mockDeviceSummary)
         coEvery { insightGenerator.invoke(any(), any(), any(), any()) } returns mockInsights
 
         val result = processor.invoke(date, emptyList(), emptyList(), emptySet(), emptyMap())
@@ -105,7 +105,7 @@ class DailyDataProcessorTest {
         val date = "2024-01-20"
         coEvery { unlockCalculator.invoke(any(), any(), any(), any(), any()) } returns emptyList()
         coEvery { scrollCalculator.invoke(any(), any()) } returns emptyList()
-        coEvery { usageCalculator.invoke(any(), any(), any(), any(), any()) } returns Pair(emptyList(), null)
+        coEvery { usageCalculator.invoke(any(), any(), any(), any(), any(), any()) } returns Pair(emptyList(), null)
         coEvery { insightGenerator.invoke(any(), any(), any(), any()) } returns emptyList()
 
         val result = processor.invoke(date, emptyList(), emptyList(), emptySet(), emptyMap())

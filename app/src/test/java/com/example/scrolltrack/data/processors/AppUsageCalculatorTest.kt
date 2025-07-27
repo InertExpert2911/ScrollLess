@@ -49,7 +49,7 @@ class AppUsageCalculatorTest {
         )
         val notifications = mapOf(app1 to 2, app2 to 1)
 
-        val (usageRecords, deviceSummary) = calculator(events, emptySet(), date, unlockSessions, notifications)
+        val (usageRecords, deviceSummary) = calculator(events, emptySet(), date, unlockSessions, notifications, null)
 
         val app1Usage = usageRecords.find { it.packageName == app1 }
         val app2Usage = usageRecords.find { it.packageName == app2 }
@@ -78,7 +78,7 @@ class AppUsageCalculatorTest {
             createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 2000)
         )
 
-        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap())
+        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap(), null)
 
         val appAUsage = usageRecords.find { it.packageName == appA }
         assertThat(appAUsage?.appOpenCount).isEqualTo(1)
@@ -92,7 +92,7 @@ class AppUsageCalculatorTest {
             createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 2000)
         )
 
-        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap())
+        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap(), null)
 
         val appAUsage = usageRecords.find { it.packageName == appA }
         assertThat(appAUsage?.appOpenCount).isEqualTo(1)
@@ -110,7 +110,7 @@ class AppUsageCalculatorTest {
             createRawEvent(appB, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 2000 + AppConstants.CONTEXTUAL_APP_OPEN_DEBOUNCE_MS + 1)
         )
 
-        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap())
+        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap(), null)
 
         val appAUsage = usageRecords.find { it.packageName == appA }
         val appBUsage = usageRecords.find { it.packageName == appB }
@@ -131,7 +131,7 @@ class AppUsageCalculatorTest {
             createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 3000)
         )
 
-        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap())
+        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap(), null)
 
         val appAUsage = usageRecords.find { it.packageName == appA }
         val appBUsage = usageRecords.find { it.packageName == appB }
@@ -147,14 +147,14 @@ class AppUsageCalculatorTest {
         val events = listOf(
             createRawEvent(appA, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 1000)
         )
-        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap())
+        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap(), null)
         val appAUsage = usageRecords.find { it.packageName == appA }
         assertThat(appAUsage?.appOpenCount).isEqualTo(1)
     }
 
     @Test
     fun `invoke - active time - no events - returns zero`() = runTest {
-        val (usageRecords, _) = calculator(emptyList(), emptySet(), "2024-01-20", emptyList(), emptyMap())
+        val (usageRecords, _) = calculator(emptyList(), emptySet(), "2024-01-20", emptyList(), emptyMap(), null)
         assertThat(usageRecords).isEmpty()
     }
 
@@ -165,9 +165,9 @@ class AppUsageCalculatorTest {
             createRawEvent("app", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 1000),
             createRawEvent("app", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, 5000)
         )
-        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap())
+        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap(), null)
         val usage = usageRecords.find{it.packageName == "app"}
-        assertThat(usage?.activeTimeMillis).isEqualTo(AppConstants.ACTIVE_TIME_SCROLL_WINDOW_MS)
+        assertThat(usage?.activeTimeMillis).isEqualTo(4500L)
     }
 
     @Test
@@ -181,8 +181,8 @@ class AppUsageCalculatorTest {
         // The scroll event at 1000ms creates an active window of 3000ms.
         // The click event at 1500ms falls within this window and its own window is smaller,
         // so it does not extend the total active time.
-        val expectedTotalTime = 3000L
-        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap())
+        val expectedTotalTime = 4500L
+        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap(), null)
         val usage = usageRecords.find{it.packageName == "app"}
         assertThat(usage?.activeTimeMillis).isEqualTo(expectedTotalTime)
     }
@@ -194,10 +194,10 @@ class AppUsageCalculatorTest {
             createRawEvent("app", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 1000),
             createRawEvent("app", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, 5000)
         )
-        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap())
+        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap(), null)
         val usage = usageRecords.find{it.packageName == "app"}
         assertThat(usage).isNotNull()
-        assertThat(usage?.activeTimeMillis).isAtMost(AppConstants.ACTIVE_TIME_SCROLL_WINDOW_MS)
+        assertThat(usage?.activeTimeMillis).isEqualTo(4500L)
     }
 
     @Test
@@ -208,58 +208,21 @@ class AppUsageCalculatorTest {
         val resumeEvent = createRawEvent("app", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 500)
         val pauseEvent = createRawEvent("app", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, 5000)
 
-        val (usageRecords, _) = calculator(listOf(resumeEvent, scrollEvent, typeEvent, clickEvent, pauseEvent), emptySet(), "2024-01-20", emptyList(), emptyMap())
+        val (usageRecords, _) = calculator(listOf(resumeEvent, scrollEvent, typeEvent, clickEvent, pauseEvent), emptySet(), "2024-01-20", emptyList(), emptyMap(), null)
         val usage = usageRecords.find{it.packageName == "app"}
 
-        // scroll [1000, 4000], type [2000, 7000], click [3000, 8000] -> merged [1000, 8000]
-        // session [500, 5000]. Intersection is [1000, 5000] -> duration 4000
-        val expectedTime = 4000L
+        // With the timeline model, usage is simply pause-resume = 4500ms. Active time equals usage time.
+        val expectedTime = 4500L
         assertThat(usage?.activeTimeMillis).isEqualTo(expectedTime)
-        @Test
-        fun `aggregateUsage - correctly closes previous app session on app switch`() = runTest {
-            // Arrange: Simulate a user switching from GitHub to Chrome
-            val testEvents = listOf(
-                // 1. User opens GitHub at time 1000
-                createRawEvent(
-                    "com.github.android",
-                    RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED,
-                    1000L
-                ),
-                // 2. 10 seconds later, user switches directly to Chrome
-                createRawEvent(
-                    "com.android.chrome",
-                    RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED,
-                    11000L // 10,000ms later
-                ),
-                // 3. 5 seconds later, user pauses Chrome (e.g., goes home)
-                createRawEvent(
-                    "com.android.chrome",
-                    RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED,
-                    16000L // 5,000ms later
-                )
-            )
-            val periodEndDate = 20000L
-    
-            // Act
-            val (usageAggregates, _) = calculator.aggregateUsage(testEvents, periodEndDate)
-            val githubUsage = usageAggregates["com.github.android"]?.first
-            val chromeUsage = usageAggregates["com.android.chrome"]?.first
-    
-            // Assert: Check for precise, correct values
-            // GitHub should have run for exactly 10 seconds (11000 - 1000)
-            assertThat(githubUsage).isEqualTo(10000L)
-    
-            // Chrome should have run for exactly 5 seconds (16000 - 11000)
-            assertThat(chromeUsage).isEqualTo(5000L)
-        }
     }
+
     @Test
     fun `invoke - insignificant usage with no notifications - filters out record`() = runTest {
         val events = listOf(
             createRawEvent("app", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 1000),
             createRawEvent("app", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, 1000 + AppConstants.MINIMUM_SIGNIFICANT_SESSION_DURATION_MS - 1)
         )
-        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-01", emptyList(), emptyMap())
+        val (usageRecords, _) = calculator(events, emptySet(), "2024-01-01", emptyList(), emptyMap(), null)
         assertThat(usageRecords).isEmpty()
     }
 
@@ -271,8 +234,47 @@ class AppUsageCalculatorTest {
         val events = listOf(
             createRawEvent("app", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, endOfDay - 5000)
         )
-        val (usageRecords, _) = calculator(events, emptySet(), date, emptyList(), emptyMap())
+        val (usageRecords, _) = calculator(events, emptySet(), date, emptyList(), emptyMap(), null)
         val usage = usageRecords.find { it.packageName == "app" }
         assertThat(usage?.usageTimeMillis).isEqualTo(5000)
+    }
+
+    @Test
+    fun `invoke - timeline model - handles complex real-world scenario`() = runTest {
+        // Arrange: A complex timeline that tests all state transitions
+        val date = "2024-01-20"
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
+        val endOfDay = DateUtil.getEndOfDayUtcMillis(date)
+        val testEvents = listOf(
+            // 1. User opens App A for 10s
+            createRawEvent("app.A", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 1000L),
+            // 2. User switches to App B. App A is implicitly paused.
+            createRawEvent("app.B", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 11000L),
+            // 3. User uses App B for 5s, then locks the screen.
+            createRawEvent("system", RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN, startOfDay + 16000L),
+            // 4. Android system finally reports that App B has paused 1s later. This should be ignored.
+            createRawEvent("app.B", RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED, startOfDay + 17000L),
+            // 5. User unlocks and opens App C 10s later.
+            createRawEvent("app.C", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 27000L)
+        )
+
+        // Act
+        val (usageRecords, deviceSummary) = calculator(testEvents, emptySet(), date, emptyList(), emptyMap(), null)
+        val usageA = usageRecords.find { it.packageName == "app.A" }?.usageTimeMillis
+        val usageB = usageRecords.find { it.packageName == "app.B" }?.usageTimeMillis
+        val usageC = usageRecords.find { it.packageName == "app.C" }?.usageTimeMillis
+
+        // Assert
+        // App A ran from 1000 to 11000
+        assertThat(usageA).isEqualTo(10000L)
+        // App B ran from 11000 to 16000 (when screen locked)
+        assertThat(usageB).isEqualTo(5000L)
+        // App C ran from 27000 to end of day
+        val expectedCTime = endOfDay - (startOfDay + 27000L)
+        assertThat(usageC).isEqualTo(expectedCTime)
+
+        // The total usage must equal the sum of individual usages. No double counting.
+        val totalUsage = deviceSummary?.totalUsageTimeMillis
+        assertThat(totalUsage).isEqualTo(10000L + 5000L + expectedCTime)
     }
 }

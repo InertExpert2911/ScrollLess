@@ -34,7 +34,7 @@ class DailyDataProcessor @Inject constructor(
             lockEventTypes = setOf(RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN, RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE)
         )
         val scrollSessions = scrollCalculator(events.filter { it.packageName !in filterSet }, filterSet)
-        val (usageRecords, deviceSummary) = usageCalculator(unlockRelatedEvents, filterSet, dateString, unlockSessions, notificationsByPackage)
+        val (usageRecords, deviceSummary) = usageCalculator(unlockRelatedEvents, filterSet, dateString, unlockSessions, notificationsByPackage, null)
         val insights = insightGenerator(dateString, unlockSessions, unlockRelatedEvents, filterSet)
 
         return DailyProcessingResult(unlockSessions, scrollSessions, usageRecords, deviceSummary, insights)
