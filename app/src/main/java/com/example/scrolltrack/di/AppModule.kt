@@ -35,46 +35,60 @@ abstract class AppModule {
 
         @Provides
         @Singleton
-        fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
+        fun provideAppDatabase(@ApplicationContext appContext: Context): AppDatabase {
             return Room.databaseBuilder(
-                context,
+                appContext,
                 AppDatabase::class.java,
                 "scroll_track_database"
-            ).fallbackToDestructiveMigration(true)
-                .build()
+            )
+            .fallbackToDestructiveMigration()
+            .build()
         }
 
         @Provides
-        @Singleton
-        fun provideScrollSessionDao(db: AppDatabase): ScrollSessionDao = db.scrollSessionDao()
+        fun provideScrollSessionDao(appDatabase: AppDatabase): ScrollSessionDao {
+            return appDatabase.scrollSessionDao()
+        }
 
         @Provides
-        @Singleton
-        fun provideDailyAppUsageDao(db: AppDatabase): DailyAppUsageDao = db.dailyAppUsageDao()
+        fun provideDailyAppUsageDao(appDatabase: AppDatabase): DailyAppUsageDao {
+            return appDatabase.dailyAppUsageDao()
+        }
 
         @Provides
-        @Singleton
-        fun provideRawAppEventDao(db: AppDatabase): RawAppEventDao = db.rawAppEventDao()
+        fun provideRawAppEventDao(appDatabase: AppDatabase): RawAppEventDao {
+            return appDatabase.rawAppEventDao()
+        }
 
         @Provides
-        @Singleton
-        fun provideNotificationDao(db: AppDatabase): NotificationDao = db.notificationDao()
+        fun provideNotificationDao(appDatabase: AppDatabase): NotificationDao {
+            return appDatabase.notificationDao()
+        }
 
         @Provides
-        @Singleton
-        fun provideDailyDeviceSummaryDao(db: AppDatabase): DailyDeviceSummaryDao = db.dailyDeviceSummaryDao()
+        fun provideDailyDeviceSummaryDao(appDatabase: AppDatabase): DailyDeviceSummaryDao {
+            return appDatabase.dailyDeviceSummaryDao()
+        }
 
         @Provides
-        @Singleton
-        fun provideAppMetadataDao(db: AppDatabase): AppMetadataDao = db.appMetadataDao()
+        fun provideAppMetadataDao(appDatabase: AppDatabase): AppMetadataDao {
+            return appDatabase.appMetadataDao()
+        }
 
         @Provides
-        @Singleton
-        fun provideUnlockSessionDao(db: AppDatabase): UnlockSessionDao = db.unlockSessionDao()
+        fun provideUnlockSessionDao(appDatabase: AppDatabase): UnlockSessionDao {
+            return appDatabase.unlockSessionDao()
+        }
 
         @Provides
-        @Singleton
-        fun provideDailyInsightDao(db: AppDatabase): DailyInsightDao = db.dailyInsightDao()
+        fun provideDailyInsightDao(appDatabase: AppDatabase): DailyInsightDao {
+            return appDatabase.dailyInsightDao()
+        }
+
+        @Provides // <-- ADD THIS BLOCK
+        fun provideLimitsDao(appDatabase: AppDatabase): LimitsDao {
+            return appDatabase.limitsDao()
+        }
 
     }
 }

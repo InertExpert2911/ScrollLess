@@ -80,6 +80,8 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.google.truth)
     testImplementation(libs.mockk)
+    androidTestImplementation(libs.google.truth)
+    androidTestImplementation(libs.mockk)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
