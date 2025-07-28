@@ -15,9 +15,10 @@ import com.example.scrolltrack.db.DailyInsight
 interface ScrollDataRepository {
     // --- Core Processing Triggers ---
     suspend fun syncSystemEvents(): Boolean
-    suspend fun processAndSummarizeDate(dateString: String)
+    suspend fun processAndSummarizeDate(dateString: String, initialForegroundAppOverride: String? = null)
     suspend fun backfillHistoricalAppUsageData(numberOfDays: Int): Boolean
     suspend fun refreshDataOnAppOpen()
+    suspend fun getCurrentForegroundApp(): String?
 
     // --- Live / Real-time Data Flows ---
     fun getRawEventsForDateFlow(dateString: String): Flow<List<RawAppEvent>>

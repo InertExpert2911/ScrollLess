@@ -141,7 +141,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun processAndSummarizeDate(dateString: String) = withContext(ioDispatcher) {
+    override suspend fun processAndSummarizeDate(dateString: String, initialForegroundAppOverride: String?) = withContext(ioDispatcher) {
         Timber.d("Starting processing for date: $dateString")
         val startTime = DateUtil.getStartOfDayUtcMillis(dateString)
         val endTime = DateUtil.getEndOfDayUtcMillis(dateString)
@@ -166,7 +166,9 @@ class ScrollDataRepositoryImpl @Inject constructor(
         val notificationsByPackage = notificationDao.getNotificationCountsPerAppForDate(dateString)
             .filter { it.packageName !in filterSet }
             .associate { it.packageName to it.count }
-        val result = dailyDataProcessor(dateString, events, notifications, filterSet, notificationsByPackage)
+        val initialForegroundApp = initialForegroundAppOverride
+            ?: rawAppEventDao.getLastEventBefore(startTime, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED)?.packageName
+        val result = dailyDataProcessor(dateString, events, notifications, filterSet, notificationsByPackage, initialForegroundApp)
 
         // --- Step 2: Perform the atomic write transaction ---
         appDatabase.withTransaction {
@@ -425,7 +427,7 @@ class ScrollDataRepositoryImpl @Inject constructor(
             .associate { it.packageName to it.count }
 
         // --- 1. Delegate all calculations to the processor ---
-        val result = dailyDataProcessor(dateString, events, notifications, currentFilterSet, notificationsByPackage)
+        val result = dailyDataProcessor(dateString, events, notifications, currentFilterSet, notificationsByPackage, null)
 
         // --- 2. Atomic write to database ---
         appDatabase.withTransaction {
@@ -449,5 +451,17 @@ class ScrollDataRepositoryImpl @Inject constructor(
                 dailyInsightDao.insertInsights(result.insights)
             }
         }
+    }
+    override suspend fun getCurrentForegroundApp(): String? = withContext(ioDispatcher) {
+        if (!PermissionUtils.hasUsageStatsPermission(context)) {
+            Timber.w("Cannot get current foreground app, permission not granted.")
+            return@withContext null
+        }
+        val endTime = System.currentTimeMillis()
+        val startTime = endTime - TimeUnit.MINUTES.toMillis(1) // Look in the last minute
+
+        val usageStatsList = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
+
+        return@withContext usageStatsList?.maxByOrNull { it.lastTimeUsed }?.packageName
     }
 }

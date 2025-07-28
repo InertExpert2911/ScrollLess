@@ -163,14 +163,20 @@ class TodaySummaryViewModel @Inject constructor(
             conversionUtil.formatScrollDistance(totalScrollX, totalScrollY)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0" to "m")
 
-    val totalUnlocksToday: StateFlow<Int> = summaryData.map { it?.totalUnlockCount ?: 0 }
+    private val unlockSessionsToday: StateFlow<List<com.example.scrolltrack.db.UnlockSessionRecord>> = _selectedDate.flatMapLatest { date ->
+        repository.getUnlockSessionsForDateRange(date, date)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
+
+    val totalUnlocksToday: StateFlow<Int> = unlockSessionsToday.map { it.size }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
 
-    val intentionalUnlocksToday: StateFlow<Int> = summaryData.map { it?.intentionalUnlockCount ?: 0 }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
+    val intentionalUnlocksToday: StateFlow<Int> = unlockSessionsToday.map { sessions ->
+        sessions.count { it.sessionType == "Intentional" || it.sessionEndReason == "INTERRUPTED" || it.sessionType == null }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
 
-    val glanceUnlocksToday: StateFlow<Int> = summaryData.map { it?.glanceUnlockCount ?: 0 }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
+    val glanceUnlocksToday: StateFlow<Int> = unlockSessionsToday.map { sessions ->
+        sessions.count { it.sessionType == "Glance" }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
 
     val totalNotificationsToday: StateFlow<Int> = summaryData.map { it?.totalNotificationCount ?: 0 }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)

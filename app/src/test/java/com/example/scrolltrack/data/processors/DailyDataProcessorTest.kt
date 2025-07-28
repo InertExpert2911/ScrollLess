@@ -42,7 +42,7 @@ class DailyDataProcessorTest {
     }
 
     @Test
-    fun `invoke - filters events correctly before passing to calculators`() = runTest {
+    fun `invoke - passes full event list and filtersets to calculators`() = runTest {
         val date = "2024-01-20"
         val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
         val visibleApp = "com.app.visible"
@@ -53,29 +53,46 @@ class DailyDataProcessorTest {
             createRawEvent(visibleApp, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 1000),
             createRawEvent(hiddenApp, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 2000),
             createRawEvent(visibleApp, RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, startOfDay + 3000),
-            createRawEvent(hiddenApp, RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, startOfDay + 4000)
+            createRawEvent(hiddenApp, RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, startOfDay + 4000),
+            createRawEvent(visibleApp, RawAppEvent.EVENT_TYPE_USER_UNLOCKED, startOfDay + 5000)
         )
 
-        // Mock calculators to capture the event lists they receive
+        // Mock calculators to capture the arguments they receive
+        val unlockEventsSlot = slot<List<RawAppEvent>>()
         val scrollEventsSlot = slot<List<RawAppEvent>>()
         val usageEventsSlot = slot<List<RawAppEvent>>()
         val insightEventsSlot = slot<List<RawAppEvent>>()
+        val scrollFilterSetSlot = slot<Set<String>>()
+        val usageFilterSetSlot = slot<Set<String>>()
 
-        coEvery { unlockCalculator.invoke(any(), any(), any(), any(), any()) } returns emptyList()
-        coEvery { scrollCalculator.invoke(capture(scrollEventsSlot), any()) } returns emptyList()
-        coEvery { usageCalculator.invoke(capture(usageEventsSlot), any(), any(), any(), any(), any()) } returns Pair(emptyList(), null)
+        coEvery { unlockCalculator.invoke(capture(unlockEventsSlot), any(), any(), any(), any()) } returns emptyList()
+        coEvery { scrollCalculator.invoke(capture(scrollEventsSlot), capture(scrollFilterSetSlot)) } returns emptyList()
+        coEvery { usageCalculator.invoke(capture(usageEventsSlot), capture(usageFilterSetSlot), any(), any(), any(), any()) } returns Pair(emptyList(), null)
         coEvery { insightGenerator.invoke(any(), any(), capture(insightEventsSlot), any()) } returns emptyList()
 
-        processor.invoke(date, events, emptyList(), filterSet, emptyMap())
+        processor.invoke(date, events, emptyList(), filterSet, emptyMap(), null)
 
-        // Verify that the scroll calculator received only the filtered events
-        assertThat(scrollEventsSlot.captured.all { it.packageName !in filterSet }).isTrue()
-        assertThat(scrollEventsSlot.captured.size).isEqualTo(2) // 2 visible events
+        // Verify that the unlock calculator received only unlock-related events
+        val unlockRelatedTypes = setOf(
+            RawAppEvent.EVENT_TYPE_USER_UNLOCKED,
+            RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN,
+            RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN,
+            RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE,
+            RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED,
+            RawAppEvent.EVENT_TYPE_SERVICE_STARTED,
+            RawAppEvent.EVENT_TYPE_SERVICE_STOPPED
+        )
+        assertThat(unlockEventsSlot.captured.all { it.eventType in unlockRelatedTypes }).isTrue()
+        assertThat(unlockEventsSlot.captured.size).isEqualTo(3) // 2 resumed, 1 unlocked
 
-        // Verify that the usage and insight calculators received the correct unlock-related events
-        // The scroll-related events are not unlock-related, so they should be filtered out.
-        assertThat(usageEventsSlot.captured.size).isEqualTo(2)
-        assertThat(insightEventsSlot.captured.size).isEqualTo(2)
+        // Verify that the other calculators received the *full, unfiltered* event list
+        assertThat(scrollEventsSlot.captured).isEqualTo(events)
+        assertThat(usageEventsSlot.captured).isEqualTo(events)
+        assertThat(insightEventsSlot.captured).isEqualTo(events)
+
+        // Verify that the filter set was passed correctly
+        assertThat(scrollFilterSetSlot.captured).isEqualTo(filterSet)
+        assertThat(usageFilterSetSlot.captured).isEqualTo(filterSet)
     }
 
     @Test
@@ -92,7 +109,7 @@ class DailyDataProcessorTest {
         coEvery { usageCalculator.invoke(any(), any(), any(), any(), any(), any()) } returns Pair(mockUsageRecords, mockDeviceSummary)
         coEvery { insightGenerator.invoke(any(), any(), any(), any()) } returns mockInsights
 
-        val result = processor.invoke(date, emptyList(), emptyList(), emptySet(), emptyMap())
+        val result = processor.invoke(date, emptyList(), emptyList(), emptySet(), emptyMap(), null)
 
         assertThat(result.unlockSessions).isEqualTo(mockUnlockSessions)
         assertThat(result.scrollSessions).isEqualTo(mockScrollSessions)
@@ -108,7 +125,7 @@ class DailyDataProcessorTest {
         coEvery { usageCalculator.invoke(any(), any(), any(), any(), any(), any()) } returns Pair(emptyList(), null)
         coEvery { insightGenerator.invoke(any(), any(), any(), any()) } returns emptyList()
 
-        val result = processor.invoke(date, emptyList(), emptyList(), emptySet(), emptyMap())
+        val result = processor.invoke(date, emptyList(), emptyList(), emptySet(), emptyMap(), null)
 
         assertThat(result.unlockSessions).isEmpty()
         assertThat(result.scrollSessions).isEmpty()

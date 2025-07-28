@@ -21,7 +21,7 @@ class InsightGenerator @Inject constructor() {
 
         // --- Basic Unlock Insights ---
         val glanceCount = unlockSessions.count { it.sessionType == "Glance" }.toLong()
-        val meaningfulCount = unlockSessions.count { it.sessionType == "Intentional" }.toLong()
+        val meaningfulCount = unlockSessions.count { it.sessionType == "Intentional" || it.sessionEndReason == "INTERRUPTED" || it.sessionType == null }.toLong()
         insights.add(DailyInsight(dateString = dateString, insightKey = "glance_count", longValue = glanceCount))
         insights.add(DailyInsight(dateString = dateString, insightKey = "meaningful_unlock_count", longValue = meaningfulCount))
 

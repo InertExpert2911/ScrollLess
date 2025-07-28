@@ -15,7 +15,8 @@ class DailyDataProcessor @Inject constructor(
         events: List<RawAppEvent>,
         notifications: List<NotificationRecord>,
         filterSet: Set<String>,
-        notificationsByPackage: Map<String, Int>
+        notificationsByPackage: Map<String, Int>,
+        initialForegroundApp: String?
     ): DailyProcessingResult {
         val unlockRelatedEvents = events.filter {
             it.eventType in setOf(
@@ -23,7 +24,9 @@ class DailyDataProcessor @Inject constructor(
                 RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN,
                 RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN,
                 RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE,
-                RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED
+                RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED,
+                RawAppEvent.EVENT_TYPE_SERVICE_STARTED,
+                RawAppEvent.EVENT_TYPE_SERVICE_STOPPED
             )
         }
         val unlockSessions = unlockCalculator(
@@ -33,9 +36,9 @@ class DailyDataProcessor @Inject constructor(
             unlockEventTypes = setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED, RawAppEvent.EVENT_TYPE_KEYGUARD_HIDDEN),
             lockEventTypes = setOf(RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN, RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE)
         )
-        val scrollSessions = scrollCalculator(events.filter { it.packageName !in filterSet }, filterSet)
-        val (usageRecords, deviceSummary) = usageCalculator(unlockRelatedEvents, filterSet, dateString, unlockSessions, notificationsByPackage, null)
-        val insights = insightGenerator(dateString, unlockSessions, unlockRelatedEvents, filterSet)
+        val scrollSessions = scrollCalculator(events, filterSet)
+        val (usageRecords, deviceSummary) = usageCalculator(events, filterSet, dateString, unlockSessions, notificationsByPackage, initialForegroundApp)
+        val insights = insightGenerator(dateString, unlockSessions, events, filterSet)
 
         return DailyProcessingResult(unlockSessions, scrollSessions, usageRecords, deviceSummary, insights)
     }

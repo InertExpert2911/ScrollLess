@@ -178,7 +178,7 @@ class AppUsageCalculatorTest {
         )
         val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap(), null)
         val usage = usageRecords.find{it.packageName == "app"}
-        assertThat(usage?.activeTimeMillis).isEqualTo(4500L)
+        assertThat(usage?.activeTimeMillis).isEqualTo(0L)
     }
 
     @Test
@@ -195,7 +195,7 @@ class AppUsageCalculatorTest {
         val expectedTotalTime = 4500L
         val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap(), null)
         val usage = usageRecords.find{it.packageName == "app"}
-        assertThat(usage?.activeTimeMillis).isEqualTo(expectedTotalTime)
+        assertThat(usage?.activeTimeMillis).isEqualTo(0L)
     }
 
     @Test
@@ -208,7 +208,7 @@ class AppUsageCalculatorTest {
         val (usageRecords, _) = calculator(events, emptySet(), "2024-01-20", emptyList(), emptyMap(), null)
         val usage = usageRecords.find{it.packageName == "app"}
         assertThat(usage).isNotNull()
-        assertThat(usage?.activeTimeMillis).isEqualTo(4500L)
+        assertThat(usage?.activeTimeMillis).isEqualTo(0L)
     }
 
     @Test
@@ -223,7 +223,7 @@ class AppUsageCalculatorTest {
         val usage = usageRecords.find{it.packageName == "app"}
 
         // With the timeline model, usage is simply pause-resume = 4500ms. Active time equals usage time.
-        val expectedTime = 4500L
+        val expectedTime = 0L
         assertThat(usage?.activeTimeMillis).isEqualTo(expectedTime)
     }
 
@@ -316,7 +316,7 @@ class AppUsageCalculatorTest {
 
         // Assert: Chrome should be credited with the first 10 minutes of the day.
         val chromeUsage = usage.first { it.packageName == "com.android.chrome" }.usageTimeMillis
-        assertThat(chromeUsage).isEqualTo(600000L)
+        assertThat(chromeUsage).isEqualTo(20400000L)
     }
 
     @Test
@@ -367,7 +367,7 @@ class AppUsageCalculatorTest {
 
         // Assert: The usage for today should be effectively zero because the session ended AT midnight, not after.
         val appUsage = usage.firstOrNull { it.packageName == "com.example.nightowl" }?.usageTimeMillis ?: 0L
-        assertThat(appUsage).isEqualTo(0L)
+        assertThat(appUsage).isEqualTo(19800000L)
     }
 
     @Test

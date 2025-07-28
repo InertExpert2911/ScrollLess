@@ -1,21 +1,18 @@
 package com.example.scrolltrack.ui.settings
 
 import android.content.Context
+import app.cash.turbine.test
 import com.example.scrolltrack.data.AppMetadataRepository
 import com.example.scrolltrack.db.AppMetadata
 import com.google.common.truth.Truth.assertThat
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -27,13 +24,15 @@ import org.robolectric.RobolectricTestRunner
 class AppVisibilityViewModelTest {
 
     private lateinit var viewModel: AppVisibilityViewModel
-    private lateinit var appMetadataRepository: AppMetadataRepository
+    private val appMetadataRepository: AppMetadataRepository = mockk(relaxed = true)
     private val testDispatcher = StandardTestDispatcher()
+
+    private val allAppsFlow = MutableStateFlow<List<AppMetadata>>(emptyList())
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        appMetadataRepository = mockk(relaxed = true)
+        coEvery { appMetadataRepository.getAllMetadata() } returns allAppsFlow
         val context: Context = mockk(relaxed = true)
         viewModel = AppVisibilityViewModel(appMetadataRepository, context, testDispatcher)
     }
@@ -43,76 +42,74 @@ class AppVisibilityViewModelTest {
         Dispatchers.resetMain()
     }
 
-    @Test
-    fun `test filter by visible`() = runTest(testDispatcher) {
-        val apps = listOf(
-            AppMetadata("com.example.visible", "Visible App", isUserVisible = true, isSystemApp = false, userHidesOverride = false, installTimestamp = 0L, lastUpdateTimestamp = 0L, versionName = "1.0", versionCode = 1),
-            AppMetadata("com.example.hidden", "Hidden App", isUserVisible = true, isSystemApp = true, userHidesOverride = true, installTimestamp = 0L, lastUpdateTimestamp = 0L, versionName = "1.0", versionCode = 1),
-            AppMetadata("com.example.default_visible", "Default Visible App", isUserVisible = true, isSystemApp = false, userHidesOverride = null, installTimestamp = 0L, lastUpdateTimestamp = 0L, versionName = "1.0", versionCode = 1)
+    private fun createTestApp(pkg: String, name: String, isVisible: Boolean, override: Boolean?): AppMetadata {
+        return AppMetadata(
+            packageName = pkg,
+            appName = name,
+            isUserVisible = isVisible,
+            userHidesOverride = override,
+            isSystemApp = false,
+            installTimestamp = 0L,
+            lastUpdateTimestamp = 0L,
+            versionName = "1.0",
+            versionCode = 1L
         )
-        coEvery { appMetadataRepository.getAllMetadata() } returns flowOf(apps)
-
-        viewModel.setVisibilityFilter(VisibilityFilter.VISIBLE)
-        viewModel.loadApps()
-        advanceUntilIdle()
-
-        val uiState = viewModel.uiState.value as AppVisibilityUiState.Success
-        assertThat(uiState.apps.map { it.packageName }).containsExactly("com.example.visible", "com.example.default_visible")
     }
 
     @Test
-    fun `test filter by hidden`() = runTest(testDispatcher) {
+    fun `filters by visible and sorts alphabetically`() = runTest {
         val apps = listOf(
-            AppMetadata("com.example.visible", "Visible App", isUserVisible = true, isSystemApp = false, userHidesOverride = false, installTimestamp = 0L, lastUpdateTimestamp = 0L, versionName = "1.0", versionCode = 1),
-            AppMetadata("com.example.hidden", "Hidden App", isUserVisible = true, isSystemApp = true, userHidesOverride = true, installTimestamp = 0L, lastUpdateTimestamp = 0L, versionName = "1.0", versionCode = 1),
-            AppMetadata("com.example.default_hidden", "Default Hidden App", isUserVisible = false, isSystemApp = true, userHidesOverride = null, installTimestamp = 0L, lastUpdateTimestamp = 0L, versionName = "1.0", versionCode = 1)
+            createTestApp("com.c", "C App", true, false),
+            createTestApp("com.a", "A App", true, null), // Default visible
+            createTestApp("com.b", "B App", false, true) // Hidden
         )
-        coEvery { appMetadataRepository.getAllMetadata() } returns flowOf(apps)
 
-        viewModel.setVisibilityFilter(VisibilityFilter.HIDDEN)
-        viewModel.loadApps()
-        advanceUntilIdle()
+        viewModel.uiState.test {
+            assertThat(awaitItem()).isInstanceOf(AppVisibilityUiState.Loading::class.java)
+            allAppsFlow.value = apps
+            
+            viewModel.setVisibilityFilter(VisibilityFilter.VISIBLE)
+            
+            // It will emit loading, then success from the initial load, then loading, then success from the filter change
+            awaitItem() // initial success
+            awaitItem() // loading
+            val state = awaitItem() as AppVisibilityUiState.Success
 
-        val uiState = viewModel.uiState.value as AppVisibilityUiState.Success
-        assertThat(uiState.apps.map { it.packageName }).containsExactly("com.example.hidden", "com.example.default_hidden")
+            assertThat(state.apps.map { it.appName }).containsExactly("A App", "C App").inOrder()
+        }
     }
 
     @Test
-    fun `test toggle non-interactive apps`() = runTest(testDispatcher) {
-        val apps = listOf(
-            AppMetadata("com.example.interactive", "Interactive App", isUserVisible = true, isSystemApp = false, userHidesOverride = null, installTimestamp = 0L, lastUpdateTimestamp = 0L, versionName = "1.0", versionCode = 1),
-            AppMetadata("com.example.non_interactive", "Non-Interactive App", isUserVisible = false, isSystemApp = false, userHidesOverride = null, installTimestamp = 0L, lastUpdateTimestamp = 0L, versionName = "1.0", versionCode = 1)
-        )
-        coEvery { appMetadataRepository.getAllMetadata() } returns flowOf(apps)
+    fun `setAppVisibility updates state and persists to repository`() = runTest {
+        val app = createTestApp("com.app", "Test App", true, null)
+        allAppsFlow.value = listOf(app)
 
-        viewModel.toggleShowNonInteractiveApps() // Set to true
-        viewModel.loadApps()
-        advanceUntilIdle()
+        viewModel.uiState.test {
+            assertThat(awaitItem()).isInstanceOf(AppVisibilityUiState.Loading::class.java)
+            val initialState = awaitItem() as AppVisibilityUiState.Success
+            assertThat(initialState.apps.first().visibilityState).isEqualTo(VisibilityState.DEFAULT)
 
-        val uiState = viewModel.uiState.value as AppVisibilityUiState.Success
-        assertThat(uiState.apps.map { it.packageName }).containsExactly("com.example.interactive", "com.example.non_interactive")
+            viewModel.setAppVisibility("com.app", VisibilityState.HIDDEN)
+            
+            // The list is re-filtered after the change, so the app disappears from the "ALL" view
+            val updatedState = awaitItem() as AppVisibilityUiState.Success
+            assertThat(updatedState.apps).isEmpty()
 
-        viewModel.toggleShowNonInteractiveApps() // Set to false
-        viewModel.loadApps()
-        advanceUntilIdle()
-
-        val uiState2 = viewModel.uiState.value as AppVisibilityUiState.Success
-        assertThat(uiState2.apps.map { it.packageName }).containsExactly("com.example.interactive")
+            // Verify the change was persisted
+            coVerify { appMetadataRepository.updateUserHidesOverride("com.app", true) }
+        }
     }
 
     @Test
-    fun `test set app visibility`() = runTest(testDispatcher) {
-        val apps = listOf(
-            AppMetadata("com.example.app", "Test App", isUserVisible = true, isSystemApp = false, userHidesOverride = null, installTimestamp = 0L, lastUpdateTimestamp = 0L, versionName = "1.0", versionCode = 1)
-        )
-        coEvery { appMetadataRepository.getAllMetadata() } returns flowOf(apps)
-        viewModel.loadApps()
-        advanceUntilIdle()
+    fun `error state is emitted when repository throws exception`() = runTest {
+        coEvery { appMetadataRepository.getAllMetadata() } returns flow { throw RuntimeException("DB error") }
+        
+        val errorViewModel = AppVisibilityViewModel(appMetadataRepository, mockk(relaxed = true), testDispatcher)
 
-        viewModel.setAppVisibility("com.example.app", VisibilityState.HIDDEN)
-        advanceUntilIdle()
-
-        val uiState = viewModel.uiState.value as AppVisibilityUiState.Success
-        assertThat(uiState.apps.find { it.packageName == "com.example.app" }?.visibilityState).isEqualTo(VisibilityState.HIDDEN)
+        errorViewModel.uiState.test {
+            assertThat(awaitItem()).isInstanceOf(AppVisibilityUiState.Loading::class.java)
+            val errorState = awaitItem()
+            assertThat(errorState).isInstanceOf(AppVisibilityUiState.Error::class.java)
+        }
     }
 }

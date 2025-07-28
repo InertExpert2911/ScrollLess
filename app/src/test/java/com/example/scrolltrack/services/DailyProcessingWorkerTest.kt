@@ -35,11 +35,13 @@ class DailyProcessingWorkerTest {
     fun `test worker processes today and yesterday`() = runBlocking {
         val today = DateUtil.getCurrentLocalDateString()
         val yesterday = DateUtil.getPastDateString(1)
+        val fakeForegroundApp = "com.fake.app"
+        coEvery { scrollDataRepository.getCurrentForegroundApp() } returns fakeForegroundApp
 
         val result = worker.doWork()
 
-        coVerify { scrollDataRepository.processAndSummarizeDate(today) }
         coVerify { scrollDataRepository.processAndSummarizeDate(yesterday) }
+        coVerify { scrollDataRepository.processAndSummarizeDate(today, fakeForegroundApp) }
         assertThat(result).isEqualTo(ListenableWorker.Result.success())
     }
 

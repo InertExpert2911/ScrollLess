@@ -24,6 +24,7 @@ class UnlockSessionCalculator @Inject constructor() {
         for (event in sortedEvents) {
             val isUnlock = event.eventType in unlockEventTypes
             val isLock = event.eventType in lockEventTypes
+            val isServiceStop = event.eventType == RawAppEvent.EVENT_TYPE_SERVICE_STOPPED
 
             if (isUnlock) {
                 if (openSession != null) {
@@ -43,10 +44,11 @@ class UnlockSessionCalculator @Inject constructor() {
                     unlockEventType = event.eventType.toString()
                 )
 
-            } else if (isLock && openSession != null) {
+            } else if (openSession != null && (isLock || isServiceStop)) {
                 val currentOpenSession = openSession
                 val duration = event.eventTimestamp - currentOpenSession.unlockTimestamp
                 if (duration >= 0) {
+                    val sessionEndReason = if (isLock) "LOCKED" else "INTERRUPTED"
                     val sessionType = if (duration < AppConstants.MINIMUM_GLANCE_DURATION_MS) "Glance" else "Intentional"
 
                     var isCompulsiveCheck = false
@@ -84,7 +86,7 @@ class UnlockSessionCalculator @Inject constructor() {
                         durationMillis = duration,
                         firstAppPackageName = firstAppEvent?.packageName,
                         sessionType = sessionType,
-                        sessionEndReason = "LOCKED",
+                        sessionEndReason = sessionEndReason,
                         isCompulsive = isCompulsiveCheck,
                         triggeringNotificationPackageName = notificationPackageName
                     ))

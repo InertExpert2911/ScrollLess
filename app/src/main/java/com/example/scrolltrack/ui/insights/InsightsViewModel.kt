@@ -7,6 +7,7 @@ import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.*
+import com.example.scrolltrack.db.UnlockSessionRecord
 import javax.inject.Inject
 import com.example.scrolltrack.db.DailyInsight
 
@@ -16,16 +17,25 @@ class InsightsViewModel @Inject constructor(
     private val appMetadataRepository: AppMetadataRepository
 ) : ViewModel() {
 
+    // --- THIS IS THE NEW LIVE DATA SOURCE ---
+    private val unlockSessionsToday: Flow<List<UnlockSessionRecord>> =
+        scrollDataRepository.getUnlockSessionsForDateRange(
+            DateUtil.getCurrentLocalDateString(),
+            DateUtil.getCurrentLocalDateString()
+        )
+
     private val todaysInsightsFlow: Flow<List<DailyInsight>> =
         scrollDataRepository.getInsightsForDate(DateUtil.getCurrentLocalDateString())
 
     private val yesterdaysInsightsFlow: Flow<List<DailyInsight>> =
         scrollDataRepository.getInsightsForDate(DateUtil.getPastDateString(1))
 
-    val dailyInsights: StateFlow<DailyInsightsUiModel> = todaysInsightsFlow
-        .map { insights ->
-            val glanceCount = insights.find { it.insightKey == "glance_count" }?.longValue?.toInt() ?: 0
-            val meaningfulUnlocks = insights.find { it.insightKey == "meaningful_unlock_count" }?.longValue?.toInt() ?: 0
+    val dailyInsights: StateFlow<DailyInsightsUiModel> = combine(
+        todaysInsightsFlow,
+        unlockSessionsToday
+    ) { insights, sessions ->
+            val glanceCount = sessions.count { it.sessionType == "Glance" }
+            val meaningfulUnlocks = sessions.count { it.sessionType == "Intentional" || it.sessionEndReason == "INTERRUPTED" || it.sessionType == null }
             val firstUnlock = insights.find { it.insightKey == "first_unlock_time" }?.longValue?.let {
                 DateUtil.formatUtcTimestampToTimeString(it)
             } ?: "N/A"

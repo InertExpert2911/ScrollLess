@@ -70,13 +70,14 @@ class ScrollTrackService : AccessibilityService() {
         super.onCreate()
         Timber.tag(TAG).i("ScrollTrackService onCreate.")
         startForeground(SERVICE_NOTIFICATION_ID, createServiceNotification())
+        logServiceLifecycleEvent(RawAppEvent.EVENT_TYPE_SERVICE_STARTED)
         val filter = IntentFilter(Intent.ACTION_USER_UNLOCKED)
         registerReceiver(unlockReceiver, filter)
 
         serviceScope.launch {
             settingsRepository.screenDpi.collect { dpi ->
                 scrollFactor = if (dpi > 0) {
-                    160f / dpi 
+                    160f / dpi
                 } else {
                     1.0f
                 }
@@ -298,8 +299,26 @@ class ScrollTrackService : AccessibilityService() {
         super.onDestroy()
         Timber.tag(TAG).d("ScrollTrackService destroying. Flushing any pending data.")
         flushAllPendingScrolls()
+        logServiceLifecycleEvent(RawAppEvent.EVENT_TYPE_SERVICE_STOPPED)
         unregisterReceiver(unlockReceiver)
         serviceJob.cancel()
         Timber.tag(TAG).d("ScrollTrackService destroyed.")
+    }
+
+    private fun logServiceLifecycleEvent(eventType: Int) {
+        // This needs to be a blocking runBlocking call because onDestroy is not a suspend function
+        // and we need to ensure this event is logged before the service is fully gone.
+        runBlocking {
+            val event = RawAppEvent(
+                packageName = "com.example.scrolltrack.service",
+                className = "ScrollTrackService",
+                eventType = eventType,
+                eventTimestamp = System.currentTimeMillis(),
+                eventDateString = DateUtil.getCurrentLocalDateString(),
+                source = RawAppEvent.SOURCE_SYSTEM_BROADCAST // Using this source for internal events
+            )
+            rawAppEventDao.insertEvent(event)
+            Timber.tag(TAG).i("Logged service lifecycle event: $eventType")
+        }
     }
 }

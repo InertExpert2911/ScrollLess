@@ -128,9 +128,8 @@ class AppUsageCalculator @Inject constructor(
         initialForegroundApp: String?
     ): Pair<Map<String, Pair<Long, Long>>, List<RawAppEvent>> {
         val usageAggregator = mutableMapOf<String, Long>()
+        val interactionsAggregator = mutableMapOf<String, MutableList<RawAppEvent>>()
 
-        // --- THE TIMELINE MODEL ---
-        // 1. Filter for events that change the foreground app state and sort them chronologically.
         val stateChangeEvents = allEvents.filter {
             it.eventType in setOf(
                 RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED,
@@ -140,72 +139,74 @@ class AppUsageCalculator @Inject constructor(
             )
         }.sortedBy { it.eventTimestamp }
 
+        val interactionEventTypes = setOf(
+            RawAppEvent.EVENT_TYPE_SCROLL_INFERRED, RawAppEvent.EVENT_TYPE_SCROLL_MEASURED,
+            RawAppEvent.EVENT_TYPE_ACCESSIBILITY_TYPING, RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED,
+            RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_FOCUSED, RawAppEvent.EVENT_TYPE_USER_INTERACTION
+        )
+        val interactionEvents = allEvents.filter { it.eventType in interactionEventTypes }
+
         if (stateChangeEvents.isEmpty()) {
             if (initialForegroundApp != null) {
                 val duration = periodEndDate - periodStartDate
                 if (duration > 0) {
                     usageAggregator[initialForegroundApp] = duration
+                    val interactions = interactionEvents.filter { it.eventTimestamp in periodStartDate until periodEndDate }
+                    if (interactions.isNotEmpty()) {
+                        interactionsAggregator.getOrPut(initialForegroundApp) { mutableListOf() }.addAll(interactions)
+                    }
                 }
             }
-            val finalUsageMap = usageAggregator.mapValues { it.value to it.value }
-            return finalUsageMap to emptyList()
-        }
+        } else {
+            var lastEventTimestamp = periodStartDate
+            var currentForegroundApp: String? = initialForegroundApp
 
-        var lastEventTimestamp = periodStartDate
-        var currentForegroundApp: String? = initialForegroundApp
+            for (event in stateChangeEvents) {
+                val eventTimestamp = event.eventTimestamp
+                val duration = eventTimestamp - lastEventTimestamp
 
-        if (stateChangeEvents.isNotEmpty()) {
-            // To make this robust against timezone issues where periodStartDate might be calculated
-            // in a different zone than the event timestamps, we anchor our timeline to the
-            // start of the day of the *first event*, calculated via UTC timestamp arithmetic.
-            val firstEventTimestamp = stateChangeEvents.first().eventTimestamp
-            // A UTC timestamp is ms from epoch. A day is 86,400,000 ms.
-            // The remainder when dividing by a day's worth of ms gives the time since UTC midnight.
-            // Subtracting this remainder aligns the timestamp to UTC midnight of that day.
-            lastEventTimestamp = firstEventTimestamp - (firstEventTimestamp % 86400000L)
-        }
+                if (currentForegroundApp != null && duration > 0) {
+                    usageAggregator[currentForegroundApp] =
+                        usageAggregator.getOrDefault(currentForegroundApp, 0L) + duration
 
-
-        // 2. Walk the timeline, event by event.
-        for (event in stateChangeEvents) {
-            val eventTimestamp = event.eventTimestamp
-
-            // 3. Calculate duration from the last event to this one.
-            val duration = eventTimestamp - lastEventTimestamp
-
-            // 4. Credit the duration to the app that was running *before* this event.
-            if (currentForegroundApp != null && duration > 0) {
-                usageAggregator[currentForegroundApp!!] =
-                    usageAggregator.getOrDefault(currentForegroundApp!!, 0L) + duration
-            }
-
-            // 5. Update the state *based on the current event*.
-            currentForegroundApp = when (event.eventType) {
-                RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED -> event.packageName
-                RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED -> {
-                    // Only nullify if the paused app was the one in the foreground.
-                    if (currentForegroundApp == event.packageName) null else currentForegroundApp
+                    val interactions = interactionEvents.filter { it.eventTimestamp in lastEventTimestamp until eventTimestamp }
+                    if (interactions.isNotEmpty()) {
+                        interactionsAggregator.getOrPut(currentForegroundApp) { mutableListOf() }.addAll(interactions)
+                    }
                 }
-                RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN,
-                RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE -> null // Screen off/locked ends any session.
-                else -> currentForegroundApp
+
+                currentForegroundApp = when (event.eventType) {
+                    RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED -> event.packageName
+                    RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED -> {
+                        if (currentForegroundApp == event.packageName) null else currentForegroundApp
+                    }
+                    RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN,
+                    RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE -> null
+                    else -> currentForegroundApp
+                }
+                lastEventTimestamp = eventTimestamp
             }
 
-            lastEventTimestamp = eventTimestamp
+            val finalDuration = periodEndDate - lastEventTimestamp
+            if (currentForegroundApp != null && finalDuration > 0) {
+                usageAggregator[currentForegroundApp] =
+                    usageAggregator.getOrDefault(currentForegroundApp, 0L) + finalDuration
+                val interactions = interactionEvents.filter { it.eventTimestamp in lastEventTimestamp until periodEndDate }
+                if (interactions.isNotEmpty()) {
+                    interactionsAggregator.getOrPut(currentForegroundApp) { mutableListOf() }.addAll(interactions)
+                }
+            }
         }
 
-        // 6. Account for the last interval, from the final event to the end of the period.
-        val finalDuration = periodEndDate - lastEventTimestamp
-        if (currentForegroundApp != null && finalDuration > 0) {
-            usageAggregator[currentForegroundApp!!] =
-                usageAggregator.getOrDefault(currentForegroundApp!!, 0L) + finalDuration
+        val finalUsageMap = usageAggregator.mapValues { (pkg, usage) ->
+            val activeTime = calculateActiveTimeFromInteractions(
+                interactionsAggregator.getOrDefault(pkg, emptyList()),
+                periodStartDate,
+                periodEndDate
+            )
+            usage to activeTime
         }
 
-        // The 'activeTime' calculation can be complex. For now, let's equate it to usageTime
-        // to ensure the primary total is correct. This can be refined later.
-        val finalUsageMap = usageAggregator.mapValues { it.value to it.value }
-
-        // This model does not generate inferred events.
         return finalUsageMap to emptyList()
     }
 

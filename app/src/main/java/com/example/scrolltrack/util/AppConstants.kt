@@ -24,6 +24,10 @@ object AppConstants {
 
     /**
      * The threshold for a short unlock to be considered a potential compulsive check.
+     * This applies when a user unlocks their phone, opens only ONE app, and then locks it again
+     * within this time period.
+     * - A shorter duration makes this insight stricter (fewer compulsive checks detected).
+     * - A longer duration makes it more lenient (more checks detected).
      */
     const val COMPULSIVE_UNLOCK_THRESHOLD_MS = 20_000L // 20 seconds
 
@@ -44,6 +48,12 @@ object AppConstants {
     const val INFERRED_SCROLL_DEBOUNCE_MS = 1500L // 1.5 seconds
     const val FLUSH_INFERRED_SCROLL_INTERVAL_MINUTES = 15L
     const val UNLOCK_EVENT_FOLLOW_WINDOW_MS = 2000L // 2 seconds
+    /**
+     * If a user unlocks their phone and opens an app within this window of having received a
+     * notification from that same app, the unlock is considered "notification-driven".
+     * - A shorter duration increases confidence but may miss some legitimate cases.
+     * - A longer duration may incorrectly attribute unlocks to older, irrelevant notifications.
+     */
     const val NOTIFICATION_UNLOCK_WINDOW_MS = 30_000L // 30 seconds
 
     // --- Active Time Calculation ---

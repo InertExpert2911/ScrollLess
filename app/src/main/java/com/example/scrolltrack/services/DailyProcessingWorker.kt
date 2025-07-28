@@ -33,7 +33,9 @@ class DailyProcessingWorker @AssistedInject constructor(
             scrollDataRepository.processAndSummarizeDate(yesterday)
 
             Timber.d("Processing data for today: $today")
-            scrollDataRepository.processAndSummarizeDate(today)
+            val currentForegroundApp = scrollDataRepository.getCurrentForegroundApp()
+            Timber.d("Current foreground app detected: $currentForegroundApp")
+            scrollDataRepository.processAndSummarizeDate(today, currentForegroundApp)
 
             Timber.i("Daily processing worker finished successfully.")
             Result.success()

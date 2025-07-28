@@ -85,6 +85,11 @@ data class RawAppEvent(
         const val EVENT_TYPE_NOTIFICATION_POSTED = EVENT_TYPE_NOTIFICATION_OFFSET + 1
         const val EVENT_TYPE_NOTIFICATION_REMOVED = EVENT_TYPE_NOTIFICATION_OFFSET + 2
 
+        // --- Service Lifecycle Events ---
+        const val EVENT_TYPE_SERVICE_LIFECYCLE_OFFSET = 4000
+        const val EVENT_TYPE_SERVICE_STARTED = EVENT_TYPE_SERVICE_LIFECYCLE_OFFSET + 1
+        const val EVENT_TYPE_SERVICE_STOPPED = EVENT_TYPE_SERVICE_LIFECYCLE_OFFSET + 2
+
         // Function to check if an event is from the accessibility service
         fun isAccessibilityEvent(eventType: Int): Boolean {
             return eventType >= EVENT_TYPE_ACCESSIBILITY_OFFSET
