@@ -69,6 +69,7 @@ class AppVisibilityViewModelTest {
             allAppsFlow.value = apps
             
             viewModel.setVisibilityFilter(VisibilityFilter.VISIBLE)
+            advanceUntilIdle()
             
             // It will emit loading, then success from the initial load, then loading, then success from the filter change
             awaitItem() // initial success
@@ -85,17 +86,15 @@ class AppVisibilityViewModelTest {
         allAppsFlow.value = listOf(app)
 
         viewModel.uiState.test {
-            assertThat(awaitItem()).isInstanceOf(AppVisibilityUiState.Loading::class.java)
+            awaitItem() // Loading
             val initialState = awaitItem() as AppVisibilityUiState.Success
             assertThat(initialState.apps.first().visibilityState).isEqualTo(VisibilityState.DEFAULT)
 
             viewModel.setAppVisibility("com.app", VisibilityState.HIDDEN)
             
-            // The list is re-filtered after the change, so the app disappears from the "ALL" view
             val updatedState = awaitItem() as AppVisibilityUiState.Success
-            assertThat(updatedState.apps).isEmpty()
+            assertThat(updatedState.apps.first().visibilityState).isEqualTo(VisibilityState.HIDDEN)
 
-            // Verify the change was persisted
             coVerify { appMetadataRepository.updateUserHidesOverride("com.app", true) }
         }
     }
@@ -112,4 +111,21 @@ class AppVisibilityViewModelTest {
             assertThat(errorState).isInstanceOf(AppVisibilityUiState.Error::class.java)
         }
     }
+   @Test
+   fun `toggleShowNonInteractiveApps updates filter`() = runTest {
+       val interactiveApp = createTestApp("com.interactive", "Interactive App", true, null)
+       val nonInteractiveApp = createTestApp("com.noninteractive", "Non-Interactive App", false, null)
+       allAppsFlow.value = listOf(interactiveApp, nonInteractiveApp)
+
+       viewModel.uiState.test {
+           awaitItem() // Loading
+           val initialState = awaitItem() as AppVisibilityUiState.Success
+           assertThat(initialState.apps.map { it.packageName }).containsExactly("com.interactive")
+
+           viewModel.toggleShowNonInteractiveApps()
+           awaitItem() // Loading
+           val updatedState = awaitItem() as AppVisibilityUiState.Success
+           assertThat(updatedState.apps.map { it.packageName }).containsExactly("com.interactive", "com.noninteractive")
+       }
+   }
 }

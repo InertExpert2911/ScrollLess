@@ -63,6 +63,7 @@ class CalibrationViewModelTest {
             awaitItem()
 
             viewModel.stopCalibrationAndSave()
+            advanceUntilIdle()
 
             val finalState = awaitItem()
 

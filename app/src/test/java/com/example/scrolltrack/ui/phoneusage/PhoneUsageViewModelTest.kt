@@ -18,6 +18,7 @@ import org.junit.Before
 import org.junit.Test
 import java.time.LocalDate
 import java.time.YearMonth
+import java.util.TimeZone
 
 @ExperimentalCoroutinesApi
 class PhoneUsageViewModelTest {
@@ -32,6 +33,7 @@ class PhoneUsageViewModelTest {
 
     @Before
     fun setUp() {
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
         Dispatchers.setMain(testDispatcher)
         every { repository.getTotalUsageTimePerDay() } returns heatmapDataFlow
         every { repository.getAppUsageForDate(any()) } returns dailyUsageFlow
@@ -85,18 +87,24 @@ class PhoneUsageViewModelTest {
             viewModel.onPeriodChanged(PhoneUsagePeriod.Daily)
             val dailyState = awaitItem()
             assertThat(dailyState.usageStat).isEqualTo("< 1m") // 3000ms
+            assertThat(dailyState.periodDisplay).isEqualTo("Oct 26, 2023")
+            assertThat(dailyState.appUsage).hasSize(1)
 
             // Test Weekly
             dailyUsageFlow.value = weeklyRecords
             viewModel.onPeriodChanged(PhoneUsagePeriod.Weekly)
             val weeklyState = awaitItem()
             assertThat(weeklyState.usageStat).isEqualTo("< 1m") // 70000ms / 7 = 10000ms
+            assertThat(weeklyState.periodDisplay).contains("Week 43")
+            assertThat(weeklyState.appUsage).hasSize(1)
 
             // Test Monthly
             dailyUsageFlow.value = monthlyRecords
             viewModel.onPeriodChanged(PhoneUsagePeriod.Monthly)
             val monthlyState = awaitItem()
             assertThat(monthlyState.usageStat).isEqualTo("< 1m") // 310000ms / 31 = 10000ms
+            assertThat(monthlyState.periodDisplay).isEqualTo("October 2023")
+            assertThat(monthlyState.appUsage).hasSize(1)
         }
     }
 }

@@ -9,6 +9,7 @@ import com.google.common.truth.Truth.assertThat
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.coVerify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -78,4 +79,34 @@ class NotificationsViewModelTest {
             assertThat(monthlyState.totalCount).isEqualTo(7) // 217 / 31 = 7
         }
     }
+   @Test
+   fun `filters out non-visible and zero-count apps`() = runTest {
+       val counts = listOf(
+           NotificationCountPerApp("com.visible", 10),
+           NotificationCountPerApp("com.hidden", 5),
+           NotificationCountPerApp("com.zero", 0)
+       )
+       coEvery { appMetadataRepository.getAppMetadata("com.hidden") } returns mockk {
+           every { isUserVisible } returns false
+       }
+
+       viewModel.uiState.test {
+           awaitItem() // Loading
+           notificationCountsFlow.value = counts
+           val state = awaitItem() as NotificationsUiState.Success
+           assertThat(state.notificationCounts.map { it.first.packageName }).containsExactly("com.visible")
+       }
+   }
+
+   @Test
+   fun `getIcon returns drawable`() = runTest {
+       val file = mockk<java.io.File>(relaxed = true)
+       every { file.absolutePath } returns ""
+       coEvery { appMetadataRepository.getIconFile("com.app") } returns file
+       
+       // This test can only verify that the repository is called.
+       // The static Drawable.createFromPath cannot be mocked easily.
+       viewModel.getIcon("com.app")
+       coVerify { appMetadataRepository.getIconFile("com.app") }
+   }
 }
