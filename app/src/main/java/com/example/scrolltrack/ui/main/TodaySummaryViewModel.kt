@@ -81,113 +81,113 @@ class TodaySummaryViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
     var isAccessibilityServiceEnabled = isAccessibilityServiceEnabledFlow(context)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), false)
     var isUsagePermissionGranted = isUsageStatsPermissionGrantedFlow(context)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), false)
     val isNotificationListenerEnabled = isNotificationListenerEnabledFlow(context)
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), false)
 
     val greeting: StateFlow<String> = flow { emit(greetingUtil.getGreeting()) }
         .stateIn(viewModelScope, SharingStarted.Lazily, "Welcome")
 
     private val summaryData: StateFlow<DailyDeviceSummary?> = _selectedDate.flatMapLatest { date ->
         repository.getDeviceSummaryForDate(date)
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
     private val yesterdaySummaryData: StateFlow<DailyDeviceSummary?> = _selectedDate.flatMapLatest { date ->
         val yesterday = DateUtil.getPastDateString(1, DateUtil.parseLocalDate(date))
         repository.getDeviceSummaryForDate(yesterday)
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
     val screenTimeComparison: StateFlow<StatComparison?> = combine(summaryData, yesterdaySummaryData) { today, yesterday ->
         calculateComparison(today?.totalUsageTimeMillis, yesterday?.totalUsageTimeMillis)
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
     val unlocksComparison: StateFlow<StatComparison?> = combine(summaryData, yesterdaySummaryData) { today, yesterday ->
         calculateComparison(today?.totalUnlockCount?.toLong(), yesterday?.totalUnlockCount?.toLong())
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
     val notificationsComparison: StateFlow<StatComparison?> = combine(summaryData, yesterdaySummaryData) { today, yesterday ->
         calculateComparison(today?.totalNotificationCount?.toLong(), yesterday?.totalNotificationCount?.toLong())
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
     val yesterdayAggregatedScrollData: StateFlow<List<AppScrollUiItem>> =
         _selectedDate.flatMapLatest { date ->
             val yesterday = DateUtil.getPastDateString(1, DateUtil.parseLocalDate(date))
             repository.getScrollDataForDate(yesterday)
                 .map { data -> data.map { mapper.mapToAppScrollUiItem(it) } }
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     val totalPhoneUsageTodayFormatted: StateFlow<String> =
         summaryData.map { DateUtil.formatDuration(it?.totalUsageTimeMillis ?: 0L) }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, "...")
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "...")
 
     val totalPhoneUsageTodayMillis: StateFlow<Long> =
         summaryData.map { it?.totalUsageTimeMillis ?: 0L }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
 
     val todaysAppUsageUiList: StateFlow<List<AppUsageUiItem>> =
         _selectedDate.flatMapLatest { date ->
             repository.getAppUsageForDate(date)
                 .map { records -> mapper.mapToAppUsageUiItems(records) }
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     val aggregatedScrollDataToday: StateFlow<List<AppScrollUiItem>> =
         _selectedDate.flatMapLatest { date ->
             repository.getScrollDataForDate(date)
                 .map { data -> data.map { mapper.mapToAppScrollUiItem(it) } }
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     val totalScrollDistanceToday: StateFlow<Long> =
         aggregatedScrollDataToday.map { list ->
             list.sumOf { it.totalScroll }
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
 
     val totalScrollDistanceYesterday: StateFlow<Long> =
         yesterdayAggregatedScrollData.map { list ->
             list.sumOf { it.totalScroll }
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
 
     val scrollComparison: StateFlow<StatComparison?> = combine(totalScrollDistanceToday, totalScrollDistanceYesterday) { today, yesterday ->
         calculateComparison(today, yesterday)
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
     val totalScrollToday: StateFlow<Long> =
         aggregatedScrollDataToday.map { list -> list.sumOf { it.totalScroll } }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, 0L)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
 
     val scrollDistanceTodayFormatted: StateFlow<Pair<String, String>> =
         aggregatedScrollDataToday.map { list ->
             val totalScrollX = list.sumOf { it.totalScrollX }
             val totalScrollY = list.sumOf { it.totalScrollY }
             conversionUtil.formatScrollDistance(totalScrollX, totalScrollY)
-        }.stateIn(viewModelScope, SharingStarted.Eagerly, "0" to "m")
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0" to "m")
 
     private val unlockSessionsToday: StateFlow<List<com.example.scrolltrack.db.UnlockSessionRecord>> = _selectedDate.flatMapLatest { date ->
         repository.getUnlockSessionsForDateRange(date, date)
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     val totalUnlocksToday: StateFlow<Int> = unlockSessionsToday.map { it.size }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
 
     val intentionalUnlocksToday: StateFlow<Int> = unlockSessionsToday.map { sessions ->
         sessions.count { it.sessionType == "Intentional" || it.sessionEndReason == "INTERRUPTED" || it.sessionType == null }
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
 
     val glanceUnlocksToday: StateFlow<Int> = unlockSessionsToday.map { sessions ->
         sessions.count { it.sessionType == "Glance" }
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
 
     val totalNotificationsToday: StateFlow<Int> = summaryData.map { it?.totalNotificationCount ?: 0 }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
 
     val firstUnlockTime: StateFlow<String> = summaryData.map {
         it?.firstUnlockTimestampUtc?.let { ts -> DateUtil.formatUtcTimestampToTimeString(ts) } ?: "N/A"
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, "N/A")
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "N/A")
 
     val lastUnlockTime: StateFlow<String> = summaryData.map {
         it?.lastUnlockTimestampUtc?.let { ts -> DateUtil.formatUtcTimestampToTimeString(ts) } ?: "N/A"
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, "N/A")
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "N/A")
 
     val topWeeklyApp: StateFlow<AppUsageUiItem?> = flow {
         val today = DateUtil.getCurrentLocalDateString()
@@ -221,7 +221,7 @@ class TodaySummaryViewModel @Inject constructor(
         } else {
             emit(null)
         }
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
     init {
         // Trigger the first refresh immediately on creation. This is non-blocking.

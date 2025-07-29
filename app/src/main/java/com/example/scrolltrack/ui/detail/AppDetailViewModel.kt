@@ -135,8 +135,8 @@ class AppDetailViewModel @Inject constructor(
                 _appDetailAppName.value = packageName.substringAfterLast('.', packageName)
                 _appDetailAppIcon.value = null
             }
+            loadAppDetailChartData(packageName, _currentChartPeriodType.value, _currentChartReferenceDate.value)
         }
-        loadAppDetailChartData(packageName, _currentChartPeriodType.value, _currentChartReferenceDate.value)
     }
 
     private fun loadAppDetailChartData(packageName: String, period: ChartPeriodType, referenceDateStr: String) {

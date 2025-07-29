@@ -61,7 +61,7 @@ class InsightsViewModel @Inject constructor(
         }
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
+            started = SharingStarted.Eagerly,
             initialValue = DailyInsightsUiModel(0, "N/A", "N/A", 0, "N/A", "N/A")
         )
 
@@ -72,7 +72,7 @@ class InsightsViewModel @Inject constructor(
         buildUiModelsFromInsights(todaysInsights, yesterdaysInsights)
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000L),
+        started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
 

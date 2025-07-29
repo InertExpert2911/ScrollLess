@@ -20,6 +20,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.io.File
+import java.util.TimeZone
 
 @ExperimentalCoroutinesApi
 @RunWith(RobolectricTestRunner::class)
@@ -35,6 +36,7 @@ class InsightsViewModelTest {
 
     @Before
     fun setUp() {
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
         Dispatchers.setMain(testDispatcher)
         val todayString = DateUtil.getCurrentLocalDateString()
         val yesterdayString = DateUtil.getPastDateString(1)
@@ -101,20 +103,39 @@ class InsightsViewModelTest {
         }
     }
     
-    @Test
-    fun `conditional insight cards are not created when conditions are not met`() = runTest {
-        val insights = listOf(
-            createInsight("top_compulsive_app", sValue = "com.example.compulsive", lValue = 2), // Below threshold
-            createInsight("top_notification_unlock_app", sValue = "com.example.notif", lValue = 5), // Below threshold
-            createInsight("glance_count", lValue = 50),
-            createInsight("meaningful_unlock_count", lValue = 50)
-        )
+   @Test
+   fun `all insight card types are created correctly`() = runTest {
+       val todaysInsights = listOf(
+           createInsight("night_owl_last_app", sValue = "com.example.nightowl", lValue = 1698300000000),
+           createInsight("top_notification_unlock_app", sValue = "com.example.notif", lValue = 10),
+           createInsight("glance_count", lValue = 40),
+           createInsight("meaningful_unlock_count", lValue = 60) // Total unlocks = 100
+       )
+       coEvery { appMetadataRepository.getAppMetadata("com.example.fallback") } returns null
 
-        viewModel.insightCards.test {
-            todaysInsightsFlow.value = insights
-            val cards = awaitItem()
-            assertThat(cards.any { it is InsightCardUiModel.CompulsiveCheck }).isFalse()
-            assertThat(cards.any { it is InsightCardUiModel.NotificationLeader }).isFalse()
-        }
-    }
+       viewModel.insightCards.test {
+           todaysInsightsFlow.value = todaysInsights
+           val cards = awaitItem()
+           
+           val nightOwlCard = cards.find { it is InsightCardUiModel.NightOwl } as InsightCardUiModel.NightOwl
+           assertThat(nightOwlCard.appName).isEqualTo("Nightowl")
+
+           val notificationLeaderCard = cards.find { it is InsightCardUiModel.NotificationLeader } as InsightCardUiModel.NotificationLeader
+           assertThat(notificationLeaderCard.appName).isEqualTo("Notif")
+           assertThat(notificationLeaderCard.percentage).isEqualTo(10)
+       }
+   }
+
+   @Test
+   fun `insight card uses fallback name when metadata is null`() = runTest {
+       val insights = listOf(createInsight("first_app_used", sValue = "com.example.fallback", lValue = 1698298200000))
+       coEvery { appMetadataRepository.getAppMetadata("com.example.fallback") } returns null
+
+       viewModel.insightCards.test {
+           todaysInsightsFlow.value = insights
+           val cards = awaitItem()
+           val firstAppCard = cards.find { it is InsightCardUiModel.FirstApp } as InsightCardUiModel.FirstApp
+           assertThat(firstAppCard.appName).isEqualTo("com.example.fallback")
+       }
+   }
 }

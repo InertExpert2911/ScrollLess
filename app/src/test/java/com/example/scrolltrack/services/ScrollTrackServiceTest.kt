@@ -2,9 +2,12 @@ package com.example.scrolltrack.services
 
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
+import com.example.scrolltrack.data.LimitsRepository
 import com.example.scrolltrack.data.SettingsRepository
+import com.example.scrolltrack.db.DailyAppUsageDao
 import com.example.scrolltrack.db.RawAppEventDao
 import com.example.scrolltrack.ScrollTrackService
+import com.example.scrolltrack.util.DateUtil
 import com.google.common.truth.Truth.assertThat
 import io.mockk.*
 import kotlinx.coroutines.CoroutineScope
@@ -26,16 +29,23 @@ class ScrollTrackServiceTest {
     private lateinit var service: ScrollTrackService
     private lateinit var rawAppEventDao: RawAppEventDao
     private lateinit var settingsRepository: SettingsRepository
+    private lateinit var limitsRepository: LimitsRepository
+    private lateinit var dailyAppUsageDao: DailyAppUsageDao
+    private lateinit var dateUtil: DateUtil
     private val testDispatcher = StandardTestDispatcher()
 
     @Before
     fun setUp() {
         rawAppEventDao = mockk(relaxed = true)
         settingsRepository = mockk(relaxed = true)
+        limitsRepository = mockk(relaxed = true)
+        dailyAppUsageDao = mockk(relaxed = true)
+        dateUtil = mockk(relaxed = true)
         
         service = ScrollTrackService()
         service.rawAppEventDao = rawAppEventDao
         service.settingsRepository = settingsRepository
+        service.limitMonitor = mockk(relaxed = true)
 
         service.serviceScope = CoroutineScope(testDispatcher)
 
