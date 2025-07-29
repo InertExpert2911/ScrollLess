@@ -30,7 +30,8 @@ data class LimitGroup(
         parentColumns = ["id"],
         childColumns = ["group_id"],
         onDelete = ForeignKey.CASCADE
-    )]
+    )],
+    indices = [Index(value = ["group_id"])]
 )
 data class LimitedApp(
     @PrimaryKey

@@ -65,6 +65,9 @@ data class RawAppEvent(
         const val EVENT_TYPE_USER_PRESENT = 12
         const val EVENT_TYPE_USER_UNLOCKED = 13
 
+const val EVENT_TYPE_SCREEN_ON = 14
+        const val EVENT_TYPE_SCREEN_OFF = 15
+        const val EVENT_TYPE_APP_IN_FOREGROUND = 16
         // --- Custom event types from our Accessibility Service ---
         const val EVENT_TYPE_ACCESSIBILITY_OFFSET = 1000 // To avoid collision with system events
         const val EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED = EVENT_TYPE_ACCESSIBILITY_OFFSET + 1
@@ -72,6 +75,7 @@ data class RawAppEvent(
         const val EVENT_TYPE_ACCESSIBILITY_TYPING = EVENT_TYPE_ACCESSIBILITY_OFFSET + 3
         const val EVENT_TYPE_SCROLL_MEASURED = EVENT_TYPE_ACCESSIBILITY_OFFSET + 4 // Explicitly measured
         const val EVENT_TYPE_SCROLL_INFERRED = EVENT_TYPE_ACCESSIBILITY_OFFSET + 5 // Inferred from other events
+        const val EVENT_TYPE_ACCESSIBILITY_SCROLL = EVENT_TYPE_ACCESSIBILITY_OFFSET + 6
 
 
         // --- Custom event types from our own logic ---

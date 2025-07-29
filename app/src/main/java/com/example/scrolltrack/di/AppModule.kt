@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.work.WorkManager
 import com.example.scrolltrack.data.*
 import com.example.scrolltrack.db.*
+import com.example.scrolltrack.util.DateUtil
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -90,5 +91,10 @@ abstract class AppModule {
             return appDatabase.limitsDao()
         }
 
+        @Provides
+        @Singleton
+        fun provideDateUtil(): DateUtil {
+            return DateUtil
+        }
     }
 }

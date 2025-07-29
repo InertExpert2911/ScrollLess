@@ -49,7 +49,7 @@ object DateUtil {
 
     fun getEndOfDayUtcMillis(dateString: String): Long {
         val startOfDay = parseLocalDate(dateString)?.atStartOfDay(localTimeZone)
-        return startOfDay?.plusDays(1)?.minusNanos(1)?.toInstant()?.toEpochMilli() ?: 0L
+        return startOfDay?.plusDays(1)?.toInstant()?.toEpochMilli() ?: 0L
     }
 
     fun getStartOfToday(): ZonedDateTime {
