@@ -41,7 +41,10 @@ class AppUsageCalculator @Inject constructor(
 
         val usageRecords = allVisiblePackages.mapNotNull { pkg ->
             val (usage, active) = visibleUsageAggregates[pkg] ?: (0L to 0L)
-            if (usage < AppConstants.MINIMUM_SIGNIFICANT_SESSION_DURATION_MS && (visibleNotifications[pkg] ?: 0) == 0) null
+            val hasSignificantUsage = usage >= AppConstants.MINIMUM_SIGNIFICANT_SESSION_DURATION_MS
+            val hasNotifications = (visibleNotifications[pkg] ?: 0) > 0
+            val hasActiveTime = active > 0
+            if (!hasSignificantUsage && !hasNotifications && !hasActiveTime) null
             else DailyAppUsageRecord(
                 packageName = pkg,
                 dateString = dateString,
@@ -128,14 +131,15 @@ class AppUsageCalculator @Inject constructor(
         initialForegroundApp: String?
     ): Pair<Map<String, Pair<Long, Long>>, List<RawAppEvent>> {
         val usageAggregator = mutableMapOf<String, Long>()
-        val interactionsAggregator = mutableMapOf<String, MutableList<RawAppEvent>>()
+        val activeTimeAggregator = mutableMapOf<String, Long>()
 
         val stateChangeEvents = allEvents.filter {
             it.eventType in setOf(
                 RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED,
                 RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED,
                 RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN,
-                RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE
+                RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE,
+                RawAppEvent.EVENT_TYPE_SCREEN_OFF
             )
         }.sortedBy { it.eventTimestamp }
 
@@ -153,7 +157,8 @@ class AppUsageCalculator @Inject constructor(
                     usageAggregator[initialForegroundApp] = duration
                     val interactions = interactionEvents.filter { it.eventTimestamp in periodStartDate until periodEndDate }
                     if (interactions.isNotEmpty()) {
-                        interactionsAggregator.getOrPut(initialForegroundApp) { mutableListOf() }.addAll(interactions)
+                        val activeTime = calculateActiveTimeFromInteractions(interactions, periodStartDate, periodEndDate)
+                        activeTimeAggregator[initialForegroundApp] = activeTime
                     }
                 }
             }
@@ -163,15 +168,23 @@ class AppUsageCalculator @Inject constructor(
 
             for (event in stateChangeEvents) {
                 val eventTimestamp = event.eventTimestamp
+                if (lastEventTimestamp > periodEndDate) break
+
                 val duration = eventTimestamp - lastEventTimestamp
-
                 if (currentForegroundApp != null && duration > 0) {
-                    usageAggregator[currentForegroundApp] =
-                        usageAggregator.getOrDefault(currentForegroundApp, 0L) + duration
+                    val sessionStart = maxOf(lastEventTimestamp, periodStartDate)
+                    val sessionEnd = minOf(eventTimestamp, periodEndDate)
+                    val creditedDuration = (sessionEnd - sessionStart).coerceAtLeast(0L)
 
-                    val interactions = interactionEvents.filter { it.eventTimestamp in lastEventTimestamp until eventTimestamp }
-                    if (interactions.isNotEmpty()) {
-                        interactionsAggregator.getOrPut(currentForegroundApp) { mutableListOf() }.addAll(interactions)
+                    if (creditedDuration > 0) {
+                        usageAggregator[currentForegroundApp] =
+                            usageAggregator.getOrDefault(currentForegroundApp, 0L) + creditedDuration
+                        val interactions = interactionEvents.filter { it.eventTimestamp in sessionStart until sessionEnd }
+                        if (interactions.isNotEmpty()) {
+                            val activeTime = calculateActiveTimeFromInteractions(interactions, sessionStart, sessionEnd)
+                            activeTimeAggregator[currentForegroundApp] =
+                                activeTimeAggregator.getOrDefault(currentForegroundApp, 0L) + activeTime
+                        }
                     }
                 }
 
@@ -181,7 +194,8 @@ class AppUsageCalculator @Inject constructor(
                         if (currentForegroundApp == event.packageName) null else currentForegroundApp
                     }
                     RawAppEvent.EVENT_TYPE_KEYGUARD_SHOWN,
-                    RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE -> null
+                    RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE,
+                    RawAppEvent.EVENT_TYPE_SCREEN_OFF -> null
                     else -> currentForegroundApp
                 }
                 lastEventTimestamp = eventTimestamp
@@ -189,21 +203,23 @@ class AppUsageCalculator @Inject constructor(
 
             val finalDuration = periodEndDate - lastEventTimestamp
             if (currentForegroundApp != null && finalDuration > 0) {
+                val sessionStart = maxOf(lastEventTimestamp, periodStartDate)
+                val sessionEnd = periodEndDate
                 usageAggregator[currentForegroundApp] =
-                    usageAggregator.getOrDefault(currentForegroundApp, 0L) + finalDuration
-                val interactions = interactionEvents.filter { it.eventTimestamp in lastEventTimestamp until periodEndDate }
+                    usageAggregator.getOrDefault(currentForegroundApp, 0L) + (sessionEnd - sessionStart)
+                val interactions = interactionEvents.filter { it.eventTimestamp in sessionStart until sessionEnd }
                 if (interactions.isNotEmpty()) {
-                    interactionsAggregator.getOrPut(currentForegroundApp) { mutableListOf() }.addAll(interactions)
+                    val activeTime = calculateActiveTimeFromInteractions(interactions, sessionStart, sessionEnd)
+                    activeTimeAggregator[currentForegroundApp] =
+                        activeTimeAggregator.getOrDefault(currentForegroundApp, 0L) + activeTime
                 }
             }
         }
 
-        val finalUsageMap = usageAggregator.mapValues { (pkg, usage) ->
-            val activeTime = calculateActiveTimeFromInteractions(
-                interactionsAggregator.getOrDefault(pkg, emptyList()),
-                periodStartDate,
-                periodEndDate
-            )
+        val allPackages = usageAggregator.keys.union(activeTimeAggregator.keys)
+        val finalUsageMap = allPackages.associateWith { pkg ->
+            val usage = usageAggregator.getOrDefault(pkg, 0L)
+            val activeTime = activeTimeAggregator.getOrDefault(pkg, 0L)
             usage to activeTime
         }
 
@@ -240,7 +256,9 @@ class AppUsageCalculator @Inject constructor(
             }
         }
         return merged.sumOf { (start, end) ->
-            (minOf(end, sessionEnd) - maxOf(start, sessionStart)).coerceAtLeast(0L)
+            val cappedStart = maxOf(start, sessionStart)
+            val cappedEnd = minOf(end, sessionEnd)
+            (cappedEnd - cappedStart).coerceAtLeast(0L)
         }
     }
 }

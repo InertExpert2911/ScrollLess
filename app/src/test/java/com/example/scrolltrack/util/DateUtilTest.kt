@@ -5,7 +5,7 @@ import org.junit.Before
 import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneOffset
-import java.util.Date
+import java.time.ZoneId
 import java.util.Locale
 import java.util.TimeZone
 import java.util.concurrent.TimeUnit
@@ -14,14 +14,15 @@ class DateUtilTest {
 
     @Before
     fun setUp() {
+        // Set a fixed timezone for all tests to ensure consistency
         TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
     }
 
     @Test
     fun getPastDateString_returnsCorrectlyFormattedString() {
-        // We can't control the exact time, so we test the format and length
+        val yesterday = LocalDate.now(ZoneId.of("UTC")).minusDays(1)
         val dateString = DateUtil.getPastDateString(1) // Yesterday
-        assertThat(dateString).matches("^\\d{4}-\\d{2}-\\d{2}$")
+        assertThat(dateString).isEqualTo(DateUtil.formatDateToYyyyMmDdString(yesterday))
     }
 
     @Test
@@ -70,6 +71,12 @@ class DateUtilTest {
         assertThat(formattedBack).isEqualTo(dateString)
     }
 
+   @Test
+   fun `parseLocalDate with invalid string returns null`() {
+       val parsedDate = DateUtil.parseLocalDate("not-a-date")
+       assertThat(parsedDate).isNull()
+   }
+
     @Test
     fun `formatDurationWithSeconds only seconds`() {
         val millis = 45000L
@@ -87,6 +94,16 @@ class DateUtilTest {
         val millis = 3690000L
         assertThat(DateUtil.formatDurationWithSeconds(millis)).isEqualTo("1h 1m")
     }
+
+   @Test
+   fun `formatDurationWithSeconds with negative millis returns 0s`() {
+       assertThat(DateUtil.formatDurationWithSeconds(-100L)).isEqualTo("0s")
+   }
+
+   @Test
+   fun `formatDuration with negative millis returns NA`() {
+       assertThat(DateUtil.formatDuration(-100L)).isEqualTo("N/A")
+   }
 
     @Test
     fun `getStartOfWeek and getEndOfWeek`() {
@@ -132,8 +149,69 @@ class DateUtilTest {
     @Test
     fun `formatUtcTimestampToTimeString returns correct format`() {
         val timestamp = 1672581600000L // 2023-01-01T14:00:00Z
-        val expected = "2:00 PM" // in UTC
+        val expected = "2:00 pm" // in UTC
         val formattedTime = DateUtil.formatUtcTimestampToTimeString(timestamp)
-        assertThat(formattedTime.uppercase(Locale.getDefault())).isEqualTo(expected)
+        assertThat(formattedTime).isEqualTo(expected)
     }
+   @Test
+   fun `getUtcTimestamp returns a recent timestamp`() {
+       val before = System.currentTimeMillis()
+       val timestamp = DateUtil.getUtcTimestamp()
+       val after = System.currentTimeMillis()
+       assertThat(timestamp).isAtLeast(before)
+       assertThat(timestamp).isAtMost(after)
+   }
+
+   @Test
+   fun `getCurrentLocalDateString returns correct format`() {
+       val expected = LocalDate.now(ZoneId.of("UTC")).toString()
+       assertThat(DateUtil.getCurrentLocalDateString()).isEqualTo(expected)
+   }
+
+   @Test
+   fun `getStartAndEndOfDayUtcMillis returns correct values`() {
+       val dateString = "2023-10-27"
+       val startMillis = DateUtil.getStartOfDayUtcMillis(dateString)
+       val endMillis = DateUtil.getEndOfDayUtcMillis(dateString)
+
+       val expectedStart = LocalDate.parse(dateString).atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
+       val expectedEnd = LocalDate.parse(dateString).plusDays(1).atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
+
+       assertThat(startMillis).isEqualTo(expectedStart)
+       assertThat(endMillis).isEqualTo(expectedEnd)
+   }
+
+   @Test
+   fun `formatUtcTimestampToLocalDateTime works correctly`() {
+       val timestamp = 1672581600000L // 2023-01-01T14:00:00Z
+       val localDateTime = DateUtil.formatUtcTimestampToLocalDateTime(timestamp)
+       assertThat(localDateTime.year).isEqualTo(2023)
+       assertThat(localDateTime.monthValue).isEqualTo(1)
+       assertThat(localDateTime.dayOfMonth).isEqualTo(1)
+       assertThat(localDateTime.hour).isEqualTo(14)
+       assertThat(localDateTime.minute).isEqualTo(0)
+   }
+
+   @Test
+   fun `getPastDateString with fromDate works correctly`() {
+       val fromDate = LocalDate.of(2023, 10, 27)
+       val pastDateString = DateUtil.getPastDateString(7, fromDate)
+       assertThat(pastDateString).isEqualTo("2023-10-20")
+   }
+
+   @Test
+   fun `getWeekRange returns correct start and end of week`() {
+       val date = LocalDate.of(2024, 7, 24) // A Wednesday
+       val (start, end) = DateUtil.getWeekRange(date)
+       assertThat(start).isEqualTo(LocalDate.of(2024, 7, 22)) // Monday
+       assertThat(end).isEqualTo(LocalDate.of(2024, 7, 28))   // Sunday
+   }
+
+   @Test
+   fun `getMonthRange returns correct start and end of month`() {
+       val date = LocalDate.of(2024, 7, 24)
+       val (start, end) = DateUtil.getMonthRange(date)
+       assertThat(start).isEqualTo(LocalDate.of(2024, 7, 1))
+       assertThat(end).isEqualTo(LocalDate.of(2024, 7, 31))
+   }
 }
