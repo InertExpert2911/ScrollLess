@@ -56,7 +56,23 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
         }
         createNotificationChannel()
         runInitialAppMetadataSync()
-        setupWorkers()
+        setupRecurringWork()
+    }
+
+    private fun setupRecurringWork() {
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
+            .build()
+
+        val repeatingRequest = PeriodicWorkRequestBuilder<DailyProcessingWorker>(
+            15, TimeUnit.MINUTES // The minimum interval
+        ).setConstraints(constraints).build()
+
+        WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
+            DailyProcessingWorker.WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP, // Don't replace if one is already scheduled
+            repeatingRequest
+        )
     }
 
     private fun runInitialAppMetadataSync() {
@@ -82,11 +98,6 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
         }
     }
 
-    private fun setupWorkers() {
-        setupUsageStatsWorker()
-        setupDailyProcessingWorker()
-    }
-
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val name = "ScrollTrack Service"
@@ -99,19 +110,6 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
                 getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(channel)
         }
-    }
-
-    private fun setupDailyProcessingWorker() {
-        val repeatingRequest = PeriodicWorkRequestBuilder<DailyProcessingWorker>(4, TimeUnit.HOURS)
-            .setConstraints(Constraints.Builder().build()) // Can run even if not idle
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            DailyProcessingWorker.WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
-            repeatingRequest
-        )
-        Timber.d("DailyProcessingWorker scheduled.")
     }
 
     private fun setupUsageStatsWorker() {

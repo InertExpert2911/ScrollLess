@@ -34,6 +34,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".ui.limit.BlockingActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ScrollTrack" />
         <service
             android:name=".ScrollTrackService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"

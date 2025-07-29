@@ -16,9 +16,11 @@ import androidx.core.app.NotificationCompat
 import com.example.scrolltrack.db.RawAppEvent
 import com.example.scrolltrack.data.SettingsRepository
 import com.example.scrolltrack.db.RawAppEventDao
+import com.example.scrolltrack.services.LimitMonitor
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import kotlin.math.abs
@@ -40,6 +42,7 @@ class ScrollTrackService : AccessibilityService() {
 
     @Inject
     lateinit var settingsRepository: SettingsRepository
+    @Inject lateinit var limitMonitor: LimitMonitor
 
 
     private val inferredScrollEventCounter = mutableMapOf<String, Int>()
@@ -124,7 +127,10 @@ class ScrollTrackService : AccessibilityService() {
         val packageName = event.packageName?.toString() ?: return
 
         when (event.eventType) {
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> handleWindowStateChange(event)
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                handleWindowStateChange(event)
+                limitMonitor.startMonitoring(serviceScope, packageName)
+            }
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> handleMeasuredScroll(event, packageName)
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> handleInferredScroll(packageName)
             AccessibilityEvent.TYPE_VIEW_CLICKED -> handleGenericEvent(event, RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED, packageName)
@@ -301,6 +307,7 @@ class ScrollTrackService : AccessibilityService() {
         flushAllPendingScrolls()
         logServiceLifecycleEvent(RawAppEvent.EVENT_TYPE_SERVICE_STOPPED)
         unregisterReceiver(unlockReceiver)
+        limitMonitor.stopMonitoring()
         serviceJob.cancel()
         Timber.tag(TAG).d("ScrollTrackService destroyed.")
     }
