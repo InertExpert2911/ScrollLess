@@ -1,7 +1,9 @@
 package com.example.scrolltrack.data
 
 import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
@@ -9,7 +11,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.scrolltrack.data.processors.DailyDataProcessor
 import com.example.scrolltrack.data.processors.DailyProcessingResult
 import com.example.scrolltrack.db.*
-import com.example.scrolltrack.util.AppConstants
 import com.example.scrolltrack.util.DateUtil
 import com.google.common.truth.Truth.assertThat
 import io.mockk.*
@@ -23,6 +24,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows
 import java.util.concurrent.TimeUnit
 
 @ExperimentalCoroutinesApi
@@ -44,6 +46,9 @@ class ScrollDataRepositoryImplTest {
     private lateinit var unlockSessionDao: UnlockSessionDao
     private lateinit var dailyInsightDao: DailyInsightDao
     private lateinit var context: Context
+    private lateinit var mockUsageStatsManager: UsageStatsManager
+    private lateinit var mockPrefs: SharedPreferences
+    private lateinit var mockPrefsEditor: SharedPreferences.Editor
 
     @Before
     fun setUp() {
@@ -62,7 +67,18 @@ class ScrollDataRepositoryImplTest {
 
         mockAppMetadataRepository = mockk()
         coEvery { mockAppMetadataRepository.getAllMetadata() } returns flowOf(emptyList())
-        mockDailyDataProcessor = mockk()
+        mockDailyDataProcessor = mockk(relaxed = true)
+
+        // Mock system services and preferences
+        mockUsageStatsManager = mockk(relaxed = true)
+        mockPrefs = mockk(relaxed = true)
+        mockPrefsEditor = mockk(relaxed = true)
+        every { mockPrefs.edit() } returns mockPrefsEditor
+
+        val mockContext = spyk(context)
+        every { mockContext.getSystemService(Context.USAGE_STATS_SERVICE) } returns mockUsageStatsManager
+        every { mockContext.getSharedPreferences(any(), any()) } returns mockPrefs
+
 
         repository = ScrollDataRepositoryImpl(
             appDatabase = db,
@@ -75,7 +91,7 @@ class ScrollDataRepositoryImplTest {
             unlockSessionDao = unlockSessionDao,
             dailyInsightDao = dailyInsightDao,
             dailyDataProcessor = mockDailyDataProcessor,
-            context = context,
+            context = mockContext,
             ioDispatcher = UnconfinedTestDispatcher()
         )
     }
@@ -209,9 +225,6 @@ class ScrollDataRepositoryImplTest {
         assertThat(todaySummary?.totalUnlockCount).isEqualTo(1)
     }
 
-
-
-
     @Test
     fun `processAndSummarizeDate - hidden apps are excluded from summaries`() = runTest {
         val date = "2024-03-10"
@@ -271,7 +284,6 @@ class ScrollDataRepositoryImplTest {
     @Test
     fun `processAndSummarizeDate - session closes at midnight`() = runTest {
         val date = "2024-03-11"
-        val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
         val endOfDay = DateUtil.getEndOfDayUtcMillis(date)
         val appA = "com.app.midnight"
 
@@ -405,5 +417,160 @@ class ScrollDataRepositoryImplTest {
         // Verify
         coVerify { spiedRepo.syncSystemEvents() }
         coVerify { spiedRepo.processAndSummarizeDate(DateUtil.getCurrentLocalDateString()) }
+    }
+
+    @Test
+    fun `syncSystemEvents - inserts events and updates timestamp`() = runTest {
+        // 1. Arrange
+        val lastSyncTime = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(1)
+        every { mockPrefs.getLong(any(), any()) } returns lastSyncTime
+
+        val shadowUsageStatsManager = Shadows.shadowOf(mockUsageStatsManager)
+        shadowUsageStatsManager.addEvent("com.app.one", lastSyncTime + 1000, UsageEvents.Event.ACTIVITY_RESUMED)
+        shadowUsageStatsManager.addEvent("com.app.one", lastSyncTime + 2000, UsageEvents.Event.ACTIVITY_PAUSED)
+
+        val insertedEvents = slot<List<RawAppEvent>>()
+        coEvery { rawAppEventDao.insertEvents(capture(insertedEvents)) } just Runs
+
+        // 2. Act
+        val result = repository.syncSystemEvents()
+
+        // 3. Assert
+        assertThat(result).isTrue()
+
+        // Verify correct events were inserted
+        assertThat(insertedEvents.isCaptured).isTrue()
+        assertThat(insertedEvents.captured).hasSize(2)
+        assertThat(insertedEvents.captured[0].packageName).isEqualTo("com.app.one")
+        assertThat(insertedEvents.captured[0].eventType).isEqualTo(RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED)
+        assertThat(insertedEvents.captured[1].eventType).isEqualTo(RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED)
+
+        // Verify timestamp was updated
+        val capturedTimestamp = slot<Long>()
+        verify { mockPrefsEditor.putLong(eq("last_system_event_sync_timestamp"), capture(capturedTimestamp)) }
+        assertThat(capturedTimestamp.captured).isGreaterThan(lastSyncTime)
+    }
+
+    @Test
+    fun `backfillHistoricalAppUsageData - fetches events and processes multiple days`() = runTest {
+        // 1. Arrange
+        val datesToProcess = (0..2).map { DateUtil.getPastDateString(it) } // Process 3 days
+        val shadowUsageStatsManager = Shadows.shadowOf(mockUsageStatsManager)
+
+        // Mock UsageStatsManager to return events for each day
+        for (date in datesToProcess) {
+            val startTime = DateUtil.getStartOfDayUtcMillis(date)
+            shadowUsageStatsManager.addEvent("com.app.$date", startTime + 1000, UsageEvents.Event.ACTIVITY_RESUMED)
+        }
+
+        // Mock the data processor to return a simple result for each day
+        coEvery { mockDailyDataProcessor.invoke(any(), any(), any(), any(), any(), any()) } answers {
+            val dateArg = arg<String>(0)
+            DailyProcessingResult(
+                deviceSummary = DailyDeviceSummary(dateString = dateArg, totalAppOpens = 1),
+                usageRecords = listOf(DailyAppUsageRecord(packageName = "com.app.$dateArg", dateString = dateArg, appOpenCount = 1, usageTimeMillis = 1000)),
+                scrollSessions = emptyList(),
+                unlockSessions = emptyList(),
+                insights = emptyList()
+            )
+        }
+
+        // 2. Act
+        val result = repository.backfillHistoricalAppUsageData(3)
+
+        // 3. Assert
+        assertThat(result).isTrue()
+
+        // Verify events were inserted
+        val allEvents = rawAppEventDao.getEventsForPeriod(0, System.currentTimeMillis())
+        assertThat(allEvents).hasSize(3)
+
+        // Verify each day was processed and data was inserted
+        for (date in datesToProcess) {
+            val summary = dailyDeviceSummaryDao.getSummaryForDate(date).first()
+            assertThat(summary).isNotNull()
+            assertThat(summary?.totalAppOpens).isEqualTo(1)
+
+            val usage = dailyAppUsageDao.getUsageForDate(date).first()
+            assertThat(usage).hasSize(1)
+            assertThat(usage.first().packageName).isEqualTo("com.app.$date")
+        }
+    }
+
+    @Test
+    fun `getScrollDataForDate - filters out hidden apps`() = runTest {
+        val date = "2024-03-16"
+        val visibleApp = "com.app.visible"
+        val hiddenApp = "com.app.hidden"
+
+        // 1. Setup the filter set
+        val hiddenAppMeta = createAppMeta(hiddenApp, userHidesOverride = true)
+        coEvery { mockAppMetadataRepository.getAllMetadata() } returns flowOf(listOf(hiddenAppMeta))
+
+        // 2. Re-initialize repository to pick up the new filter set from the mock
+        repository = ScrollDataRepositoryImpl(
+            appDatabase = db,
+            appMetadataRepository = mockAppMetadataRepository,
+            scrollSessionDao = scrollSessionDao,
+            dailyAppUsageDao = dailyAppUsageDao,
+            rawAppEventDao = rawAppEventDao,
+            notificationDao = notificationDao,
+            dailyDeviceSummaryDao = dailyDeviceSummaryDao,
+            unlockSessionDao = unlockSessionDao,
+            dailyInsightDao = dailyInsightDao,
+            dailyDataProcessor = mockDailyDataProcessor,
+            context = context,
+            ioDispatcher = UnconfinedTestDispatcher()
+        )
+
+        // 3. Insert data into DAO
+        val visibleScroll = ScrollSessionRecord(packageName = visibleApp, dateString = date, scrollAmount = 100, sessionStartTime = 1, sessionEndTime = 2, sessionEndReason = "test")
+        val hiddenScroll = ScrollSessionRecord(packageName = hiddenApp, dateString = date, scrollAmount = 200, sessionStartTime = 1, sessionEndTime = 2, sessionEndReason = "test")
+        scrollSessionDao.insertSessions(listOf(visibleScroll, hiddenScroll))
+
+        // 4. Act
+        val result = repository.getScrollDataForDate(date).first()
+
+        // 5. Assert
+        assertThat(result).hasSize(1)
+        assertThat(result.first().packageName).isEqualTo(visibleApp)
+    }
+
+    @Test
+    fun `getTotalScrollForDate - returns correct sum from DAO`() = runTest {
+        val date = "2024-03-17"
+        scrollSessionDao.insertSessions(listOf(
+            ScrollSessionRecord(packageName = "app1", dateString = date, scrollAmount = 100, sessionStartTime = 1, sessionEndTime = 2, sessionEndReason = "test"),
+            ScrollSessionRecord(packageName = "app2", dateString = date, scrollAmount = 250, sessionStartTime = 1, sessionEndTime = 2, sessionEndReason = "test"),
+            ScrollSessionRecord(packageName = "app1", dateString = "2024-03-18", scrollAmount = 500, sessionStartTime = 1, sessionEndTime = 2, sessionEndReason = "test") // Different date
+        ))
+
+        val totalScroll = repository.getTotalScrollForDate(date).first()
+
+        assertThat(totalScroll).isEqualTo(350)
+    }
+
+    @Test
+    fun `getCurrentForegroundApp - returns app with most recent lastTimeUsed`() = runTest {
+        val now = System.currentTimeMillis()
+        val stats = listOf(
+            mockk<android.app.usage.UsageStats>().apply {
+                every { packageName } returns "com.app.old"
+                every { lastTimeUsed } returns now - 10000
+            },
+            mockk<android.app.usage.UsageStats>().apply {
+                every { packageName } returns "com.app.recent"
+                every { lastTimeUsed } returns now - 1000
+            },
+            mockk<android.app.usage.UsageStats>().apply {
+                every { packageName } returns "com.app.middle"
+                every { lastTimeUsed } returns now - 5000
+            }
+        )
+        every { mockUsageStatsManager.queryUsageStats(any(), any(), any()) } returns stats
+
+        val foregroundApp = repository.getCurrentForegroundApp()
+
+        assertThat(foregroundApp).isEqualTo("com.app.recent")
     }
 }

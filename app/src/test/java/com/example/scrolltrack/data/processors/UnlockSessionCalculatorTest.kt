@@ -178,4 +178,31 @@ class UnlockSessionCalculatorTest {
         assertThat(sessions).hasSize(1)
         assertThat(sessions.first().lockTimestamp).isNull()
     }
+
+    @Test
+    fun `invoke - service stopped - closes session`() {
+        val events = listOf(
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, 1000),
+            createRawEvent("com.example.scrolltrack", RawAppEvent.EVENT_TYPE_SERVICE_STOPPED, 2000)
+        )
+        val sessions = calculator(events, emptyList(), emptySet(), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
+
+        assertThat(sessions).hasSize(1)
+        assertThat(sessions.first().lockTimestamp).isEqualTo(2000)
+        assertThat(sessions.first().sessionEndReason).isEqualTo("INTERRUPTED")
+    }
+
+    @Test
+    fun `invoke - hidden app first - sets firstAppPackageName to null`() {
+        val hiddenApp = "com.hidden.app"
+        val events = listOf(
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_USER_UNLOCKED, 1000),
+            createRawEvent(hiddenApp, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, 2000),
+            createRawEvent("android", RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE, 3000)
+        )
+        val sessions = calculator(events, emptyList(), setOf(hiddenApp), setOf(RawAppEvent.EVENT_TYPE_USER_UNLOCKED), setOf(RawAppEvent.EVENT_TYPE_SCREEN_NON_INTERACTIVE))
+
+        assertThat(sessions).hasSize(1)
+        assertThat(sessions.first().firstAppPackageName).isNull()
+    }
 }

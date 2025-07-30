@@ -167,4 +167,29 @@ class ScrollSessionCalculatorTest {
         assertThat(sessions).hasSize(1)
         assertThat(sessions.first().scrollAmountY).isEqualTo(250)
     }
+
+    @Test
+    fun `invoke - with filtered app - ignores events from filtered app`() {
+        val hiddenApp = "com.hidden.app"
+        val visibleApp = "com.visible.app"
+        val events = listOf(
+            createRawEvent(hiddenApp, RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 1000, scrollDeltaY = 100),
+            createRawEvent(visibleApp, RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 2000, scrollDeltaY = 200)
+        )
+        val filterSet = setOf(hiddenApp)
+
+        val sessions = calculator(events, filterSet)
+
+        assertThat(sessions).hasSize(1)
+        assertThat(sessions.first().packageName).isEqualTo(visibleApp)
+    }
+
+    @Test
+    fun `invoke - with zero delta event - ignores event`() {
+        val events = listOf(
+            createRawEvent("com.app.a", RawAppEvent.EVENT_TYPE_SCROLL_MEASURED, 1000, scrollDeltaX = 0, scrollDeltaY = 0)
+        )
+        val sessions = calculator(events, emptySet())
+        assertThat(sessions).isEmpty()
+    }
 }

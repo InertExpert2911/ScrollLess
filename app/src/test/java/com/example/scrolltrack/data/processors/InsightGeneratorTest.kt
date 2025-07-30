@@ -110,8 +110,8 @@ class InsightGeneratorTest {
         val date = "2024-01-20"
         val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
         val unlockSessions = listOf(
-            UnlockSessionRecord(unlockTimestamp = startOfDay + 1000, dateString = date, unlockEventType = "TEST", triggeringNotificationPackageName = "com.app.notify"),
-            UnlockSessionRecord(unlockTimestamp = startOfDay + 80000000, dateString = date, unlockEventType = "TEST")
+            UnlockSessionRecord(unlockTimestamp = startOfDay + 1000, dateString = date, unlockEventType = "TEST", triggeringNotificationPackageName = "com.app.notify", sessionType = "Intentional"),
+            UnlockSessionRecord(unlockTimestamp = startOfDay + 80000000, dateString = date, unlockEventType = "TEST", sessionType = "Glance")
         )
         val events = listOf(
             createRawEvent("com.app.first", RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, startOfDay + 2000),
@@ -127,11 +127,37 @@ class InsightGeneratorTest {
         assertThat(insights.find { it.insightKey == "last_app_used" }?.stringValue).isEqualTo("com.app.last")
         assertThat(insights.find { it.insightKey == "top_notification_unlock_app" }?.stringValue).isEqualTo("com.app.notify")
         assertThat(insights.find { it.insightKey == "night_owl_last_app" }?.stringValue).isEqualTo("com.app.night")
+        assertThat(insights.find { it.insightKey == "glance_count" }?.longValue).isEqualTo(1)
+        assertThat(insights.find { it.insightKey == "meaningful_unlock_count" }?.longValue).isEqualTo(1)
     }
 
     @Test
     fun `invoke - no data scenarios - does not crash`() {
         val insights = generator("2024-01-20", emptyList(), emptyList(), emptySet())
         assertThat(insights).isEmpty()
+    }
+
+    @Test
+    fun `invoke - filterSet - correctly filters apps for insights`() {
+        val date = "2024-01-20"
+        val startOfDay = DateUtil.getStartOfDayUtcMillis(date)
+        val firstUnlockTime = startOfDay + TimeUnit.HOURS.toMillis(7)
+        val hiddenApp = "com.hidden.app"
+        val visibleApp = "com.visible.app"
+        val filterSet = setOf(hiddenApp)
+
+        val events = listOf(
+            createRawEvent(hiddenApp, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, firstUnlockTime + 1000),
+            createRawEvent(visibleApp, RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED, firstUnlockTime + 2000)
+        )
+        val unlockSessions = listOf(
+            UnlockSessionRecord(id=1, unlockTimestamp = firstUnlockTime, dateString = date, unlockEventType = "TEST")
+        )
+
+        val insights = generator(date, unlockSessions, events, filterSet)
+
+        val firstAppInsight = insights.find { it.insightKey == "first_app_used" }
+        assertThat(firstAppInsight).isNotNull()
+        assertThat(firstAppInsight?.stringValue).isEqualTo(visibleApp)
     }
 }
