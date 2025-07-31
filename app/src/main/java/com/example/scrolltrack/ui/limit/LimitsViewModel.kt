@@ -134,6 +134,11 @@ class LimitsViewModel @Inject constructor(
 
             if (currentState.groupId == null) {
                 // CREATE new group
+                // CREATE new group
+                if (limitsRepository.groupExists(currentState.groupName)) {
+                    _createEditUiState.update { it.copy(error = "Group name already exists", isSaving = false) }
+                    return@launch
+                }
                 val newGroupId = limitsRepository.createGroup(currentState.groupName, currentState.timeLimitMinutes)
                 currentlySelectedApps.forEach { packageName ->
                     limitsRepository.addAppToGroup(packageName, newGroupId)

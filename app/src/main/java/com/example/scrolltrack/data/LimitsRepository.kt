@@ -9,6 +9,7 @@ interface LimitsRepository {
     fun getAllVisibleGroups(): Flow<List<LimitGroup>>
     fun getGroupWithApps(groupId: Long): Flow<GroupWithApps?>
     fun getLimitedApp(packageName: String): Flow<LimitedApp?>
+    suspend fun groupExists(name: String): Boolean
     suspend fun createGroup(name: String, timeLimitMinutes: Int): Long
     suspend fun updateGroup(group: LimitGroup)
     suspend fun deleteGroup(group: LimitGroup)

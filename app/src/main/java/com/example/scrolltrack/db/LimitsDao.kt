@@ -5,8 +5,11 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface LimitsDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertOrUpdateGroup(group: LimitGroup): Long
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertGroup(group: LimitGroup): Long
+
+    @Update
+    suspend fun updateGroup(group: LimitGroup)
 
     @Delete
     suspend fun deleteGroup(group: LimitGroup)
@@ -26,4 +29,7 @@ interface LimitsDao {
     
     @Query("SELECT * FROM limited_apps WHERE package_name = :packageName")
     fun getLimitedApp(packageName: String): Flow<LimitedApp?>
+
+    @Query("SELECT EXISTS(SELECT 1 FROM limit_groups WHERE name = :name LIMIT 1)")
+    suspend fun groupExists(name: String): Boolean
 }

@@ -26,17 +26,21 @@ class LimitsRepositoryImpl @Inject constructor(
         return limitsDao.getLimitedApp(packageName)
     }
 
+    override suspend fun groupExists(name: String): Boolean {
+        return limitsDao.groupExists(name)
+    }
+
     override suspend fun createGroup(name: String, timeLimitMinutes: Int): Long {
         val group = LimitGroup(
             name = name,
             time_limit_minutes = timeLimitMinutes,
             is_user_visible = true
         )
-        return limitsDao.insertOrUpdateGroup(group)
+        return limitsDao.insertGroup(group)
     }
 
     override suspend fun updateGroup(group: LimitGroup) {
-        limitsDao.insertOrUpdateGroup(group)
+        limitsDao.updateGroup(group)
     }
 
     override suspend fun deleteGroup(group: LimitGroup) {
@@ -56,7 +60,7 @@ class LimitsRepositoryImpl @Inject constructor(
             time_limit_minutes = limitMinutes,
             is_user_visible = false,
         )
-        val newGroupId = limitsDao.insertOrUpdateGroup(group)
+        val newGroupId = limitsDao.insertGroup(group)
         limitsDao.insertOrUpdateLimitedApp(LimitedApp(packageName, newGroupId))
     }
 
