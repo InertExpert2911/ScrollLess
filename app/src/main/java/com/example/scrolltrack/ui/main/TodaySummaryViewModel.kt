@@ -327,6 +327,12 @@ class TodaySummaryViewModel @Inject constructor(
         }
     }
 
+    fun setLimit(packageName: String, limitInMinutes: Int) {
+        viewModelScope.launch {
+            scrollDataRepository.setAppLimit(packageName, limitInMinutes)
+        }
+    }
+
     private fun calculateComparison(current: Long?, previous: Long?): StatComparison? {
         if (current == null || previous == null || previous == 0L) return null
         val diff = current - previous

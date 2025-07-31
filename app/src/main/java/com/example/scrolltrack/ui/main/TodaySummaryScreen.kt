@@ -256,6 +256,7 @@ fun TodaySummaryScreen(
                         selectedAppForLimit = app
                         showBottomSheet = true
                     },
+                    showSetLimitButton = true,
                     modifier = Modifier
                 )
             }

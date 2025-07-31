@@ -156,4 +156,8 @@ class ScrollDetailViewModel @Inject constructor(
     fun onPeriodChanged(period: ScrollDetailPeriod) {
         _uiState.update { it.copy(period = period) }
     }
+
+    fun setLimit(packageName: String, limitInMinutes: Int) {
+        repository.setAppLimit(packageName, limitInMinutes)
+    }
 }

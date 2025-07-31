@@ -30,6 +30,7 @@ import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.util.DateUtil
 import com.example.scrolltrack.ui.phoneusage.PhoneUsagePeriod
 import com.example.scrolltrack.ui.phoneusage.PhoneUsageViewModel
+import com.example.scrolltrack.ui.components.SetLimitBottomSheet
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -39,10 +40,12 @@ fun PhoneUsageScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-
-    Scaffold(
-        modifier = modifier.navigationBarsPadding()
-    ) { innerPadding ->
+    var showBottomSheet by remember { mutableStateOf(false) }
+    var selectedAppForLimit by remember { mutableStateOf<AppUsageUiItem?>(null) }
+ 
+     Scaffold(
+         modifier = modifier.navigationBarsPadding()
+     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -137,6 +140,10 @@ fun PhoneUsageScreen(
                         usageItem = usageItem,
                         period = uiState.period,
                         onClick = { navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(usageItem.packageName)) },
+                        onSetLimitClick = {
+                            selectedAppForLimit = it
+                            showBottomSheet = true
+                        },
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -144,6 +151,16 @@ fun PhoneUsageScreen(
             }
         }
     }
+   if (showBottomSheet) {
+       SetLimitBottomSheet(
+           onDismissRequest = { showBottomSheet = false },
+           onSetLimit = { packageName, limit ->
+               viewModel.setLimit(packageName, limit)
+               showBottomSheet = false
+           },
+           selectedApp = selectedAppForLimit
+       )
+   }
 }
 
 @Composable
@@ -151,7 +168,8 @@ fun AppUsageRowItem(
     usageItem: AppUsageUiItem,
     period: PhoneUsagePeriod,
     modifier: Modifier = Modifier,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onSetLimitClick: (AppUsageUiItem) -> Unit
 ) {
     Card(
         modifier = modifier
@@ -200,6 +218,12 @@ fun AppUsageRowItem(
                     overflow = TextOverflow.Ellipsis
                 )
             }
+           IconButton(onClick = { onSetLimitClick(usageItem) }) {
+               Icon(
+                   painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_hour_glass_duotone),
+                   contentDescription = "Set Limit"
+               )
+           }
         }
     }
 }

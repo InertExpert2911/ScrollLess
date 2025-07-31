@@ -45,6 +45,8 @@ import java.time.ZoneOffset
 import androidx.compose.material.icons.filled.Check
 import com.example.scrolltrack.ui.components.HeatmapLegend
 import com.example.scrolltrack.ui.components.InteractiveCalendarHeatmap
+import com.example.scrolltrack.ui.components.SetLimitBottomSheet
+import com.example.scrolltrack.ui.model.AppUsageUiItem
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -54,10 +56,12 @@ fun ScrollDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val conversionUtil = viewModel.conversionUtil
-
-    Scaffold(
-        modifier = Modifier.navigationBarsPadding()
-    ) { innerPadding ->
+    var showBottomSheet by remember { mutableStateOf(false) }
+    var selectedAppForLimit by remember { mutableStateOf<AppUsageUiItem?>(null) }
+ 
+     Scaffold(
+         modifier = Modifier.navigationBarsPadding()
+     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -162,6 +166,16 @@ fun ScrollDetailScreen(
                         formattedDistance = formattedDistance,
                         formattedUnits = formattedUnits,
                         onClick = { navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(appItem.packageName)) },
+                        onSetLimitClick = {
+                           selectedAppForLimit = AppUsageUiItem(
+                               id = it.id,
+                               packageName = it.packageName,
+                               appName = it.appName,
+                               icon = it.icon,
+                               usageTimeMillis = 0
+                           )
+                           showBottomSheet = true
+                        },
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -169,6 +183,16 @@ fun ScrollDetailScreen(
             }
         }
     }
+   if (showBottomSheet) {
+       SetLimitBottomSheet(
+           onDismissRequest = { showBottomSheet = false },
+           onSetLimit = { packageName, limit ->
+               viewModel.setLimit(packageName, limit)
+               showBottomSheet = false
+           },
+           selectedApp = selectedAppForLimit
+       )
+   }
 }
 
 @Composable
@@ -178,7 +202,8 @@ fun AppScrollDetailItemEntry(
     formattedDistance: String,
     formattedUnits: String,
     modifier: Modifier = Modifier,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onSetLimitClick: (AppScrollUiItem) -> Unit
 ) {
     Card(
         modifier = modifier
@@ -248,6 +273,12 @@ fun AppScrollDetailItemEntry(
                     modifier = Modifier.size(18.dp)
                 )
             }
+           IconButton(onClick = { onSetLimitClick(appItem) }) {
+               Icon(
+                   painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_hour_glass_duotone),
+                   contentDescription = "Set Limit"
+               )
+           }
         }
     }
 }

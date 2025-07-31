@@ -58,4 +58,5 @@ interface ScrollDataRepository {
     fun getCompulsiveCheckCountsByPackage(startDate: String, endDate: String): Flow<List<PackageCount>>
     fun getNotificationDrivenUnlockCountsByPackage(startDate: String, endDate: String): Flow<List<PackageCount>>
     fun getUnlockSessionsForDateRange(startDate: String, endDate: String): Flow<List<UnlockSessionRecord>>
+    fun setAppLimit(packageName: String, limitInMinutes: Int)
 }

@@ -25,6 +25,7 @@ fun AppUsageCard(
     totalUsageTimeMillis: Long,
     onAppClick: (String) -> Unit,
     onSetLimitClick: (AppUsageUiItem) -> Unit,
+    showSetLimitButton: Boolean,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -57,7 +58,8 @@ fun AppUsageCard(
                             app = app,
                             totalUsageMillis = totalUsageTimeMillis,
                             onClick = { onAppClick(app.packageName) },
-                            onSetLimitClick = { onSetLimitClick(app) }
+                            onSetLimitClick = { onSetLimitClick(app) },
+                            showSetLimitButton = showSetLimitButton
                         )
                     }
                 }
@@ -71,7 +73,8 @@ private fun AppUsageRow(
     app: AppUsageUiItem,
     totalUsageMillis: Long,
     onClick: () -> Unit,
-    onSetLimitClick: () -> Unit
+    onSetLimitClick: () -> Unit,
+    showSetLimitButton: Boolean
 ) {
     Row(
         modifier = Modifier
@@ -127,11 +130,13 @@ private fun AppUsageRow(
                 trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
             )
         }
-        IconButton(onClick = onSetLimitClick) {
-            Icon(
-                painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_lock_duotone),
-                contentDescription = "Set Limit"
-            )
+        if (showSetLimitButton) {
+            IconButton(onClick = onSetLimitClick) {
+                Icon(
+                    painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_hour_glass_duotone),
+                    contentDescription = "Set Limit"
+                )
+            }
         }
     }
 }

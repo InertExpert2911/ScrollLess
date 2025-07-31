@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,6 +28,8 @@ import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.components.HeatmapLegend
 import com.example.scrolltrack.ui.components.InteractiveCalendarHeatmap
 import com.example.scrolltrack.ui.model.AppOpenUiItem
+import com.example.scrolltrack.ui.model.AppUsageUiItem
+import com.example.scrolltrack.ui.components.SetLimitBottomSheet
 import java.time.LocalDate
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -36,13 +39,15 @@ fun UnlocksScreen(
     viewModel: UnlocksViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-
-    Scaffold { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
+    var showBottomSheet by remember { mutableStateOf(false) }
+    var selectedAppForLimit by remember { mutableStateOf<AppUsageUiItem?>(null) }
+ 
+     Scaffold { innerPadding ->
+         LazyColumn(
+             modifier = Modifier
+                 .fillMaxSize()
+                 .padding(innerPadding)
+         ) {
             item {
                 Spacer(modifier = Modifier.height(16.dp))
                 InteractiveCalendarHeatmap(
@@ -135,6 +140,16 @@ fun UnlocksScreen(
                         onClick = {
                             navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(app.packageName))
                         },
+                        onSetLimitClick = {
+                           selectedAppForLimit = AppUsageUiItem(
+                               id = it.packageName,
+                               packageName = it.packageName,
+                               appName = it.appName,
+                               icon = it.icon,
+                               usageTimeMillis = 0
+                           )
+                           showBottomSheet = true
+                        },
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -142,11 +157,27 @@ fun UnlocksScreen(
             }
         }
     }
+   if (showBottomSheet) {
+       SetLimitBottomSheet(
+           onDismissRequest = { showBottomSheet = false },
+           onSetLimit = { packageName, limit ->
+               viewModel.setLimit(packageName, limit)
+               showBottomSheet = false
+           },
+           selectedApp = selectedAppForLimit
+       )
+   }
 }
 
 
 @Composable
-fun AppOpenRow(app: AppOpenUiItem, period: UnlockPeriod, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun AppOpenRow(
+   app: AppOpenUiItem,
+   period: UnlockPeriod,
+   onClick: () -> Unit,
+   onSetLimitClick: (AppOpenUiItem) -> Unit,
+   modifier: Modifier = Modifier
+) {
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -181,6 +212,12 @@ fun AppOpenRow(app: AppOpenUiItem, period: UnlockPeriod, onClick: () -> Unit, mo
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+           IconButton(onClick = { onSetLimitClick(app) }) {
+               Icon(
+                   painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_hour_glass_duotone),
+                   contentDescription = "Set Limit"
+               )
+           }
         }
     }
 }

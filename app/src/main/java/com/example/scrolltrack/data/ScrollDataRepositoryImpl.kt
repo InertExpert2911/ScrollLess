@@ -464,4 +464,9 @@ class ScrollDataRepositoryImpl @Inject constructor(
 
         return@withContext usageStatsList?.maxByOrNull { it.lastTimeUsed }?.packageName
     }
+
+    override fun setAppLimit(packageName: String, limitInMinutes: Int) {
+        // This is a placeholder implementation. A real implementation would save the limit to a database.
+        Timber.d("Setting limit for $packageName to $limitInMinutes minutes.")
+    }
 }

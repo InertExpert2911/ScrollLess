@@ -130,4 +130,11 @@ fun onDateSelected(date: LocalDate) {
             Drawable.createFromPath(it.absolutePath)
         }
     }
+
+suspend fun getIconFile(packageName: String): java.io.File? = withContext(ioDispatcher) {
+        appMetadataRepository.getIconFile(packageName)
+    }
+    fun setLimit(packageName: String, limitInMinutes: Int) {
+        repository.setAppLimit(packageName, limitInMinutes)
+    }
 }

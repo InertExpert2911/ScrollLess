@@ -148,4 +148,8 @@ class UnlocksViewModel @Inject constructor(
     fun onPeriodChanged(period: UnlockPeriod) {
         _period.value = period
     }
+
+    fun setLimit(packageName: String, limitInMinutes: Int) {
+        repository.setAppLimit(packageName, limitInMinutes)
+    }
 }

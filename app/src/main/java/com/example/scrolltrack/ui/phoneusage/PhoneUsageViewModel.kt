@@ -130,4 +130,8 @@ class PhoneUsageViewModel @Inject constructor(
     fun onPeriodChanged(period: PhoneUsagePeriod) {
         _uiState.update { it.copy(period = period) }
     }
+
+    fun setLimit(packageName: String, limitInMinutes: Int) {
+        repository.setAppLimit(packageName, limitInMinutes)
+    }
 }

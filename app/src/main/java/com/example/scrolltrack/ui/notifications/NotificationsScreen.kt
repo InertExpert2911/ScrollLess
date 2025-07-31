@@ -35,6 +35,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import com.example.scrolltrack.ui.components.InteractiveCalendarHeatmap
 import com.example.scrolltrack.ui.components.HeatmapLegend
+import com.example.scrolltrack.ui.components.SetLimitBottomSheet
+import com.example.scrolltrack.ui.model.AppUsageUiItem
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -43,10 +47,13 @@ fun NotificationsScreen(
     viewModel: NotificationsViewModel
 ) {
     val uiState by viewModel.uiState.collectAsState()
-
-    Scaffold(
-        modifier = Modifier.navigationBarsPadding()
-    ) { innerPadding ->
+    var showBottomSheet by remember { mutableStateOf(false) }
+    var selectedAppForLimit by remember { mutableStateOf<AppUsageUiItem?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+ 
+     Scaffold(
+         modifier = Modifier.navigationBarsPadding()
+     ) { innerPadding ->
         when (val state = uiState) {
             is NotificationsUiState.Loading -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -186,6 +193,24 @@ fun NotificationsScreen(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
+                                   IconButton(onClick = {
+                                       coroutineScope.launch {
+                                           val iconFile = viewModel.getIconFile(metadata.packageName)
+                                           selectedAppForLimit = AppUsageUiItem(
+                                               id = metadata.packageName,
+                                               packageName = metadata.packageName,
+                                               appName = metadata.appName,
+                                               icon = iconFile,
+                                               usageTimeMillis = 0
+                                           )
+                                           showBottomSheet = true
+                                       }
+                                   }) {
+                                       Icon(
+                                           painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_hour_glass_duotone),
+                                           contentDescription = "Set Limit"
+                                       )
+                                   }
                                 }
                             }
                             Spacer(modifier = Modifier.height(8.dp))
@@ -195,6 +220,16 @@ fun NotificationsScreen(
             }
         }
     }
+   if (showBottomSheet) {
+       SetLimitBottomSheet(
+           onDismissRequest = { showBottomSheet = false },
+           onSetLimit = { packageName, limit ->
+               viewModel.setLimit(packageName, limit)
+               showBottomSheet = false
+           },
+           selectedApp = selectedAppForLimit
+       )
+   }
 }
 
 
