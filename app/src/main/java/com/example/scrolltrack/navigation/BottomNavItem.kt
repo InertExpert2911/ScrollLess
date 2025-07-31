@@ -3,26 +3,9 @@ package com.example.scrolltrack.navigation
 import androidx.annotation.DrawableRes
 import com.example.scrolltrack.R
 
-sealed class BottomNavItem(
-    val route: String,
-    val title: String,
-    @param:DrawableRes val icon: Int
-) {
-    object Locks : BottomNavItem(
-        route = ScreenRoutes.UnlocksRoute.route,
-        title = "Unlocks",
-        icon = R.drawable.ic_lock_duotone
-    )
-
-    object Notifications : BottomNavItem(
-        route = ScreenRoutes.NotificationsRoute.route,
-        title = "Notifications",
-        icon = R.drawable.ic_notificaiton_bell_duotone
-    )
-
-    object Scroll : BottomNavItem(
-        route = ScreenRoutes.ScrollDetailRoute.route,
-        title = "Scroll",
-        icon = R.drawable.ic_ruler_triangle_duotone
-    )
+sealed class BottomNavItem(var title: String, @DrawableRes var icon: Int, var screen_route: String) {
+    object Locks : BottomNavItem("Unlocks", R.drawable.ic_lock_duotone, "unlocks")
+    object Notifications : BottomNavItem("Notifications", R.drawable.ic_notificaiton_bell_duotone, "notifications")
+    object Scroll : BottomNavItem("Scroll", R.drawable.ic_ruler_triangle_duotone, "scroll")
+    object Limits : BottomNavItem("Limits", R.drawable.ic_lock_duotone, "limits")
 }

@@ -45,6 +45,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import com.example.scrolltrack.ui.limit.CreateEditLimitGroupScreen
+import com.example.scrolltrack.ui.limit.LimitsScreen
+import com.example.scrolltrack.ui.limit.LimitsViewModel
+
+const val LIMITS_GRAPH_ROUTE = "limits_graph"
 
 @Composable
 fun AppNavigationHost(
@@ -97,6 +102,7 @@ fun AppNavigationHost(
         )
         addInsightsGraph(navController)
         addSettingsGraph(navController)
+        addLimitsGraph(navController)
     }
 }
 
@@ -116,6 +122,7 @@ private fun NavGraphBuilder.addDashboardGraph(
         composable(ScreenRoutes.Dashboard.route) {
             val viewModel: TodaySummaryViewModel = hiltViewModel()
             val uiState by viewModel.todaySummaryUiState.collectAsStateWithLifecycle()
+            val limitsViewModel: LimitsViewModel = hiltViewModel()
 
             TodaySummaryScreen(
                 navController = navController,
@@ -144,6 +151,9 @@ private fun NavGraphBuilder.addDashboardGraph(
                 onNavigateToScrollDetail = { navController.navigate(ScreenRoutes.DashboardTabs.createRoute("ScrollDistance")) },
                 onNavigateToAppDetail = { packageName: String ->
                     navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(packageName))
+                },
+                onSetLimit = { packageName, limitMinutes ->
+                    limitsViewModel.setQuickLimit(packageName, limitMinutes)
                 },
                 isRefreshing = uiState.isRefreshing,
                 onRefresh = { viewModel.onPullToRefresh() },
@@ -225,5 +235,32 @@ private fun NavGraphBuilder.addSettingsGraph(navController: NavHostController) {
             CalibrationScreen(navController = navController)
         }
         // Add other destinations for the settings tab here
+    }
+}
+
+private fun NavGraphBuilder.addLimitsGraph(navController: NavHostController) {
+    navigation(
+        startDestination = ScreenRoutes.Limits.route,
+        route = LIMITS_GRAPH_ROUTE
+    ) {
+        composable(ScreenRoutes.Limits.route) {
+            LimitsScreen(
+                viewModel = hiltViewModel(),
+                navController = navController
+            )
+        }
+        composable(
+            route = ScreenRoutes.CreateEditLimitGroupRoute.route,
+            arguments = listOf(navArgument("groupId") {
+                type = NavType.LongType
+                defaultValue = -1L
+            })
+        ) { backStackEntry ->
+            val groupId = backStackEntry.arguments?.getLong("groupId")
+            CreateEditLimitGroupScreen(
+                navController = navController,
+                groupId = if (groupId == -1L) null else groupId
+            )
+        }
     }
 }

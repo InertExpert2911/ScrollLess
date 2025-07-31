@@ -11,6 +11,7 @@ sealed class ScreenRoutes(val route: String) {
     object Dashboard : ScreenRoutes("dashboard")
     object Insights : ScreenRoutes("insights")
     object Settings : ScreenRoutes("settings")
+    object Limits : ScreenRoutes("limits")
     object DashboardTabs : ScreenRoutes("dashboard_tabs/{tab}") {
         fun createRoute(tab: String) = "dashboard_tabs/$tab"
     }
@@ -26,5 +27,8 @@ sealed class ScreenRoutes(val route: String) {
     }
     object ScrollDetailRoute : ScreenRoutes("scroll_detail/{date}") {
         fun createRoute(date: String) = "scroll_detail/$date"
+    }
+    object CreateEditLimitGroupRoute : ScreenRoutes("create_edit_limit_group?groupId={groupId}") {
+        fun createRoute(groupId: Long? = null) = "create_edit_limit_group?groupId=$groupId"
     }
 }

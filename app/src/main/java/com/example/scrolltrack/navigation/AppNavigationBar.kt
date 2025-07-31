@@ -18,6 +18,7 @@ private sealed class NavigationItem(val route: String, val animResId: Int) {
     object Dashboard : NavigationItem(ScreenRoutes.Dashboard.route, R.raw.home_nav_bar_anim_icon)
     object Insights : NavigationItem(ScreenRoutes.Insights.route, R.raw.bolt_nav_bar_anim_icon)
     object Settings : NavigationItem(ScreenRoutes.Settings.route, R.raw.settings_nav_bar_anim_icon)
+    object Limits : NavigationItem(LIMITS_GRAPH_ROUTE, R.raw.bolt_nav_bar_anim_icon) // Re-using insights icon for now
 }
 
 @Composable
@@ -25,6 +26,7 @@ fun AppNavigationBar(navController: NavController) {
     val items = listOf(
         NavigationItem.Dashboard,
         NavigationItem.Insights,
+        NavigationItem.Limits,
         NavigationItem.Settings
     )
 
