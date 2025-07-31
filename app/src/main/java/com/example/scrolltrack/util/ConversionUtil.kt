@@ -10,11 +10,12 @@ import java.util.*
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.sqrt
+import kotlinx.coroutines.runBlocking
 
 @Singleton
 class ConversionUtil @Inject constructor(
-    private val settingsRepository: SettingsRepository,
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val settingsRepository: SettingsRepository
 ) {
     companion object {
         private const val INCHES_PER_METER = 39.3701
@@ -22,13 +23,13 @@ class ConversionUtil @Inject constructor(
         private const val PHYSICAL_DISTANCE_CM = 5.0 // The reference distance used during calibration
     }
 
-    suspend fun formatScrollDistance(
+    fun formatScrollDistance(
         scrollUnitsX: Long,
         scrollUnitsY: Long,
     ): Pair<String, String> {
         if (scrollUnitsX <= 0 && scrollUnitsY <= 0) return "0" to "m"
 
-        val dpi = settingsRepository.screenDpi.first()
+        val dpi = runBlocking { settingsRepository.screenDpi.first() }
 
         val pixelsPerInchX = if (dpi > 0) dpi.toFloat() else context.resources.displayMetrics.xdpi
         val pixelsPerInchY = if (dpi > 0) dpi.toFloat() else context.resources.displayMetrics.ydpi

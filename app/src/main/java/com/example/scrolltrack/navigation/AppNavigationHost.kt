@@ -115,46 +115,29 @@ private fun NavGraphBuilder.addDashboardGraph(
     ) {
         composable(ScreenRoutes.Dashboard.route) {
             val viewModel: TodaySummaryViewModel = hiltViewModel()
-            val greeting by viewModel.greeting.collectAsStateWithLifecycle()
-            val todaysAppUsage by viewModel.todaysAppUsageUiList.collectAsStateWithLifecycle()
-            val aggregatedScrollData by viewModel.aggregatedScrollDataToday.collectAsStateWithLifecycle()
-            val totalScrollUnits by viewModel.totalScrollToday.collectAsStateWithLifecycle()
-            val totalUsageTimeFormatted by viewModel.totalPhoneUsageTodayFormatted.collectAsStateWithLifecycle()
-            val totalUsageTimeMillis by viewModel.totalPhoneUsageTodayMillis.collectAsStateWithLifecycle()
-            val scrollDistanceFormatted by viewModel.scrollDistanceTodayFormatted.collectAsStateWithLifecycle()
-            val selectedTheme by viewModel.selectedThemePalette.collectAsStateWithLifecycle()
-            val isDarkMode by viewModel.isDarkMode.collectAsStateWithLifecycle()
-            val totalUnlocks by viewModel.totalUnlocksToday.collectAsStateWithLifecycle()
-            val totalNotifications by viewModel.totalNotificationsToday.collectAsStateWithLifecycle()
-            val topWeeklyApp by viewModel.topWeeklyApp.collectAsStateWithLifecycle()
-            val isRefreshing by viewModel.isRefreshing.collectAsStateWithLifecycle()
-            val snackbarMessage by viewModel.snackbarMessage.collectAsStateWithLifecycle()
-            val screenTimeComparison by viewModel.screenTimeComparison.collectAsStateWithLifecycle()
-            val unlocksComparison by viewModel.unlocksComparison.collectAsStateWithLifecycle()
-            val notificationsComparison by viewModel.notificationsComparison.collectAsStateWithLifecycle()
-            val scrollComparison by viewModel.scrollComparison.collectAsStateWithLifecycle()
+            val uiState by viewModel.todaySummaryUiState.collectAsStateWithLifecycle()
 
             TodaySummaryScreen(
                 navController = navController,
-                greeting = greeting,
+                greeting = uiState.greeting,
                 isAccessibilityServiceEnabled = isAccessibilityEnabledState,
                 onEnableAccessibilityClick = onEnableAccessibilityClick,
                 isUsageStatsPermissionGranted = isUsageStatsGrantedState,
                 onEnableUsageStatsClick = onEnableUsageStatsClick,
                 isNotificationListenerEnabled = isNotificationListenerEnabledState,
                 onEnableNotificationListenerClick = onEnableNotificationListenerClick,
-                totalUsageTime = totalUsageTimeFormatted,
-                totalUsageTimeMillis = totalUsageTimeMillis,
-                todaysAppUsage = todaysAppUsage,
-                topWeeklyApp = topWeeklyApp,
-                totalScrollUnits = totalScrollUnits,
-                scrollDistanceMeters = "${scrollDistanceFormatted.first} ${scrollDistanceFormatted.second}",
-                totalUnlocks = totalUnlocks,
-                totalNotifications = totalNotifications,
-                screenTimeComparison = screenTimeComparison,
-                unlocksComparison = unlocksComparison,
-                notificationsComparison = notificationsComparison,
-                scrollComparison = scrollComparison,
+                totalUsageTime = uiState.totalUsageTimeFormatted,
+                totalUsageTimeMillis = uiState.totalUsageTimeMillis,
+                todaysAppUsage = uiState.todaysAppUsageUiList,
+                topWeeklyApp = uiState.topWeeklyApp,
+                totalScrollUnits = uiState.totalScrollToday,
+                scrollDistanceMeters = "${uiState.scrollDistanceTodayFormatted.first} ${uiState.scrollDistanceTodayFormatted.second}",
+                totalUnlocks = uiState.totalUnlocksToday,
+                totalNotifications = uiState.totalNotificationsToday,
+                screenTimeComparison = uiState.screenTimeComparison,
+                unlocksComparison = uiState.unlocksComparison,
+                notificationsComparison = uiState.notificationsComparison,
+                scrollComparison = uiState.scrollComparison,
                 onNavigateToHistoricalUsage = { navController.navigate(ScreenRoutes.DashboardTabs.createRoute("PhoneUsage")) },
                 onNavigateToUnlocks = { navController.navigate(ScreenRoutes.DashboardTabs.createRoute("Unlocks")) },
                 onNavigateToNotifications = { navController.navigate(ScreenRoutes.DashboardTabs.createRoute("Notifications")) },
@@ -162,9 +145,9 @@ private fun NavGraphBuilder.addDashboardGraph(
                 onNavigateToAppDetail = { packageName: String ->
                     navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(packageName))
                 },
-                isRefreshing = isRefreshing,
+                isRefreshing = uiState.isRefreshing,
                 onRefresh = { viewModel.onPullToRefresh() },
-                snackbarMessage = snackbarMessage,
+                snackbarMessage = uiState.snackbarMessage,
                 onSnackbarDismiss = { viewModel.dismissSnackbar() }
             )
         }

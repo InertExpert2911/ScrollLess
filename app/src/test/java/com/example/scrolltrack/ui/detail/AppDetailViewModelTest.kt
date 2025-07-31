@@ -60,10 +60,10 @@ class AppDetailViewModelTest {
         coEvery { appMetadataRepository.getAppMetadata(packageName) } returns null
         val savedStateHandle = SavedStateHandle(mapOf("packageName" to packageName))
         viewModel = AppDetailViewModel(scrollDataRepository, appMetadataRepository, conversionUtil, savedStateHandle, mockk(relaxed = true), testDispatcher)
-        
-        viewModel.appDetailAppName.test {
-            assertThat(awaitItem()).isEqualTo("app")
-        }
+
+        advanceUntilIdle()
+
+        assertThat(viewModel.appDetailAppName.value).isEqualTo("app")
     }
 
     @Test
@@ -75,24 +75,24 @@ class AppDetailViewModelTest {
             DailyAppUsageRecord(packageName = packageName, dateString = refDate.toString(), usageTimeMillis = 50000, appOpenCount = 5)
         )
         coEvery { scrollDataRepository.getUsageForPackageAndDates(packageName, dateStrings) } returns usageData
-        coEvery { conversionUtil.formatScrollDistance(0, 0) } returns ("50" to "cm")
+        coEvery { conversionUtil.formatScrollDistance(any(), any()) } returns ("50" to "cm")
 
         viewModel.setFocusedDate(refDate.toString())
+        advanceUntilIdle()
 
-        viewModel.appDetailChartData.test {
-            assertThat(awaitItem().size).isEqualTo(7)
-        }
-        viewModel.appDetailFocusedUsageDisplay.test {
-            assertThat(awaitItem()).isEqualTo(DateUtil.formatDuration(50000))
-        }
-        viewModel.appDetailFocusedOpenCount.test {
-            assertThat(awaitItem()).isEqualTo(5)
-        }
+        assertThat(viewModel.appDetailChartData.value.size).isEqualTo(7)
+        assertThat(viewModel.appDetailFocusedUsageDisplay.value).isEqualTo(DateUtil.formatDuration(50000))
+        assertThat(viewModel.appDetailFocusedOpenCount.value).isEqualTo(5)
     }
 
     @Test
     fun `weekly period - calculates and displays weekly average and comparison`() = runTest {
         val refDate = LocalDate.of(2023, 10, 26)
+
+        // Set the reference date so the test runs against the correct data
+        viewModel.setFocusedDate(refDate.toString())
+        advanceUntilIdle() // Allow initial data load to complete
+
         val startOfWeek = DateUtil.getStartOfWeek(refDate)
         val currentWeekStrings = (0..6).map { startOfWeek.plusDays(it.toLong()).toString() }
         val prevWeekStrings = (0..6).map { startOfWeek.minusWeeks(1).plusDays(it.toLong()).toString() }
@@ -104,27 +104,24 @@ class AppDetailViewModelTest {
         coEvery { scrollDataRepository.getUsageForPackageAndDates(packageName, prevWeekStrings) } returns prevWeekUsage
 
         viewModel.changeChartPeriod(ChartPeriodType.WEEKLY)
+        advanceUntilIdle()
 
-        viewModel.appDetailFocusedUsageDisplay.test {
-            // 70000ms / 7 days = 10000ms -> "< 1m"
-            assertThat(awaitItem()).isEqualTo(DateUtil.formatDuration(10000))
-        }
-        viewModel.appDetailComparisonText.test {
-            assertThat(awaitItem()).isEqualTo("100% more vs last week")
-        }
+        // 70000ms / 7 days = 10000ms -> "< 1m"
+        assertThat(viewModel.appDetailFocusedUsageDisplay.value).isEqualTo(DateUtil.formatDuration(10000))
+        assertThat(viewModel.appDetailComparisonText.value).isEqualTo("100% more vs last week")
     }
 
     @Test
     fun `navigateChartDate - updates reference date and reloads data`() = runTest {
         val initialDate = "2023-10-26"
         viewModel.setFocusedDate(initialDate)
-        
+        advanceUntilIdle()
+
         viewModel.navigateChartDate(1) // Forward one day
-        
-        viewModel.currentChartReferenceDate.test {
-            assertThat(awaitItem()).isEqualTo("2023-10-27")
-        }
-        coVerify { scrollDataRepository.getUsageForPackageAndDates(packageName, any()) }
+        advanceUntilIdle()
+
+        assertThat(viewModel.currentChartReferenceDate.value).isEqualTo("2023-10-27")
+        coVerify(atLeast = 2) { scrollDataRepository.getUsageForPackageAndDates(packageName, any()) }
     }
 
     @Test

@@ -237,7 +237,7 @@ class AppDetailViewModel @Inject constructor(
                     val (prevWeekDateStrings, _) = calculatePreviousPeriodDateStrings(period, referenceDate)
                     if (prevWeekDateStrings.isNotEmpty()) {
                         val prevWeekUsageRecords = repository.getUsageForPackageAndDates(packageName, prevWeekDateStrings)
-                        val prevWeekAverageUsage = calculateAverageUsageFromRecords(prevWeekUsageRecords)
+                        val prevWeekAverageUsage = calculateAverageUsageFromRecords(prevWeekUsageRecords, 7) // Pass 7 for week
                         updateComparisonText(currentPeriodAverageUsage, prevWeekAverageUsage, "week")
                     } else {
                         _appDetailComparisonText.value = "No data for comparison"
@@ -261,7 +261,7 @@ class AppDetailViewModel @Inject constructor(
                     val (prevMonthDateStrings, _) = calculatePreviousPeriodDateStrings(period, referenceDate)
                     if (prevMonthDateStrings.isNotEmpty()) {
                         val prevMonthUsageRecords = repository.getUsageForPackageAndDates(packageName, prevMonthDateStrings)
-                        val prevMonthAverageUsage = calculateAverageUsageFromRecords(prevMonthUsageRecords)
+                        val prevMonthAverageUsage = calculateAverageUsageFromRecords(prevMonthUsageRecords, prevMonthDateStrings.size)
                         updateComparisonText(currentPeriodAverageUsage, prevMonthAverageUsage, "month")
                     } else {
                         _appDetailComparisonText.value = "No data for comparison"
@@ -290,9 +290,9 @@ class AppDetailViewModel @Inject constructor(
         return data.sumOf { it.scrollUnits } / data.size
     }
 
-    private fun calculateAverageUsageFromRecords(data: List<DailyAppUsageRecord>): Long {
-        if (data.isEmpty()) return 0L
-        return data.sumOf { it.usageTimeMillis } / data.size
+    private fun calculateAverageUsageFromRecords(data: List<DailyAppUsageRecord>, periodDays: Int): Long {
+        if (data.isEmpty() || periodDays == 0) return 0L
+        return data.sumOf { it.usageTimeMillis } / periodDays
     }
 
     internal fun updateComparisonText(currentAvg: Long, previousAvg: Long, periodName: String) {

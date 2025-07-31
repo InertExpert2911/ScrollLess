@@ -20,18 +20,6 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 abstract class AppModule {
 
-    @Binds
-    @Singleton
-    abstract fun bindSettingsRepository(impl: SettingsRepositoryImpl): SettingsRepository
-
-    @Binds
-    @Singleton
-    abstract fun bindAppMetadataRepository(impl: AppMetadataRepositoryImpl): AppMetadataRepository
-
-    @Binds
-    @Singleton
-    abstract fun bindScrollDataRepository(impl: ScrollDataRepositoryImpl): ScrollDataRepository
-
     companion object {
 
         @Provides

@@ -1,6 +1,8 @@
 package com.example.scrolltrack.data
 
+import android.app.Application
 import android.app.usage.UsageEvents
+import android.app.usage.UsageStats
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.SharedPreferences
@@ -12,6 +14,7 @@ import com.example.scrolltrack.data.processors.DailyDataProcessor
 import com.example.scrolltrack.data.processors.DailyProcessingResult
 import com.example.scrolltrack.db.*
 import com.example.scrolltrack.util.DateUtil
+import com.example.scrolltrack.util.PermissionUtils
 import com.google.common.truth.Truth.assertThat
 import io.mockk.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -46,13 +49,14 @@ class ScrollDataRepositoryImplTest {
     private lateinit var unlockSessionDao: UnlockSessionDao
     private lateinit var dailyInsightDao: DailyInsightDao
     private lateinit var context: Context
-    private lateinit var mockUsageStatsManager: UsageStatsManager
+    private lateinit var usageStatsManager: UsageStatsManager
     private lateinit var mockPrefs: SharedPreferences
     private lateinit var mockPrefsEditor: SharedPreferences.Editor
 
     @Before
     fun setUp() {
-        context = ApplicationProvider.getApplicationContext()
+        // Use a spyk to use the real context but stub getSharedPreferences
+        context = spyk(ApplicationProvider.getApplicationContext<Application>())
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
             .build()
@@ -69,15 +73,11 @@ class ScrollDataRepositoryImplTest {
         coEvery { mockAppMetadataRepository.getAllMetadata() } returns flowOf(emptyList())
         mockDailyDataProcessor = mockk(relaxed = true)
 
-        // Mock system services and preferences
-        mockUsageStatsManager = mockk(relaxed = true)
+        usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
         mockPrefs = mockk(relaxed = true)
         mockPrefsEditor = mockk(relaxed = true)
         every { mockPrefs.edit() } returns mockPrefsEditor
-
-        val mockContext = spyk(context)
-        every { mockContext.getSystemService(Context.USAGE_STATS_SERVICE) } returns mockUsageStatsManager
-        every { mockContext.getSharedPreferences(any(), any()) } returns mockPrefs
+        every { context.getSharedPreferences(any(), any()) } returns mockPrefs
 
 
         repository = ScrollDataRepositoryImpl(
@@ -91,7 +91,7 @@ class ScrollDataRepositoryImplTest {
             unlockSessionDao = unlockSessionDao,
             dailyInsightDao = dailyInsightDao,
             dailyDataProcessor = mockDailyDataProcessor,
-            context = mockContext,
+            context = context,
             ioDispatcher = UnconfinedTestDispatcher()
         )
     }
@@ -151,7 +151,7 @@ class ScrollDataRepositoryImplTest {
             deviceSummary = DailyDeviceSummary(dateString = date, totalUnlockCount = 1, totalAppOpens = 1, totalNotificationCount = 2, totalUsageTimeMillis = 4000, firstUnlockTimestampUtc = startOfDay + 500),
             insights = listOf(DailyInsight(dateString = date, insightKey = "first_app_used", stringValue = "app1"))
         )
-        coEvery { mockDailyDataProcessor.invoke(any(), any(), any(), any(), any(), any()) } returns mockResult
+        coEvery { mockDailyDataProcessor.invoke(any<String>(), any<List<RawAppEvent>>(), any<List<NotificationRecord>>(), any<Set<String>>(), any<Map<String, Int>>(), or(any<String>(), isNull())) } returns mockResult
 
         repository.processAndSummarizeDate(date)
 
@@ -213,13 +213,13 @@ class ScrollDataRepositoryImplTest {
         rawAppEventDao.insertEvents(eventsYesterday + eventsToday)
 
         // Process yesterday and verify
-        coEvery { mockDailyDataProcessor.invoke(yesterday, any(), any(), any(), any(), any()) } returns DailyProcessingResult(emptyList(), emptyList(), emptyList(), DailyDeviceSummary(dateString = yesterday, totalUnlockCount = 2, totalUsageTimeMillis = 0L, totalUnlockedDurationMillis = 0L, intentionalUnlockCount = 0, glanceUnlockCount = 0, totalAppOpens = 0, totalNotificationCount = 0, lastUpdatedTimestamp = 0L), emptyList())
+        coEvery { mockDailyDataProcessor.invoke(eq(yesterday), any(), any(), any(), any(), any()) } returns DailyProcessingResult(emptyList(), emptyList(), emptyList(), DailyDeviceSummary(dateString = yesterday, totalUnlockCount = 2, totalUsageTimeMillis = 0L, totalUnlockedDurationMillis = 0L, intentionalUnlockCount = 0, glanceUnlockCount = 0, totalAppOpens = 0, totalNotificationCount = 0, lastUpdatedTimestamp = 0L), emptyList())
         repository.processAndSummarizeDate(yesterday)
         val yesterdaySummary = dailyDeviceSummaryDao.getSummaryForDate(yesterday).first()
         assertThat(yesterdaySummary?.totalUnlockCount).isEqualTo(2)
 
         // Process today and verify
-        coEvery { mockDailyDataProcessor.invoke(today, any(), any(), any(), any(), any()) } returns DailyProcessingResult(emptyList(), emptyList(), emptyList(), DailyDeviceSummary(dateString = today, totalUnlockCount = 1, totalUsageTimeMillis = 0L, totalUnlockedDurationMillis = 0L, intentionalUnlockCount = 0, glanceUnlockCount = 0, totalAppOpens = 0, totalNotificationCount = 0, lastUpdatedTimestamp = 0L), emptyList())
+        coEvery { mockDailyDataProcessor.invoke(eq(today), any(), any(), any(), any(), any()) } returns DailyProcessingResult(emptyList(), emptyList(), emptyList(), DailyDeviceSummary(dateString = today, totalUnlockCount = 1, totalUsageTimeMillis = 0L, totalUnlockedDurationMillis = 0L, intentionalUnlockCount = 0, glanceUnlockCount = 0, totalAppOpens = 0, totalNotificationCount = 0, lastUpdatedTimestamp = 0L), emptyList())
         repository.processAndSummarizeDate(today)
         val todaySummary = dailyDeviceSummaryDao.getSummaryForDate(today).first()
         assertThat(todaySummary?.totalUnlockCount).isEqualTo(1)
@@ -265,7 +265,7 @@ class ScrollDataRepositoryImplTest {
         notificationDao.insert(NotificationRecord(notificationKey = "key1", packageName = hiddenApp, postTimeUTC = startOfDay + 4500, dateString = date, title = "t", text = "t", category = "c"))
 
         val mockScrollSession = ScrollSessionRecord(packageName = visibleApp, dateString = date, scrollAmountY = 100, sessionStartTime = 1, sessionEndTime = 2, scrollAmount = 100, dataType = "MEASURED", sessionEndReason = "PROCESSED")
-        coEvery { mockDailyDataProcessor.invoke(date, any(), any(), any(), any(), any()) } returns DailyProcessingResult(emptyList(), listOf(mockScrollSession), listOf(DailyAppUsageRecord(packageName = visibleApp, dateString = date, usageTimeMillis = 2000, appOpenCount = 1, notificationCount = 0)), DailyDeviceSummary(dateString = date, totalUsageTimeMillis = 2000L, totalNotificationCount = 0, totalUnlockCount = 0, intentionalUnlockCount = 0, glanceUnlockCount = 0, totalAppOpens = 1, totalUnlockedDurationMillis = 0, lastUpdatedTimestamp = 0), emptyList())
+        coEvery { mockDailyDataProcessor.invoke(any<String>(), any<List<RawAppEvent>>(), any<List<NotificationRecord>>(), any<Set<String>>(), any<Map<String, Int>>(), or(any<String>(), isNull())) } returns DailyProcessingResult(emptyList(), listOf(mockScrollSession), listOf(DailyAppUsageRecord(packageName = visibleApp, dateString = date, usageTimeMillis = 2000, appOpenCount = 1, notificationCount = 0)), DailyDeviceSummary(dateString = date, totalUsageTimeMillis = 2000L, totalNotificationCount = 0, totalUnlockCount = 0, intentionalUnlockCount = 0, glanceUnlockCount = 0, totalAppOpens = 1, totalUnlockedDurationMillis = 0, lastUpdatedTimestamp = 0), emptyList())
         repository.processAndSummarizeDate(date)
 
         val appUsage = dailyAppUsageDao.getUsageForDate(date).first()
@@ -292,7 +292,7 @@ class ScrollDataRepositoryImplTest {
         )
         rawAppEventDao.insertEvents(events)
 
-        coEvery { mockDailyDataProcessor.invoke(date, any(), any(), any(), any(), any()) } returns DailyProcessingResult(emptyList(), emptyList(), listOf(DailyAppUsageRecord(packageName = appA, dateString = date, usageTimeMillis = 5000L, appOpenCount = 1, notificationCount = 0)), null, emptyList())
+        coEvery { mockDailyDataProcessor.invoke(any<String>(), any<List<RawAppEvent>>(), any<List<NotificationRecord>>(), any<Set<String>>(), any<Map<String, Int>>(), or(any<String>(), isNull())) } returns DailyProcessingResult(emptyList(), emptyList(), listOf(DailyAppUsageRecord(packageName = appA, dateString = date, usageTimeMillis = 5000L, appOpenCount = 1, notificationCount = 0)), null, emptyList())
         repository.processAndSummarizeDate(date)
 
         val usage = dailyAppUsageDao.getUsageForDate(date).first().find { it.packageName == appA }
@@ -314,7 +314,7 @@ class ScrollDataRepositoryImplTest {
         )
         rawAppEventDao.insertEvents(events)
 
-        coEvery { mockDailyDataProcessor.invoke(date, any(), any(), any(), any(), any()) } returns DailyProcessingResult(emptyList(), emptyList(), listOf(DailyAppUsageRecord(packageName = appB, dateString = date, appOpenCount = 0, usageTimeMillis = 0)), null, emptyList())
+        coEvery { mockDailyDataProcessor.invoke(any<String>(), any<List<RawAppEvent>>(), any<List<NotificationRecord>>(), any<Set<String>>(), any<Map<String, Int>>(), or(any<String>(), isNull())) } returns DailyProcessingResult(emptyList(), emptyList(), listOf(DailyAppUsageRecord(packageName = appB, dateString = date, appOpenCount = 0, usageTimeMillis = 0)), null, emptyList())
         repository.processAndSummarizeDate(date)
 
         val usageForB = dailyAppUsageDao.getUsageForDate(date).first().find { it.packageName == appB }
@@ -355,7 +355,7 @@ class ScrollDataRepositoryImplTest {
         )
         rawAppEventDao.insertEvents(events)
 
-        coEvery { mockDailyDataProcessor.invoke(date, any(), any(), any(), any(), any()) } returns DailyProcessingResult(emptyList(), emptyList(), emptyList(), null, listOf(DailyInsight(dateString = date, insightKey = "first_app_used", stringValue = visibleApp)))
+        coEvery { mockDailyDataProcessor.invoke(any<String>(), any<List<RawAppEvent>>(), any<List<NotificationRecord>>(), any<Set<String>>(), any<Map<String, Int>>(), or(any<String>(), isNull())) } returns DailyProcessingResult(emptyList(), emptyList(), emptyList(), null, listOf(DailyInsight(dateString = date, insightKey = "first_app_used", stringValue = visibleApp)))
         repository.processAndSummarizeDate(date)
 
         val insights = dailyInsightDao.getInsightsForDateAsFlow(date).first()
@@ -425,12 +425,9 @@ class ScrollDataRepositoryImplTest {
         val lastSyncTime = System.currentTimeMillis() - TimeUnit.HOURS.toMillis(1)
         every { mockPrefs.getLong(any(), any()) } returns lastSyncTime
 
-        val shadowUsageStatsManager = Shadows.shadowOf(mockUsageStatsManager)
+        val shadowUsageStatsManager = Shadows.shadowOf(usageStatsManager)
         shadowUsageStatsManager.addEvent("com.app.one", lastSyncTime + 1000, UsageEvents.Event.ACTIVITY_RESUMED)
         shadowUsageStatsManager.addEvent("com.app.one", lastSyncTime + 2000, UsageEvents.Event.ACTIVITY_PAUSED)
-
-        val insertedEvents = slot<List<RawAppEvent>>()
-        coEvery { rawAppEventDao.insertEvents(capture(insertedEvents)) } just Runs
 
         // 2. Act
         val result = repository.syncSystemEvents()
@@ -439,11 +436,11 @@ class ScrollDataRepositoryImplTest {
         assertThat(result).isTrue()
 
         // Verify correct events were inserted
-        assertThat(insertedEvents.isCaptured).isTrue()
-        assertThat(insertedEvents.captured).hasSize(2)
-        assertThat(insertedEvents.captured[0].packageName).isEqualTo("com.app.one")
-        assertThat(insertedEvents.captured[0].eventType).isEqualTo(RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED)
-        assertThat(insertedEvents.captured[1].eventType).isEqualTo(RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED)
+        val insertedEvents = rawAppEventDao.getEventsForPeriod(0, System.currentTimeMillis() + 1)
+        assertThat(insertedEvents).hasSize(2)
+        assertThat(insertedEvents[0].packageName).isEqualTo("com.app.one")
+        assertThat(insertedEvents[0].eventType).isEqualTo(RawAppEvent.EVENT_TYPE_ACTIVITY_RESUMED)
+        assertThat(insertedEvents[1].eventType).isEqualTo(RawAppEvent.EVENT_TYPE_ACTIVITY_PAUSED)
 
         // Verify timestamp was updated
         val capturedTimestamp = slot<Long>()
@@ -455,7 +452,7 @@ class ScrollDataRepositoryImplTest {
     fun `backfillHistoricalAppUsageData - fetches events and processes multiple days`() = runTest {
         // 1. Arrange
         val datesToProcess = (0..2).map { DateUtil.getPastDateString(it) } // Process 3 days
-        val shadowUsageStatsManager = Shadows.shadowOf(mockUsageStatsManager)
+        val shadowUsageStatsManager = Shadows.shadowOf(usageStatsManager)
 
         // Mock UsageStatsManager to return events for each day
         for (date in datesToProcess) {
@@ -464,7 +461,7 @@ class ScrollDataRepositoryImplTest {
         }
 
         // Mock the data processor to return a simple result for each day
-        coEvery { mockDailyDataProcessor.invoke(any(), any(), any(), any(), any(), any()) } answers {
+        coEvery { mockDailyDataProcessor.invoke(any<String>(), any<List<RawAppEvent>>(), any<List<NotificationRecord>>(), any<Set<String>>(), any<Map<String, Int>>(), or(any<String>(), isNull())) } answers {
             val dateArg = arg<String>(0)
             DailyProcessingResult(
                 deviceSummary = DailyDeviceSummary(dateString = dateArg, totalAppOpens = 1),
@@ -553,20 +550,42 @@ class ScrollDataRepositoryImplTest {
     @Test
     fun `getCurrentForegroundApp - returns app with most recent lastTimeUsed`() = runTest {
         val now = System.currentTimeMillis()
-        val stats = listOf(
-            mockk<android.app.usage.UsageStats>().apply {
-                every { packageName } returns "com.app.old"
-                every { lastTimeUsed } returns now - 10000
-            },
-            mockk<android.app.usage.UsageStats>().apply {
-                every { packageName } returns "com.app.recent"
-                every { lastTimeUsed } returns now - 1000
-            },
-            mockk<android.app.usage.UsageStats>().apply {
-                every { packageName } returns "com.app.middle"
-                every { lastTimeUsed } returns now - 5000
-            }
+
+        // For this test only, fully mock the context and manager because queryUsageStats is broken in Robolectric
+        val mockUsageStatsManager: UsageStatsManager = mockk()
+        val mockContext: Context = mockk(relaxed = true)
+        every { mockContext.getSystemService(Context.USAGE_STATS_SERVICE) } returns mockUsageStatsManager
+        every { mockContext.getSharedPreferences(any(), any()) } returns mockPrefs
+
+        // Because we are using a mock context, we must also mock the permission check.
+        mockkObject(PermissionUtils)
+        every { PermissionUtils.hasUsageStatsPermission(mockContext) } returns true
+
+        // Re-initialize repository with the fully mocked context
+        repository = ScrollDataRepositoryImpl(
+            appDatabase = db, appMetadataRepository = mockAppMetadataRepository,
+            scrollSessionDao = scrollSessionDao, dailyAppUsageDao = dailyAppUsageDao,
+            rawAppEventDao = rawAppEventDao, notificationDao = notificationDao,
+            dailyDeviceSummaryDao = dailyDeviceSummaryDao, unlockSessionDao = unlockSessionDao,
+            dailyInsightDao = dailyInsightDao, dailyDataProcessor = mockDailyDataProcessor,
+            context = mockContext,
+            ioDispatcher = UnconfinedTestDispatcher()
         )
+
+        // Create MOCKED UsageStats objects
+        val statOld: UsageStats = mockk()
+        every { statOld.packageName } returns "com.app.old"
+        every { statOld.lastTimeUsed } returns now - 10000
+
+        val statRecent: UsageStats = mockk()
+        every { statRecent.packageName } returns "com.app.recent"
+        every { statRecent.lastTimeUsed } returns now - 1000
+
+        val statMiddle: UsageStats = mockk()
+        every { statMiddle.packageName } returns "com.app.middle"
+        every { statMiddle.lastTimeUsed } returns now - 5000
+
+        val stats = listOf(statOld, statRecent, statMiddle)
         every { mockUsageStatsManager.queryUsageStats(any(), any(), any()) } returns stats
 
         val foregroundApp = repository.getCurrentForegroundApp()

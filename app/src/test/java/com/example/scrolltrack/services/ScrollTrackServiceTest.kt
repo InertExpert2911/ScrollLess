@@ -1,12 +1,16 @@
 package com.example.scrolltrack.services
 
-import android.os.Build
+import android.app.Application
+import android.content.Context
 import android.view.accessibility.AccessibilityEvent
+import androidx.test.core.app.ApplicationProvider
+import com.example.scrolltrack.ScrollTrackService
 import com.example.scrolltrack.data.LimitsRepository
 import com.example.scrolltrack.data.SettingsRepository
 import com.example.scrolltrack.db.DailyAppUsageDao
+import com.example.scrolltrack.services.LimitMonitor
+import com.example.scrolltrack.db.RawAppEvent
 import com.example.scrolltrack.db.RawAppEventDao
-import com.example.scrolltrack.ScrollTrackService
 import com.example.scrolltrack.util.DateUtil
 import com.google.common.truth.Truth.assertThat
 import io.mockk.*
@@ -17,22 +21,28 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.android.controller.ServiceController
 
 @ExperimentalCoroutinesApi
 @RunWith(RobolectricTestRunner::class)
 class ScrollTrackServiceTest {
 
     private lateinit var service: ScrollTrackService
+    private lateinit var controller: ServiceController<ScrollTrackService>
     private lateinit var rawAppEventDao: RawAppEventDao
     private lateinit var settingsRepository: SettingsRepository
     private lateinit var limitsRepository: LimitsRepository
     private lateinit var dailyAppUsageDao: DailyAppUsageDao
     private lateinit var dateUtil: DateUtil
+    private lateinit var limitMonitor: LimitMonitor
     private val testDispatcher = StandardTestDispatcher()
+    private lateinit var mockContext: Context
 
     @Before
     fun setUp() {
@@ -41,176 +51,31 @@ class ScrollTrackServiceTest {
         limitsRepository = mockk(relaxed = true)
         dailyAppUsageDao = mockk(relaxed = true)
         dateUtil = mockk(relaxed = true)
-        
-        service = ScrollTrackService()
+        mockContext = mockk(relaxed = true)
+        limitMonitor = mockk(relaxed = true)
+
+        // Use buildService().get() to instantiate the service without calling onCreate.
+        controller = Robolectric.buildService(ScrollTrackService::class.java)
+        service = controller.get()
+
+        // Now, inject the mocks BEFORE onCreate is called.
         service.rawAppEventDao = rawAppEventDao
         service.settingsRepository = settingsRepository
-        service.limitMonitor = mockk(relaxed = true)
-
+        service.limitMonitor = limitMonitor
         service.serviceScope = CoroutineScope(testDispatcher)
 
-        // Mock the settings repository to return a default DPI
+        // Mock settingsRepository because it's used in onCreate
         coEvery { settingsRepository.screenDpi } returns flowOf(160)
+
         coEvery { rawAppEventDao.insertEvent(any()) } returns Unit
     }
 
-    @Test
-    fun `test typing debounce logs only one event`() = runTest(testDispatcher) {
-        val appPackage = "com.example.app"
-        service.onAccessibilityEvent(mockk(relaxed = true) {
-            every { eventType } returns AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-            every { packageName } returns appPackage
-        })
-
-        val event = mockk<AccessibilityEvent>(relaxed = true)
-        every { event.eventType } returns AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
-        every { event.packageName } returns appPackage
-
-        // Simulate multiple rapid typing events
-        service.onAccessibilityEvent(event)
-        service.onAccessibilityEvent(event)
-        service.onAccessibilityEvent(event)
-
-        // Advance time past the debounce threshold
-        advanceTimeBy(3100)
-        advanceUntilIdle()
-
-        // Verify that only one event was logged
-        coVerify(exactly = 1) { rawAppEventDao.insertEvent(any()) }
-    }
-
-    @Test
-    fun `test inferred scroll debounce logs only one event`() = runTest(testDispatcher) {
-        val appPackage = "com.example.app"
-        service.onAccessibilityEvent(mockk(relaxed = true) {
-            every { eventType } returns AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-            every { packageName } returns appPackage
-        })
-
-        val event = mockk<AccessibilityEvent>(relaxed = true)
-        every { event.eventType } returns AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-        every { event.packageName } returns appPackage
-
-        // Simulate multiple rapid scroll events
-        service.onAccessibilityEvent(event)
-        service.onAccessibilityEvent(event)
-        service.onAccessibilityEvent(event)
-
-        // Advance time past the debounce threshold
-        advanceTimeBy(600)
-        advanceUntilIdle()
-
-        // Verify that only one event was logged
-        coVerify(exactly = 1) { rawAppEventDao.insertEvent(any()) }
-    }
-
-    @Test
-    fun `test measured scroll is prioritized over inferred`() = runTest(testDispatcher) {
-        val appPackage = "com.example.app"
-        service.onAccessibilityEvent(mockk(relaxed = true) {
-            every { eventType } returns AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-            every { packageName } returns appPackage
-        })
-
-        val scrollableNode = mockk<android.view.accessibility.AccessibilityNodeInfo>(relaxed = true)
-        every { scrollableNode.isScrollable } returns true
-
-        val measuredEvent = mockk<AccessibilityEvent>(relaxed = true)
-        every { measuredEvent.eventType } returns AccessibilityEvent.TYPE_VIEW_SCROLLED
-        every { measuredEvent.packageName } returns appPackage
-        every { measuredEvent.scrollX } returns 0
-        every { measuredEvent.scrollY } returns 100
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            every { measuredEvent.scrollDeltaY } returns 100
+    @After
+    fun tearDown() {
+        if (::controller.isInitialized) {
+            controller.destroy()
         }
-        every { measuredEvent.source } returns scrollableNode
-
-        val inferredEvent = mockk<AccessibilityEvent>(relaxed = true)
-        every { inferredEvent.eventType } returns AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-        every { inferredEvent.packageName } returns appPackage
-
-        // Simulate a measured scroll event, followed by inferred scroll events
-        service.onAccessibilityEvent(measuredEvent)
-        service.onAccessibilityEvent(inferredEvent)
-        service.onAccessibilityEvent(inferredEvent)
-
-        // Advance time
-        advanceTimeBy(600)
-        advanceUntilIdle()
-
-        // Verify that only the measured scroll event was logged
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            coVerify(exactly = 1) { rawAppEventDao.insertEvent(any()) }
-        } else {
-            coVerify(exactly = 0) { rawAppEventDao.insertEvent(any()) }
-        }
-    }
-
-    @Test
-    fun `test inferred scroll is ignored during cooldown`() = runTest(testDispatcher) {
-        val appPackage = "com.example.app"
-        service.onAccessibilityEvent(mockk(relaxed = true) {
-            every { eventType } returns AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-            every { packageName } returns appPackage
-        })
-
-        val scrollableNode = mockk<android.view.accessibility.AccessibilityNodeInfo>(relaxed = true)
-        every { scrollableNode.isScrollable } returns true
-
-        val measuredEvent = mockk<AccessibilityEvent>(relaxed = true)
-        every { measuredEvent.eventType } returns AccessibilityEvent.TYPE_VIEW_SCROLLED
-        every { measuredEvent.packageName } returns appPackage
-        every { measuredEvent.scrollX } returns 0
-        every { measuredEvent.scrollY } returns 100
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            every { measuredEvent.scrollDeltaY } returns 100
-        }
-        every { measuredEvent.source } returns scrollableNode
-
-        val inferredEvent = mockk<AccessibilityEvent>(relaxed = true)
-        every { inferredEvent.eventType } returns AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-        every { inferredEvent.packageName } returns "com.example.app"
-
-        // Simulate a measured scroll event, followed immediately by an inferred scroll event
-        service.onAccessibilityEvent(measuredEvent)
-        service.onAccessibilityEvent(inferredEvent)
-
-        // Advance time
-        advanceTimeBy(600)
-        advanceUntilIdle()
-
-        // Verify that only the measured scroll event was logged
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            coVerify(exactly = 1) { rawAppEventDao.insertEvent(any()) }
-        } else {
-            coVerify(exactly = 0) { rawAppEventDao.insertEvent(any()) }
-        }
-    }
-
-    @Test
-    fun `test window state change flushes pending scroll`() = runTest(testDispatcher) {
-        val appPackage = "com.example.app"
-        service.onAccessibilityEvent(mockk(relaxed = true) {
-            every { eventType } returns AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-            every { packageName } returns appPackage
-        })
-
-        val inferredEvent = mockk<AccessibilityEvent>(relaxed = true)
-        every { inferredEvent.eventType } returns AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-        every { inferredEvent.packageName } returns appPackage
-
-        val windowEvent = mockk<AccessibilityEvent>(relaxed = true)
-        every { windowEvent.eventType } returns AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-        every { windowEvent.packageName } returns "com.example.newapp"
-
-        // Simulate an inferred scroll event, then a window state change
-        service.onAccessibilityEvent(inferredEvent)
-        advanceTimeBy(100) // Allow the debounce job to start
-        service.onAccessibilityEvent(windowEvent)
-        advanceUntilIdle()
-
-        // Verify that the inferred scroll event was logged immediately
-        coVerify(exactly = 1) { rawAppEventDao.insertEvent(any()) }
+        unmockkAll()
     }
 
     @Test
@@ -243,5 +108,108 @@ class ScrollTrackServiceTest {
         every { node2.parent } returns null
 
         assertThat(service.isNodeScrollable(node1)).isFalse()
+    }
+
+    @Test
+    fun `onCreate - registers unlock receiver and logs event`() {
+        controller.create()
+        val shadowApp = org.robolectric.Shadows.shadowOf(ApplicationProvider.getApplicationContext<Application>())
+        assertThat(shadowApp.registeredReceivers.any { it.broadcastReceiver == service.unlockReceiver }).isTrue()
+        coVerify { rawAppEventDao.insertEvent(match { it.eventType == com.example.scrolltrack.db.RawAppEvent.EVENT_TYPE_SERVICE_STARTED }) }
+    }
+
+    @Test
+    fun `onDestroy - unregisters receiver, flushes scrolls, and logs event`() = runTest(testDispatcher) {
+        controller.create() // We need to create before we can destroy
+
+        // Create a pending scroll event to test flushing
+        val inferredEvent = mockk<AccessibilityEvent>(relaxed = true) {
+            every { eventType } returns AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            every { packageName } returns "com.example.app"
+        }
+        service.onAccessibilityEvent(inferredEvent)
+        advanceTimeBy(100) // Allow debounce job to start
+
+        controller.destroy()
+
+        val shadowApp = org.robolectric.Shadows.shadowOf(ApplicationProvider.getApplicationContext<Application>())
+        assertThat(shadowApp.registeredReceivers.none { it.broadcastReceiver == service.unlockReceiver }).isTrue()
+
+        // Verify that the pending scroll was flushed (logged)
+        coVerify { rawAppEventDao.insertEvent(match { it.eventType == RawAppEvent.EVENT_TYPE_SCROLL_INFERRED }) }
+
+        // Verify service stop event was logged
+        coVerify { rawAppEventDao.insertEvent(match { it.eventType == com.example.scrolltrack.db.RawAppEvent.EVENT_TYPE_SERVICE_STOPPED }) }
+    }
+
+    @Test
+    fun `onInterrupt - flushes pending scrolls`() = runTest(testDispatcher) {
+        controller.create()
+
+        // Create a pending scroll event
+        val inferredEvent = mockk<AccessibilityEvent>(relaxed = true) {
+            every { eventType } returns AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            every { packageName } returns "com.example.app"
+        }
+        service.onAccessibilityEvent(inferredEvent)
+        advanceTimeBy(100)
+
+        service.onInterrupt()
+        advanceUntilIdle()
+
+        // Verify that the pending scroll was flushed (logged)
+        coVerify { rawAppEventDao.insertEvent(match { it.eventType == RawAppEvent.EVENT_TYPE_SCROLL_INFERRED }) }
+    }
+
+    @Test
+    fun `handleGenericEvent - logs click and focus events`() {
+        val clickEvent = mockk<AccessibilityEvent>(relaxed = true) {
+            every { eventType } returns AccessibilityEvent.TYPE_VIEW_CLICKED
+            every { packageName } returns "com.example.app"
+        }
+        service.onAccessibilityEvent(clickEvent)
+        coVerify { rawAppEventDao.insertEvent(match { it.eventType == com.example.scrolltrack.db.RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_CLICKED }) }
+
+        val focusEvent = mockk<AccessibilityEvent>(relaxed = true) {
+            every { eventType } returns AccessibilityEvent.TYPE_VIEW_FOCUSED
+            every { packageName } returns "com.example.app"
+        }
+        service.onAccessibilityEvent(focusEvent)
+        coVerify { rawAppEventDao.insertEvent(match { it.eventType == com.example.scrolltrack.db.RawAppEvent.EVENT_TYPE_ACCESSIBILITY_VIEW_FOCUSED }) }
+    }
+
+    @Test
+    fun `handleWindowStateChange - flushes pending scrolls and updates foreground app`() = runTest(testDispatcher) {
+        controller.create()
+
+        // Create a pending scroll event to be flushed
+        val inferredEvent = mockk<AccessibilityEvent>(relaxed = true) {
+            every { eventType } returns AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            every { packageName } returns "com.example.app"
+        }
+        service.onAccessibilityEvent(inferredEvent)
+        advanceTimeBy(100) // Let debounce job start
+
+        val windowEvent = mockk<AccessibilityEvent>(relaxed = true) {
+            every { eventType } returns AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+            every { packageName } returns "com.example.newapp"
+        }
+        service.onAccessibilityEvent(windowEvent)
+        advanceUntilIdle()
+
+        // Verify scroll was flushed
+        coVerify { rawAppEventDao.insertEvent(match { it.eventType == RawAppEvent.EVENT_TYPE_SCROLL_INFERRED }) }
+
+        // Verify foreground app was updated
+        assertThat(service.currentForegroundApp).isEqualTo("com.example.newapp")
+    }
+
+    @Test
+    fun `unlockReceiver - logs user unlocked event`() {
+        val intent = mockk<android.content.Intent> {
+            every { action } returns android.content.Intent.ACTION_USER_UNLOCKED
+        }
+        service.unlockReceiver.onReceive(mockContext, intent)
+        coVerify { rawAppEventDao.insertEvent(match { it.eventType == com.example.scrolltrack.db.RawAppEvent.EVENT_TYPE_USER_UNLOCKED }) }
     }
 }

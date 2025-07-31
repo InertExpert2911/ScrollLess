@@ -57,7 +57,7 @@ class AppVisibilityViewModelTest {
     }
 
     @Test
-    fun `filters by visible and sorts alphabetically`() = runTest {
+    fun `filters by visible and sorts alphabetically`() = runTest(testDispatcher) {
         val apps = listOf(
             createTestApp("com.c", "C App", true, false),
             createTestApp("com.a", "A App", true, null), // Default visible
@@ -81,7 +81,7 @@ class AppVisibilityViewModelTest {
     }
 
     @Test
-    fun `setAppVisibility updates state and persists to repository`() = runTest {
+    fun `setAppVisibility updates state and persists to repository`() = runTest(testDispatcher) {
         val app = createTestApp("com.app", "Test App", true, null)
         allAppsFlow.value = listOf(app)
 
@@ -98,10 +98,10 @@ class AppVisibilityViewModelTest {
             coVerify { appMetadataRepository.updateUserHidesOverride("com.app", true) }
         }
     }
-
-    @Test
-    fun `error state is emitted when repository throws exception`() = runTest {
-        coEvery { appMetadataRepository.getAllMetadata() } returns flow { throw RuntimeException("DB error") }
+@Test
+fun `error state is emitted when repository throws exception`() = runTest(testDispatcher) {
+    coEvery { appMetadataRepository.getAllMetadata() } returns flow { throw RuntimeException("DB error") }
+    
         
         val errorViewModel = AppVisibilityViewModel(appMetadataRepository, mockk(relaxed = true), testDispatcher)
 
@@ -112,7 +112,7 @@ class AppVisibilityViewModelTest {
         }
     }
    @Test
-   fun `toggleShowNonInteractiveApps updates filter`() = runTest {
+   fun `toggleShowNonInteractiveApps updates filter`() = runTest(testDispatcher) {
        val interactiveApp = createTestApp("com.interactive", "Interactive App", true, null)
        val nonInteractiveApp = createTestApp("com.noninteractive", "Non-Interactive App", false, null)
        allAppsFlow.value = listOf(interactiveApp, nonInteractiveApp)

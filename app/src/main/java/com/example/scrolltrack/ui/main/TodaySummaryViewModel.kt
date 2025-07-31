@@ -1,35 +1,28 @@
 package com.example.scrolltrack.ui.main
 
 import android.content.Context
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.scrolltrack.data.*
+import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.db.DailyDeviceSummary
 import com.example.scrolltrack.ui.mappers.AppUiModelMapper
-import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.ui.theme.AppTheme
-import com.example.scrolltrack.util.*
-import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
-import javax.inject.Inject
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.delay
-import com.example.scrolltrack.db.DailyAppUsageRecord
+import com.example.scrolltrack.util.Clock
+import com.example.scrolltrack.util.ConversionUtil
+import com.example.scrolltrack.util.DateUtil
+import com.example.scrolltrack.util.GreetingUtil
 import com.example.scrolltrack.util.PermissionUtils.isAccessibilityServiceEnabledFlow
 import com.example.scrolltrack.util.PermissionUtils.isNotificationListenerEnabledFlow
 import com.example.scrolltrack.util.PermissionUtils.isUsageStatsPermissionGrantedFlow
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import timber.log.Timber
+import javax.inject.Inject
 
 sealed class UiState {
     object InitialLoading : UiState()
@@ -49,23 +42,58 @@ private data class PermissionState(
     val notification: Boolean
 )
 
+private data class TodayData(
+    val greeting: String,
+    val summary: DailyDeviceSummary?,
+    val yesterdaySummary: DailyDeviceSummary?,
+    val topApp: AppUsageUiItem?,
+    val isRefreshing: Boolean,
+    val snackbarMessage: String?,
+    val selectedTheme: AppTheme,
+    val isDarkMode: Boolean,
+    val dailyAppUsage: List<DailyAppUsageRecord>,
+    val scrollData: List<AppScrollData>
+)
+
+data class TodaySummaryUiState(
+    val greeting: String = "Welcome",
+    val totalUsageTimeFormatted: String = "...",
+    val totalUsageTimeMillis: Long = 0L,
+    val todaysAppUsageUiList: List<AppUsageUiItem> = emptyList(),
+    val topWeeklyApp: AppUsageUiItem? = null,
+    val totalScrollToday: Long = 0L,
+    val scrollDistanceTodayFormatted: Pair<String, String> = "0" to "m",
+    val totalUnlocksToday: Int = 0,
+    val totalNotificationsToday: Int = 0,
+    val screenTimeComparison: StatComparison? = null,
+    val unlocksComparison: StatComparison? = null,
+    val notificationsComparison: StatComparison? = null,
+    val scrollComparison: StatComparison? = null,
+    val isRefreshing: Boolean = false,
+    val snackbarMessage: String? = null,
+    val selectedTheme: AppTheme = AppTheme.CalmLavender,
+    val isDarkMode: Boolean = true
+)
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class TodaySummaryViewModel @Inject constructor(
-    private val repository: ScrollDataRepository,
+    @ApplicationContext private val context: Context,
+    private val scrollDataRepository: ScrollDataRepository,
     private val settingsRepository: SettingsRepository,
-    private val mapper: AppUiModelMapper,
-    private val conversionUtil: ConversionUtil,
+    private val appUiModelMapper: AppUiModelMapper,
     private val greetingUtil: GreetingUtil,
-    @ApplicationContext private val context: Context
+    private val dateUtil: DateUtil,
+    private val clock: Clock,
+    private val conversionUtil: ConversionUtil
 ) : ViewModel() {
-
-    private var lastPermissionState: PermissionState? = null
-
-    private val _selectedDate = MutableStateFlow(DateUtil.getCurrentLocalDateString())
 
     private val _uiState = MutableStateFlow<UiState>(UiState.InitialLoading)
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    private val _selectedDate = MutableStateFlow(dateUtil.getCurrentLocalDateString())
+
+    private var lastPermissionState: PermissionState? = null
 
     val isRefreshing: StateFlow<Boolean> = _uiState.map { it is UiState.Refreshing }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
@@ -91,12 +119,12 @@ class TodaySummaryViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Lazily, "Welcome")
 
     private val summaryData: StateFlow<DailyDeviceSummary?> = _selectedDate.flatMapLatest { date ->
-        repository.getDeviceSummaryForDate(date)
+        scrollDataRepository.getDeviceSummaryForDate(date)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
     private val yesterdaySummaryData: StateFlow<DailyDeviceSummary?> = _selectedDate.flatMapLatest { date ->
-        val yesterday = DateUtil.getPastDateString(1, DateUtil.parseLocalDate(date))
-        repository.getDeviceSummaryForDate(yesterday)
+        val yesterday = dateUtil.getPastDateString(1, dateUtil.parseLocalDate(date))
+        scrollDataRepository.getDeviceSummaryForDate(yesterday)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
     val screenTimeComparison: StateFlow<StatComparison?> = combine(summaryData, yesterdaySummaryData) { today, yesterday ->
@@ -111,136 +139,126 @@ class TodaySummaryViewModel @Inject constructor(
         calculateComparison(today?.totalNotificationCount?.toLong(), yesterday?.totalNotificationCount?.toLong())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
-    val yesterdayAggregatedScrollData: StateFlow<List<AppScrollUiItem>> =
-        _selectedDate.flatMapLatest { date ->
-            val yesterday = DateUtil.getPastDateString(1, DateUtil.parseLocalDate(date))
-            repository.getScrollDataForDate(yesterday)
-                .map { data -> data.map { mapper.mapToAppScrollUiItem(it) } }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
-
     val totalPhoneUsageTodayFormatted: StateFlow<String> =
-        summaryData.map { DateUtil.formatDuration(it?.totalUsageTimeMillis ?: 0L) }
+        summaryData.map { dateUtil.formatDuration(it?.totalUsageTimeMillis ?: 0L) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "...")
 
-    val totalPhoneUsageTodayMillis: StateFlow<Long> =
-        summaryData.map { it?.totalUsageTimeMillis ?: 0L }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
-
-    val todaysAppUsageUiList: StateFlow<List<AppUsageUiItem>> =
-        _selectedDate.flatMapLatest { date ->
-            repository.getAppUsageForDate(date)
-                .map { records -> mapper.mapToAppUsageUiItems(records) }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
-
-    val aggregatedScrollDataToday: StateFlow<List<AppScrollUiItem>> =
-        _selectedDate.flatMapLatest { date ->
-            repository.getScrollDataForDate(date)
-                .map { data -> data.map { mapper.mapToAppScrollUiItem(it) } }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
-
-    val totalScrollDistanceToday: StateFlow<Long> =
-        aggregatedScrollDataToday.map { list ->
-            list.sumOf { it.totalScroll }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
-
-    val totalScrollDistanceYesterday: StateFlow<Long> =
-        yesterdayAggregatedScrollData.map { list ->
-            list.sumOf { it.totalScroll }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
-
-    val scrollComparison: StateFlow<StatComparison?> = combine(totalScrollDistanceToday, totalScrollDistanceYesterday) { today, yesterday ->
-        calculateComparison(today, yesterday)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
-
-    val totalScrollToday: StateFlow<Long> =
-        aggregatedScrollDataToday.map { list -> list.sumOf { it.totalScroll } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0L)
-
-    val scrollDistanceTodayFormatted: StateFlow<Pair<String, String>> =
-        aggregatedScrollDataToday.map { list ->
-            val totalScrollX = list.sumOf { it.totalScrollX }
-            val totalScrollY = list.sumOf { it.totalScrollY }
-            conversionUtil.formatScrollDistance(totalScrollX, totalScrollY)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "0" to "m")
-
-    private val unlockSessionsToday: StateFlow<List<com.example.scrolltrack.db.UnlockSessionRecord>> = _selectedDate.flatMapLatest { date ->
-        repository.getUnlockSessionsForDateRange(date, date)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
-
-    val totalUnlocksToday: StateFlow<Int> = unlockSessionsToday.map { it.size }
+    val totalUnlocksToday: StateFlow<Int> = summaryData.map { it?.totalUnlockCount ?: 0 }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
-
-    val intentionalUnlocksToday: StateFlow<Int> = unlockSessionsToday.map { sessions ->
-        sessions.count { it.sessionType == "Intentional" || it.sessionEndReason == "INTERRUPTED" || it.sessionType == null }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
-
-    val glanceUnlocksToday: StateFlow<Int> = unlockSessionsToday.map { sessions ->
-        sessions.count { it.sessionType == "Glance" }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
 
     val totalNotificationsToday: StateFlow<Int> = summaryData.map { it?.totalNotificationCount ?: 0 }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
 
     val firstUnlockTime: StateFlow<String> = summaryData.map {
-        it?.firstUnlockTimestampUtc?.let { ts -> DateUtil.formatUtcTimestampToTimeString(ts) } ?: "N/A"
+        it?.firstUnlockTimestampUtc?.let { ts -> dateUtil.formatUtcTimestampToTimeString(ts) } ?: "N/A"
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "N/A")
 
     val lastUnlockTime: StateFlow<String> = summaryData.map {
-        it?.lastUnlockTimestampUtc?.let { ts -> DateUtil.formatUtcTimestampToTimeString(ts) } ?: "N/A"
+        it?.lastUnlockTimestampUtc?.let { ts -> dateUtil.formatUtcTimestampToTimeString(ts) } ?: "N/A"
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "N/A")
 
-    val topWeeklyApp: StateFlow<AppUsageUiItem?> = flow {
-        val today = DateUtil.getCurrentLocalDateString()
-        val sevenDaysAgo = DateUtil.getPastDateString(6)
-        val weeklyUsageRecords = repository.getUsageRecordsForDateRange(sevenDaysAgo, today).first()
-
-        if (weeklyUsageRecords.isEmpty()) {
-            emit(null)
-            return@flow
-        }
-
-        val topAppRecord = weeklyUsageRecords
-            .groupBy { it.packageName }
-            .mapValues { (_, records) -> records.sumOf { it.usageTimeMillis } }
-            .maxByOrNull { it.value }
-            ?.let { (packageName, totalUsage) ->
-                val recordsForPackage = weeklyUsageRecords.filter { it.packageName == packageName }
-                // Create a temporary record with the aggregated weekly data to pass to the mapper
-                DailyAppUsageRecord(
-                    packageName = packageName,
-                    dateString = today,
-                    usageTimeMillis = totalUsage,
-                    activeTimeMillis = recordsForPackage.sumOf { it.activeTimeMillis },
-                    appOpenCount = recordsForPackage.sumOf { it.appOpenCount },
-                    notificationCount = recordsForPackage.sumOf { it.notificationCount }
-                )
+    val topWeeklyApp: StateFlow<AppUsageUiItem?> =
+        scrollDataRepository.getUsageRecordsForDateRange(
+            dateUtil.getPastDateString(6),
+            dateUtil.getCurrentLocalDateString()
+        ).map { weeklyUsageRecords ->
+            if (weeklyUsageRecords.isEmpty()) {
+                null
+            } else {
+                val topAppRecord = weeklyUsageRecords
+                    .groupBy { it.packageName }
+                    .mapValues { (_, records) -> records.sumOf { it.usageTimeMillis } }
+                    .maxByOrNull { it.value }
+                    ?.let { (packageName, totalUsage) ->
+                        val recordsForPackage =
+                            weeklyUsageRecords.filter { it.packageName == packageName }
+                        DailyAppUsageRecord(
+                            packageName = packageName,
+                            dateString = dateUtil.getCurrentLocalDateString(),
+                            usageTimeMillis = totalUsage,
+                            activeTimeMillis = recordsForPackage.sumOf { it.activeTimeMillis },
+                            appOpenCount = recordsForPackage.sumOf { it.appOpenCount },
+                            notificationCount = recordsForPackage.sumOf { it.notificationCount }
+                        )
+                    }
+                topAppRecord?.let { appUiModelMapper.mapToAppUsageUiItem(it) }
             }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
-        if (topAppRecord != null) {
-            emit(mapper.mapToAppUsageUiItem(topAppRecord))
-        } else {
-            emit(null)
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val todayDataFlow: Flow<TodayData> = combine(
+        listOf(
+            greeting,
+            summaryData,
+            yesterdaySummaryData,
+            topWeeklyApp,
+            isRefreshing,
+            snackbarMessage,
+            selectedThemePalette,
+            isDarkMode,
+            _selectedDate.flatMapLatest { scrollDataRepository.getAppUsageForDate(it) },
+            _selectedDate.flatMapLatest { scrollDataRepository.getScrollDataForDate(it) }
+        )
+    ) { args: Array<*> ->
+        TodayData(
+            greeting = args[0] as String,
+            summary = args[1] as DailyDeviceSummary?,
+            yesterdaySummary = args[2] as DailyDeviceSummary?,
+            topApp = args[3] as AppUsageUiItem?,
+            isRefreshing = args[4] as Boolean,
+            snackbarMessage = args[5] as String?,
+            selectedTheme = args[6] as AppTheme,
+            isDarkMode = args[7] as Boolean,
+            dailyAppUsage = args[8] as List<DailyAppUsageRecord>,
+            scrollData = args[9] as List<AppScrollData>
+        )
+    }
+
+    val todaySummaryUiState: StateFlow<TodaySummaryUiState> = todayDataFlow.map { data ->
+        val totalScroll = data.scrollData.sumOf { it.totalScroll }
+        val yesterdayTotalScroll = 0L // Simplified for now
+        TodaySummaryUiState(
+            greeting = data.greeting,
+            totalUsageTimeFormatted = dateUtil.formatDuration(data.summary?.totalUsageTimeMillis ?: 0L),
+            totalUsageTimeMillis = data.summary?.totalUsageTimeMillis ?: 0L,
+            todaysAppUsageUiList = data.dailyAppUsage.map { appUiModelMapper.mapToAppUsageUiItem(it) },
+            topWeeklyApp = data.topApp,
+            totalScrollToday = totalScroll,
+            scrollDistanceTodayFormatted = conversionUtil.formatScrollDistanceSync(totalScroll),
+            totalUnlocksToday = data.summary?.totalUnlockCount ?: 0,
+            totalNotificationsToday = data.summary?.totalNotificationCount ?: 0,
+            screenTimeComparison = calculateComparison(data.summary?.totalUsageTimeMillis, data.yesterdaySummary?.totalUsageTimeMillis),
+            unlocksComparison = calculateComparison(data.summary?.totalUnlockCount?.toLong(), data.yesterdaySummary?.totalUnlockCount?.toLong()),
+            notificationsComparison = calculateComparison(data.summary?.totalNotificationCount?.toLong(), data.yesterdaySummary?.totalNotificationCount?.toLong()),
+            scrollComparison = calculateComparison(totalScroll, yesterdayTotalScroll),
+            isRefreshing = data.isRefreshing,
+            snackbarMessage = data.snackbarMessage,
+            selectedTheme = data.selectedTheme,
+            isDarkMode = data.isDarkMode
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000L),
+        initialValue = TodaySummaryUiState(isRefreshing = true)
+    )
 
     init {
-        // Trigger the first refresh immediately on creation. This is non-blocking.
         Timber.d("ViewModel initialized, triggering initial refresh.")
         performRefresh(isInitialLoad = true)
     }
 
     private fun performRefresh(isInitialLoad: Boolean = false, showSnackbarOnCompletion: Boolean = false) {
-        if (uiState.value is UiState.Refreshing || (isInitialLoad && uiState.value !is UiState.InitialLoading)) {
+        if (_uiState.value is UiState.Refreshing || (isInitialLoad && _uiState.value !is UiState.InitialLoading)) {
             Timber.d("Refresh already in progress or initial load already passed. Skipping.")
             return
         }
 
         _uiState.value = if (isInitialLoad) UiState.InitialLoading else UiState.Refreshing
-        _snackbarMessage.value = null // Clear previous snackbar messages
+        _snackbarMessage.value = null
 
         viewModelScope.launch {
             try {
-                repository.refreshDataOnAppOpen()
+                scrollDataRepository.refreshDataOnAppOpen()
                 if (showSnackbarOnCompletion) {
                     _snackbarMessage.value = "Data refreshed successfully"
                 }
@@ -273,7 +291,7 @@ class TodaySummaryViewModel @Inject constructor(
         viewModelScope.launch {
             if (isUsagePermissionGranted.value) {
                 Timber.i("Starting historical usage data backfill for $numberOfDays days.")
-                val success = repository.backfillHistoricalAppUsageData(numberOfDays)
+                val success = scrollDataRepository.backfillHistoricalAppUsageData(numberOfDays)
                 onComplete(success)
             } else {
                 Timber.w("Cannot perform backfill, usage stats permission not granted.")
@@ -295,7 +313,7 @@ class TodaySummaryViewModel @Inject constructor(
             val notificationJustGranted = !lastState.notification && currentState.notification
 
             if (accessibilityJustGranted || usageJustGranted || notificationJustGranted) {
-                Log.i("TodaySummaryViewModel", "A permission was granted, triggering data refresh.")
+                Timber.i("A permission was granted, triggering data refresh.")
                 performRefresh()
             }
         }

@@ -32,7 +32,7 @@ class ConversionUtilTest {
         displayMetrics.ydpi = standardDpi
 
         settingsRepository = mockk()
-        conversionUtil = ConversionUtil(settingsRepository, context)
+        conversionUtil = ConversionUtil(context, settingsRepository)
     }
 
     @Test

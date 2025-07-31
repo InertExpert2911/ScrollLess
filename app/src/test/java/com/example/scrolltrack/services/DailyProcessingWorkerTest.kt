@@ -53,4 +53,17 @@ class DailyProcessingWorkerTest {
 
         assertThat(result).isEqualTo(ListenableWorker.Result.retry())
     }
+    
+    @Test
+    fun `test worker processes today with null foreground app`() = runBlocking {
+        val today = DateUtil.getCurrentLocalDateString()
+        val yesterday = DateUtil.getPastDateString(1)
+        coEvery { scrollDataRepository.getCurrentForegroundApp() } returns null
+
+        val result = worker.doWork()
+
+        coVerify { scrollDataRepository.processAndSummarizeDate(yesterday) }
+        coVerify { scrollDataRepository.processAndSummarizeDate(today, null) }
+        assertThat(result).isEqualTo(ListenableWorker.Result.success())
+    }
 }

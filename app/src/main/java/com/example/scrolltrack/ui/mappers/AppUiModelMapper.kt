@@ -5,17 +5,20 @@ import android.util.Log
 import com.example.scrolltrack.data.AppMetadataRepository
 import com.example.scrolltrack.data.AppScrollData
 import com.example.scrolltrack.db.DailyAppUsageRecord
+import com.example.scrolltrack.ui.model.AppOpenUiItem
 import com.example.scrolltrack.ui.model.AppScrollUiItem
 import com.example.scrolltrack.ui.model.AppUsageUiItem
-import com.example.scrolltrack.ui.model.AppOpenUiItem
+import com.example.scrolltrack.util.ConversionUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class AppUiModelMapper @Inject constructor(
+    private val conversionUtil: ConversionUtil,
     private val appMetadataRepository: AppMetadataRepository
 ) {
 
@@ -92,7 +95,8 @@ class AppUiModelMapper @Inject constructor(
                     dataType = appData.dataType
                 )
             } else {
-                Log.w("AppUiModelMapper", "No metadata found for scroll item ${appData.packageName}, creating fallback UI item.")
+                Timber.tag("AppUiModelMapper")
+                    .w("No metadata found for scroll item ${appData.packageName}, creating fallback UI item.")
                 val fallbackAppName = appData.packageName.substringAfterLast('.', appData.packageName)
                 AppScrollUiItem(uniqueId, fallbackAppName, null, appData.totalScroll, 0, 0, appData.packageName, appData.dataType)
             }

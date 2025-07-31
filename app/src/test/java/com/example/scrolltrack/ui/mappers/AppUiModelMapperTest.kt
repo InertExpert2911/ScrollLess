@@ -22,6 +22,7 @@ class AppUiModelMapperTest {
 
     private lateinit var mapper: AppUiModelMapper
     private val appMetadataRepository: AppMetadataRepository = mockk(relaxed = true)
+    private val conversionUtil: com.example.scrolltrack.util.ConversionUtil = mockk(relaxed = true)
 
     @Before
     fun setUp() {
@@ -30,7 +31,7 @@ class AppUiModelMapperTest {
             AppMetadata(packageName, packageName.substringAfterLast('.').capitalize() + " App", isUserVisible = true, isSystemApp = false, userHidesOverride = null, installTimestamp = 0L, lastUpdateTimestamp = 0L, versionName = "1.0", versionCode = 1L)
         }
         coEvery { appMetadataRepository.getIconFile(any()) } returns null
-        mapper = AppUiModelMapper(appMetadataRepository)
+        mapper = AppUiModelMapper(conversionUtil, appMetadataRepository)
     }
 
     @Test

@@ -56,7 +56,7 @@ class NotificationsViewModelTest {
     }
 
     @Test
-    fun `period changes update title and data correctly`() = runTest {
+    fun `period changes update title and data correctly`() = runTest(testDispatcher) {
         val date = LocalDate.of(2023, 10, 26) // A Thursday in Week 43, October has 31 days
         notificationCountsFlow.value = listOf(NotificationCountPerApp("com.app", 217)) // 217 total
 
@@ -80,7 +80,7 @@ class NotificationsViewModelTest {
         }
     }
    @Test
-   fun `filters out non-visible and zero-count apps`() = runTest {
+   fun `filters out non-visible and zero-count apps`() = runTest(testDispatcher) {
        val counts = listOf(
            NotificationCountPerApp("com.visible", 10),
            NotificationCountPerApp("com.hidden", 5),
@@ -99,7 +99,7 @@ class NotificationsViewModelTest {
    }
 
    @Test
-   fun `getIcon returns drawable`() = runTest {
+   fun `getIcon returns drawable`() = runTest(testDispatcher) {
        val file = mockk<java.io.File>(relaxed = true)
        every { file.absolutePath } returns ""
        coEvery { appMetadataRepository.getIconFile("com.app") } returns file
