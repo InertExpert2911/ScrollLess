@@ -12,36 +12,29 @@ import timber.log.Timber
 
 @HiltWorker
 class DailyProcessingWorker @AssistedInject constructor(
-    @Assisted context: Context,
+    @Assisted appContext: Context,
     @Assisted workerParams: WorkerParameters,
     private val scrollDataRepository: ScrollDataRepository
-) : CoroutineWorker(context, workerParams) {
+) : CoroutineWorker(appContext, workerParams) {
 
     companion object {
-        const val WORK_NAME = "DailyProcessingWorker"
+        const val UNIQUE_WORK_NAME = "DailyProcessingWorker"
     }
 
     override suspend fun doWork(): Result {
-        Timber.i("Starting daily processing worker.")
         return try {
-            // Process today and yesterday to catch any data from the previous day
-            // that might have been logged after midnight.
+            Timber.d("DailyProcessingWorker started.")
+            // Process today and yesterday to handle events that span across midnight.
             val today = DateUtil.getCurrentLocalDateString()
-            val yesterday = DateUtil.getPastDateString(1)
+            val yesterday = DateUtil.getYesterdayDateString()
 
-            Timber.d("Processing data for yesterday: $yesterday")
             scrollDataRepository.processAndSummarizeDate(yesterday)
-
-            Timber.d("Processing data for today: $today")
-            val currentForegroundApp = scrollDataRepository.getCurrentForegroundApp()
-            Timber.d("Current foreground app detected: $currentForegroundApp")
-            scrollDataRepository.processAndSummarizeDate(today, currentForegroundApp)
-
-            Timber.i("Daily processing worker finished successfully.")
+            scrollDataRepository.processAndSummarizeDate(today)
+            Timber.d("DailyProcessingWorker finished successfully.")
             Result.success()
         } catch (e: Exception) {
-            Timber.e(e, "Daily processing worker failed.")
-            Result.retry()
+            Timber.e(e, "DailyProcessingWorker failed.")
+            Result.failure()
         }
     }
-} 
+}

@@ -130,7 +130,10 @@ class ScrollTrackService : AccessibilityService() {
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
                 handleWindowStateChange(event)
-                limitMonitor.startMonitoring(serviceScope, packageName)
+                val newPackageName = event.packageName?.toString()
+                if (!newPackageName.isNullOrEmpty()) {
+                    limitMonitor.onForegroundAppChanged(newPackageName)
+                }
             }
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> handleMeasuredScroll(event, packageName)
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> handleInferredScroll(packageName)
@@ -308,7 +311,7 @@ class ScrollTrackService : AccessibilityService() {
         flushAllPendingScrolls()
         logServiceLifecycleEvent(RawAppEvent.EVENT_TYPE_SERVICE_STOPPED)
         unregisterReceiver(unlockReceiver)
-        limitMonitor.stopMonitoring()
+        currentForegroundApp?.let { limitMonitor.onAppStopped(it) }
         dpiCollectionJob?.cancel()
         serviceJob.cancel()
         Timber.tag(TAG).d("ScrollTrackService destroyed.")

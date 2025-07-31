@@ -37,7 +37,8 @@
         <activity
             android:name=".ui.limit.BlockingActivity"
             android:exported="false"
-            android:theme="@style/Theme.ScrollTrack" />
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.ScrollTrack.Transparent" />
         <service
             android:name=".ScrollTrackService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"

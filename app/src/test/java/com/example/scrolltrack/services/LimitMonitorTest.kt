@@ -1,137 +1,129 @@
 package com.example.scrolltrack.services
 
+import android.content.Context
+import android.content.Intent
 import com.example.scrolltrack.data.LimitsRepository
-import com.example.scrolltrack.db.*
-import com.example.scrolltrack.util.DateUtil
-import com.google.common.truth.Truth.assertThat
-import io.mockk.*
+import com.example.scrolltrack.db.DailyAppUsageDao
+import com.example.scrolltrack.db.DailyAppUsageRecord
+import com.example.scrolltrack.db.GroupWithApps
+import com.example.scrolltrack.db.LimitGroup
+import com.example.scrolltrack.db.LimitedApp
+import com.example.scrolltrack.ui.limit.BlockingActivity
+import com.example.scrolltrack.util.Clock
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.impl.annotations.MockK
+import io.mockk.junit4.MockKRule
+import io.mockk.slot
+import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
-import org.junit.After
-import org.junit.Before
+import org.junit.Assert.assertEquals
+import org.junit.Rule
 import org.junit.Test
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 
 @ExperimentalCoroutinesApi
 class LimitMonitorTest {
 
+    @get:Rule
+    val mockkRule = MockKRule(this)
+
+    @MockK
     private lateinit var limitsRepository: LimitsRepository
+
+    @MockK
     private lateinit var dailyAppUsageDao: DailyAppUsageDao
-    private lateinit var limitMonitor: LimitMonitor
 
-    @Before
-    fun setUp() {
-        limitsRepository = mockk(relaxed = true)
-        dailyAppUsageDao = mockk(relaxed = true)
-        limitMonitor = LimitMonitor(limitsRepository, dailyAppUsageDao)
-        mockkObject(DateUtil)
-    }
+    @MockK
+    private lateinit var context: Context
 
-    @After
-    fun tearDown() {
-        limitMonitor.stopMonitoring()
-        unmockkObject(DateUtil)
+    @MockK
+    private lateinit var clock: Clock
+
+    private val testPackage = "com.test.app"
+    private val todayString = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+    private val testGroup = LimitGroup(id = 1, name = "Test Group", time_limit_minutes = 10, is_user_visible = true, is_enabled = true)
+    private val testLimitedApp = LimitedApp(package_name = testPackage, group_id = 1)
+    private val testGroupWithApps = GroupWithApps(group = testGroup, apps = listOf(testLimitedApp))
+
+    @Test
+    fun `onForegroundAppChanged does nothing for app with no limit`() = runTest {
+        val limitMonitor = LimitMonitor(limitsRepository, dailyAppUsageDao, context, this, clock)
+        coEvery { limitsRepository.getLimitedApp(testPackage) } returns flowOf(null)
+
+        limitMonitor.onForegroundAppChanged(testPackage)
+        advanceTimeBy(10000)
+
+        coVerify(exactly = 0) { dailyAppUsageDao.getSpecificAppUsageForDate(any(), any()) }
+        verify(exactly = 0) { context.startActivity(any()) }
     }
 
     @Test
-    fun `startMonitoring stops when app is not limited`() = runTest {
-        // Arrange
-        val packageName = "com.unlimited.app"
-        coEvery { limitsRepository.getLimitedApp(packageName) } returns flowOf(null)
+    fun `monitor does not fire intent when usage is under limit`() = runTest {
+        val limitMonitor = LimitMonitor(limitsRepository, dailyAppUsageDao, context, this, clock)
+        // Arrange: Usage is 9 minutes, limit is 10 minutes
+        val nineMinutesMs = TimeUnit.MINUTES.toMillis(9)
+        coEvery { limitsRepository.getLimitedApp(testPackage) } returns flowOf(testLimitedApp)
+        coEvery { limitsRepository.getGroupWithApps(1) } returns flowOf(testGroupWithApps)
+        coEvery { clock.currentTimeMillis() } returns 0L
+        coEvery { dailyAppUsageDao.getSpecificAppUsageForDate(testPackage, todayString) } returns DailyAppUsageRecord(packageName = testPackage, dateString = todayString, usageTimeMillis = nineMinutesMs)
 
         // Act
-        val job = launch { limitMonitor.startMonitoring(this, packageName) }
-        advanceUntilIdle()
+        limitMonitor.onForegroundAppChanged(testPackage)
+        advanceTimeBy(10000) // Advance time, but not enough to exceed limit
 
         // Assert
-        coVerify { limitsRepository.getLimitedApp(packageName) }
-        coVerify(exactly = 0) { dailyAppUsageDao.getUsageForAppsOnDate(any(), any()) }
-        job.cancel()
-    }
+        verify(exactly = 0) { context.startActivity(any()) }
 
-//    @Test
-//    fun `startMonitoring fetches usage and does not block when limit is not reached`() = runTest {
-//        // Arrange
-//        val packageName = "com.limited.app"
-//        val groupId = 1L
-//        val limitedApp = LimitedApp(package_name = packageName, group_id = groupId)
-//        val group = LimitGroup(id = groupId, name = "Social Media", time_limit_minutes = 60, is_user_visible = true)
-//        val groupWithApps = GroupWithApps(group, listOf(limitedApp))
-//        val usageRecord = DailyAppUsageRecord(dateString = "2023-10-27", packageName = packageName, usageTimeMillis = 1000, appOpenCount = 1)
-//        val today = "2023-10-27"
-//
-//        every { DateUtil.getCurrentLocalDateString() } returns today
-//        coEvery { limitsRepository.getLimitedApp(packageName) } returns flowOf(limitedApp)
-//        coEvery { limitsRepository.getGroupWithApps(groupId) } returns flowOf(groupWithApps)
-//        coEvery { dailyAppUsageDao.getUsageForAppsOnDate(listOf(packageName), today) } returns flowOf(listOf(usageRecord))
-//
-//        // Act
-//        val job = launch { limitMonitor.startMonitoring(this, packageName) }
-//        advanceUntilIdle()
-//
-//        // Assert
-//        coVerify { dailyAppUsageDao.getUsageForAppsOnDate(listOf(packageName), today) }
-//
-//        job.cancel()
-//    }
-
-    @Test
-    fun `startMonitoring triggers blocking when limit is breached`() = runTest {
-        // Arrange
-        val packageName = "com.limited.app"
-        val groupId = 1L
-        val limitMinutes = 1
-        val limitMillis = TimeUnit.MINUTES.toMillis(limitMinutes.toLong())
-        val limitedApp = LimitedApp(package_name = packageName, group_id = groupId)
-        val group = LimitGroup(id = groupId, name = "Games", time_limit_minutes = limitMinutes, is_user_visible = true)
-        val groupWithApps = GroupWithApps(group, listOf(limitedApp))
-        // Usage is exactly at the limit
-        val usageRecord = DailyAppUsageRecord(dateString = "2023-10-27", packageName = packageName, usageTimeMillis = limitMillis, appOpenCount = 1)
-        val today = "2023-10-27"
-
-        every { DateUtil.getCurrentLocalDateString() } returns today
-        coEvery { limitsRepository.getLimitedApp(packageName) } returns flowOf(limitedApp)
-        coEvery { limitsRepository.getGroupWithApps(groupId) } returns flowOf(groupWithApps)
-        coEvery { dailyAppUsageDao.getUsageForAppsOnDate(listOf(packageName), today) } returns flowOf(listOf(usageRecord))
-
-        // Act
-        val job = launch { limitMonitor.startMonitoring(this, packageName) }
-        advanceUntilIdle() // Run the first iteration where the breach happens.
-
-        // Assert
-        // 1. Verify the group was added to the blocked set, the primary side-effect.
-        assertThat(limitMonitor.blockedGroups).contains(groupId)
-
-        // 2. Verify the monitor stopped and did not continue checking usage.
-        advanceTimeBy(120_000) // Advance time well past the 60-second delay.
-        advanceUntilIdle()
-
-        // The DAO should have only been called once, in the initial iteration before it stopped.
-        coVerify(exactly = 1) { dailyAppUsageDao.getUsageForAppsOnDate(any(), any()) }
-        job.cancel()
+        // Cleanup
+        limitMonitor.onAppStopped(testPackage)
     }
 
     @Test
-    fun `startMonitoring does not trigger blocking if group is already blocked`() = runTest {
-        // Arrange
-        val packageName = "com.limited.app"
-        val groupId = 1L
-        val limitedApp = LimitedApp(package_name = packageName, group_id = groupId)
-        coEvery { limitsRepository.getLimitedApp(packageName) } returns flowOf(limitedApp)
-
-        // Manually block the group
-        limitMonitor.blockedGroups.add(groupId)
+    fun `monitor fires intent when usage exceeds limit`() = runTest {
+        val limitMonitor = LimitMonitor(limitsRepository, dailyAppUsageDao, context, this, clock)
+        // Arrange: Usage is 11 minutes, limit is 10 minutes
+        val elevenMinutesMs = TimeUnit.MINUTES.toMillis(11)
+        val intentSlot = slot<Intent>()
+        coEvery { limitsRepository.getLimitedApp(testPackage) } returns flowOf(testLimitedApp)
+        coEvery { limitsRepository.getGroupWithApps(1) } returns flowOf(testGroupWithApps)
+        coEvery { clock.currentTimeMillis() } returns 0L
+        coEvery { dailyAppUsageDao.getSpecificAppUsageForDate(testPackage, todayString) } returns DailyAppUsageRecord(packageName = testPackage, dateString = todayString, usageTimeMillis = elevenMinutesMs)
+        coEvery { context.startActivity(capture(intentSlot)) } returns Unit
 
         // Act
-        val job = launch { limitMonitor.startMonitoring(this, packageName) }
-        advanceUntilIdle()
+        limitMonitor.onForegroundAppChanged(testPackage)
+        advanceTimeBy(6000) // Let one check cycle run
 
         // Assert
-        coVerify(exactly = 0) { limitsRepository.getGroupWithApps(any()) }
-        job.cancel()
+        verify(exactly = 1) { context.startActivity(any()) }
+        assertEquals(BlockingActivity::class.java.name, intentSlot.captured.component?.className)
+        assertEquals(testPackage, intentSlot.captured.getStringExtra(BlockingActivity.EXTRA_PACKAGE_NAME))
+        assertEquals(1L, intentSlot.captured.getLongExtra(BlockingActivity.EXTRA_GROUP_ID, -1L))
+    }
+
+    @Test
+    fun `monitor stops when app is stopped`() = runTest {
+        val limitMonitor = LimitMonitor(limitsRepository, dailyAppUsageDao, context, this, clock)
+        // Arrange
+        coEvery { limitsRepository.getLimitedApp(testPackage) } returns flowOf(testLimitedApp)
+        coEvery { limitsRepository.getGroupWithApps(1) } returns flowOf(testGroupWithApps)
+        coEvery { clock.currentTimeMillis() } returnsMany listOf(0L, 1000L)
+        coEvery { dailyAppUsageDao.getSpecificAppUsageForDate(any(), any()) } returns null
+
+        // Act
+        limitMonitor.onForegroundAppChanged(testPackage)
+        advanceTimeBy(1000)
+        limitMonitor.onAppStopped(testPackage)
+        advanceTimeBy(10000) // Advance time to see if checks continue
+
+        // Assert: Verify checkUsage was called but then stopped.
+        // The check happens once on start, but not again after stop.
+        coVerify(exactly = 1) { dailyAppUsageDao.getSpecificAppUsageForDate(any(), any()) }
     }
 }

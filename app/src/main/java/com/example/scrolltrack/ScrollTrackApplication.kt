@@ -14,6 +14,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.scrolltrack.data.AppMetadataRepository
+import com.example.scrolltrack.services.DailyProcessingWorker
 import com.example.scrolltrack.util.UsageStatsWorker
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -23,7 +24,6 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
-import com.example.scrolltrack.services.DailyProcessingWorker
 import com.example.scrolltrack.BuildConfig
 
 @HiltAndroidApp
@@ -56,23 +56,33 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
         }
         createNotificationChannel()
         runInitialAppMetadataSync()
+        createNotificationChannel()
+        runInitialAppMetadataSync()
         setupRecurringWork()
     }
 
     private fun setupRecurringWork() {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
+        val workManager = WorkManager.getInstance(applicationContext)
+
+        // Schedule the worker to gather raw usage stats
+        val usageStatsRequest = PeriodicWorkRequestBuilder<UsageStatsWorker>(15, TimeUnit.MINUTES)
             .build()
-
-        val repeatingRequest = PeriodicWorkRequestBuilder<DailyProcessingWorker>(
-            15, TimeUnit.MINUTES // The minimum interval
-        ).setConstraints(constraints).build()
-
-        WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
-            DailyProcessingWorker.WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP, // Don't replace if one is already scheduled
-            repeatingRequest
+        workManager.enqueueUniquePeriodicWork(
+            UsageStatsWorker.WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            usageStatsRequest
         )
+        Timber.d("UsageStatsWorker scheduled.")
+
+        // Schedule the worker to process raw stats into daily summaries
+        val dailyProcessingRequest = PeriodicWorkRequestBuilder<DailyProcessingWorker>(15, TimeUnit.MINUTES)
+            .build()
+        workManager.enqueueUniquePeriodicWork(
+            DailyProcessingWorker.UNIQUE_WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            dailyProcessingRequest
+        )
+        Timber.d("Enqueued periodic DailyProcessingWorker.")
     }
 
     private fun runInitialAppMetadataSync() {
@@ -112,17 +122,4 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
         }
     }
 
-    private fun setupUsageStatsWorker() {
-        // This worker runs frequently to pull in the latest system events.
-        // It does not need network and should run even if the device is not idle or charging.
-        val repeatingRequest = PeriodicWorkRequestBuilder<UsageStatsWorker>(10, TimeUnit.MINUTES)
-            .build()
-
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            UsageStatsWorker.WORK_NAME,
-            ExistingPeriodicWorkPolicy.KEEP,
-            repeatingRequest
-        )
-        Timber.d("UsageStatsWorker scheduled.")
-    }
 }
