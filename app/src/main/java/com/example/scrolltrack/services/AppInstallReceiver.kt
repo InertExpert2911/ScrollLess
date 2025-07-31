@@ -3,43 +3,32 @@ package com.example.scrolltrack.services
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.workDataOf
+import com.example.scrolltrack.data.LimitsRepository
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import timber.log.Timber
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class AppInstallReceiver : BroadcastReceiver() {
 
-    private val TAG = "AppInstallReceiver"
+    @Inject
+    lateinit var limitsRepository: LimitsRepository
+    private val scope = CoroutineScope(Dispatchers.IO)
 
     override fun onReceive(context: Context, intent: Intent) {
-        val pendingResult = goAsync()
-        val packageName = intent.data?.schemeSpecificPart ?: run {
-            pendingResult.finish()
-            return
-        }
+        // We only care about the package removed event
+        if (intent.action == Intent.ACTION_PACKAGE_REMOVED) {
+            // The uninstalled app's package name is in the intent data
+            val packageName = intent.data?.schemeSpecificPart ?: return
 
-        val action = when (intent.action) {
-            Intent.ACTION_PACKAGE_REMOVED -> if (!intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) AppMetadataSyncWorker.ACTION_UNINSTALL else null
-            Intent.ACTION_PACKAGE_ADDED -> if (!intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) AppMetadataSyncWorker.ACTION_INSTALL_OR_UPDATE else null
-            Intent.ACTION_PACKAGE_REPLACED -> AppMetadataSyncWorker.ACTION_INSTALL_OR_UPDATE
-            else -> null
+            Timber.d("Package removed: $packageName. Removing from any limit groups.")
+            // Launch a coroutine to call the suspend function in the repository
+            scope.launch {
+                limitsRepository.removeAppLimit(packageName)
+            }
         }
-
-        if (action != null) {
-            Log.d(TAG, "Enqueuing metadata sync work for $packageName, action: $action")
-            val workRequest = OneTimeWorkRequestBuilder<AppMetadataSyncWorker>()
-                .setInputData(workDataOf(
-                    AppMetadataSyncWorker.KEY_PACKAGE_NAME to packageName,
-                    AppMetadataSyncWorker.KEY_ACTION to action
-                ))
-                .build()
-
-            WorkManager.getInstance(context).enqueue(workRequest)
-        }
-        
-        pendingResult.finish()
     }
-} 
+}

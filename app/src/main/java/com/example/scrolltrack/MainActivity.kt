@@ -29,6 +29,8 @@ import kotlinx.coroutines.launch
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.navigation.compose.rememberNavController
+import com.example.scrolltrack.navigation.AppNavigationBar
+import com.example.scrolltrack.navigation.AppNavigationHost
 import timber.log.Timber
 
 // Constants for theme variants to be used by the Switch logic
@@ -138,6 +140,13 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+            }
+            
+            // Handle the destination route from BlockingActivity
+            intent.getStringExtra("destination_route")?.let { route ->
+                navController.navigate(route)
+                // Clear the extra so it's not reused on configuration change
+                intent.removeExtra("destination_route")
             }
         }
     }

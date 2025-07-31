@@ -61,7 +61,7 @@ class ScrollTrackApplication : Application(), Configuration.Provider {
         setupRecurringWork()
     }
 
-    private fun setupRecurringWork() {
+    fun setupRecurringWork() {
         val workManager = WorkManager.getInstance(applicationContext)
 
         // Schedule the worker to gather raw usage stats
