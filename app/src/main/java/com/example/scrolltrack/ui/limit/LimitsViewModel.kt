@@ -67,7 +67,7 @@ class LimitsViewModel @Inject constructor(
             )
     fun loadGroupDetails(groupId: Long?) {
         viewModelScope.launch {
-            val allAppsMetadata = appMetadataRepository.getAllMetadata().first()
+            val allAppsMetadata = appMetadataRepository.getVisibleApps().first()
             val allAppUiItems = allAppsMetadata.map { metadata ->
                 AppUsageUiItem(
                     id = metadata.packageName,
@@ -162,6 +162,15 @@ class LimitsViewModel @Inject constructor(
     fun setQuickLimit(packageName: String, limitMinutes: Int) {
         viewModelScope.launch {
             limitsRepository.setAppLimit(packageName, limitMinutes)
+        }
+    }
+
+    fun deleteGroup(groupId: Long) {
+        viewModelScope.launch {
+            val groupWithApps = limitsRepository.getGroupWithApps(groupId).firstOrNull()
+            groupWithApps?.group?.let {
+                limitsRepository.deleteGroup(it)
+            }
         }
     }
 }

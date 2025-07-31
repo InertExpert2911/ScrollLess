@@ -24,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -60,7 +61,11 @@ fun LimitsScreen(
                 item { Text("No limit groups created yet.", modifier = Modifier.padding(paddingValues)) }
             } else {
                 items(groups) { group ->
-                    LimitGroupCard(group = group, onClick = { navController.navigate(ScreenRoutes.CreateEditLimitGroupRoute.createRoute(group.groupId)) })
+                    LimitGroupCard(
+                        group = group,
+                        onClick = { navController.navigate(ScreenRoutes.CreateEditLimitGroupRoute.createRoute(group.groupId)) },
+                        onDelete = { viewModel.deleteGroup(group.groupId) }
+                    )
                 }
             }
         }
@@ -70,7 +75,8 @@ fun LimitsScreen(
 @Composable
 fun LimitGroupCard(
     group: LimitGroupUiModel,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDelete: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -111,6 +117,9 @@ fun LimitGroupCard(
                             )
                         }
                     }
+                }
+                TextButton(onClick = onDelete) {
+                    Text("Delete")
                 }
             }
             Icon(

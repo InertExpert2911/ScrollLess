@@ -15,6 +15,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
@@ -133,6 +134,18 @@ class AppMetadataRepositoryImpl @Inject constructor(
 
     override fun getAllMetadata(): Flow<List<AppMetadata>> {
         return appMetadataDao.getAll()
+    }
+
+    override fun getVisibleApps(): Flow<List<AppMetadata>> {
+        return getAllMetadata().map { list ->
+            list.filter { app ->
+                when (app.userHidesOverride) {
+                    true -> false // User explicitly hid
+                    false -> true // User explicitly showed
+                    null -> app.isUserVisible // Default behavior
+                }
+            }
+        }
     }
 
     private suspend fun fetchFromPackageManagerAndCache(packageName: String): AppMetadata? {

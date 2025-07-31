@@ -14,4 +14,5 @@ interface AppMetadataRepository {
     suspend fun getNonVisiblePackageNames(): List<String>
     suspend fun updateUserHidesOverride(packageName: String, userHidesOverride: Boolean?)
     fun getAllMetadata(): Flow<List<AppMetadata>>
+    fun getVisibleApps(): Flow<List<AppMetadata>>
 }

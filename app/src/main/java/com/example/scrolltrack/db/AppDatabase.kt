@@ -26,7 +26,7 @@ import com.example.scrolltrack.db.ScrollSessionDao
         LimitGroup::class,
         LimitedApp::class
     ],
-    version = 23, // <-- INCREMENT THIS
+    version = 24,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
