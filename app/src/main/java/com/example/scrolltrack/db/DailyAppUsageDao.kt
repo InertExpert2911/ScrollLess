@@ -102,6 +102,9 @@ interface DailyAppUsageDao {
 
     @Query("SELECT * FROM daily_app_usage WHERE package_name IN (:packageNames) AND date_string = :date")
     fun getUsageForAppsOnDate(packageNames: List<String>, date: String): Flow<List<DailyAppUsageRecord>>
+
+    @Query("SELECT AVG(usage_time_millis) FROM daily_app_usage WHERE package_name = :packageName AND date_string IN (:dateStrings)")
+    fun getAverageUsageForPackageAndDates(packageName: String, dateStrings: List<String>): Flow<Double?>
 }
 
 /**

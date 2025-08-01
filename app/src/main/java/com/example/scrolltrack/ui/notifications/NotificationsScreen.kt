@@ -44,7 +44,10 @@ import kotlinx.coroutines.launch
 @Composable
 fun NotificationsScreen(
     navController: NavController,
-    viewModel: NotificationsViewModel
+    viewModel: NotificationsViewModel,
+    onSetLimit: (String, Int) -> Unit,
+    onDeleteLimit: (String) -> Unit,
+    onQuickLimitIconClicked: (String, String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showBottomSheet by remember { mutableStateOf(false) }
@@ -194,17 +197,7 @@ fun NotificationsScreen(
                                         )
                                     }
                                    IconButton(onClick = {
-                                       coroutineScope.launch {
-                                           val iconFile = viewModel.getIconFile(metadata.packageName)
-                                           selectedAppForLimit = AppUsageUiItem(
-                                               id = metadata.packageName,
-                                               packageName = metadata.packageName,
-                                               appName = metadata.appName,
-                                               icon = iconFile,
-                                               usageTimeMillis = 0
-                                           )
-                                           showBottomSheet = true
-                                       }
+                                       onQuickLimitIconClicked(metadata.packageName, metadata.appName)
                                    }) {
                                        Icon(
                                            painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_hour_glass_duotone),
@@ -220,16 +213,6 @@ fun NotificationsScreen(
             }
         }
     }
-   if (showBottomSheet) {
-       SetLimitBottomSheet(
-           onDismissRequest = { showBottomSheet = false },
-           onSetLimit = { packageName, limit ->
-               viewModel.setLimit(packageName, limit)
-               showBottomSheet = false
-           },
-           selectedApp = selectedAppForLimit
-       )
-   }
 }
 
 

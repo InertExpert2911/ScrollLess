@@ -52,7 +52,10 @@ import com.example.scrolltrack.ui.model.AppUsageUiItem
 @Composable
 fun ScrollDetailScreen(
     navController: NavController,
-    viewModel: ScrollDetailViewModel
+    viewModel: ScrollDetailViewModel,
+    onSetLimit: (String, Int) -> Unit,
+    onDeleteLimit: (String) -> Unit,
+    onQuickLimitIconClicked: (String, String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val conversionUtil = viewModel.conversionUtil
@@ -167,14 +170,7 @@ fun ScrollDetailScreen(
                         formattedUnits = formattedUnits,
                         onClick = { navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(appItem.packageName)) },
                         onSetLimitClick = {
-                           selectedAppForLimit = AppUsageUiItem(
-                               id = it.id,
-                               packageName = it.packageName,
-                               appName = it.appName,
-                               icon = it.icon,
-                               usageTimeMillis = 0
-                           )
-                           showBottomSheet = true
+                            onQuickLimitIconClicked(it.packageName, it.appName)
                         },
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
@@ -183,16 +179,6 @@ fun ScrollDetailScreen(
             }
         }
     }
-   if (showBottomSheet) {
-       SetLimitBottomSheet(
-           onDismissRequest = { showBottomSheet = false },
-           onSetLimit = { packageName, limit ->
-               viewModel.setLimit(packageName, limit)
-               showBottomSheet = false
-           },
-           selectedApp = selectedAppForLimit
-       )
-   }
 }
 
 @Composable

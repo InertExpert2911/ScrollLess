@@ -47,7 +47,11 @@ fun TodaySummaryScreenPreview() {
             notificationsComparison = null,
             scrollComparison = null,
             limitsCount = 5,
-            onNavigateToLimits = {}
+            onNavigateToLimits = {},
+            setLimitSheetState = null,
+            onQuickLimitIconClicked = { _, _ -> },
+            onDismissSetLimitSheet = {},
+            onDeleteLimit = {}
         )
     }
 }
@@ -93,7 +97,11 @@ fun TodaySummaryScreenDarkPreview() {
             notificationsComparison = null,
             scrollComparison = null,
             limitsCount = 5,
-            onNavigateToLimits = {}
+            onNavigateToLimits = {},
+            setLimitSheetState = null,
+            onQuickLimitIconClicked = { _, _ -> },
+            onDismissSetLimitSheet = {},
+            onDeleteLimit = {}
         )
     }
 }
@@ -138,7 +146,11 @@ fun TodaySummaryScreenWithPermissionsPreview() {
             notificationsComparison = null,
             scrollComparison = null,
             limitsCount = 0,
-            onNavigateToLimits = {}
+            onNavigateToLimits = {},
+            setLimitSheetState = null,
+            onQuickLimitIconClicked = { _, _ -> },
+            onDismissSetLimitSheet = {},
+            onDeleteLimit = {}
         )
     }
 }

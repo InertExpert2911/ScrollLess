@@ -37,7 +37,10 @@ import com.example.scrolltrack.ui.components.SetLimitBottomSheet
 fun PhoneUsageScreen(
     navController: NavController,
     viewModel: PhoneUsageViewModel,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSetLimit: (String, Int) -> Unit,
+    onDeleteLimit: (String) -> Unit,
+    onQuickLimitIconClicked: (String, String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showBottomSheet by remember { mutableStateOf(false) }
@@ -141,8 +144,7 @@ fun PhoneUsageScreen(
                         period = uiState.period,
                         onClick = { navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(usageItem.packageName)) },
                         onSetLimitClick = {
-                            selectedAppForLimit = it
-                            showBottomSheet = true
+                            onQuickLimitIconClicked(it.packageName, it.appName)
                         },
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
@@ -151,16 +153,6 @@ fun PhoneUsageScreen(
             }
         }
     }
-   if (showBottomSheet) {
-       SetLimitBottomSheet(
-           onDismissRequest = { showBottomSheet = false },
-           onSetLimit = { packageName, limit ->
-               viewModel.setLimit(packageName, limit)
-               showBottomSheet = false
-           },
-           selectedApp = selectedAppForLimit
-       )
-   }
 }
 
 @Composable

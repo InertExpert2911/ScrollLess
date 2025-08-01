@@ -151,14 +151,16 @@ private fun NavGraphBuilder.addDashboardGraph(
                     navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(packageName))
                 },
                 onNavigateToLimits = { navController.navigate(LIMITS_GRAPH_ROUTE) },
-                onSetLimit = { packageName, limitMinutes ->
-                    limitsViewModel.setQuickLimit(packageName, limitMinutes)
-                },
+                onSetLimit = viewModel::onSetLimit,
                 isRefreshing = uiState.isRefreshing,
                 onRefresh = { viewModel.onPullToRefresh() },
                 snackbarMessage = uiState.snackbarMessage,
                 onSnackbarDismiss = { viewModel.dismissSnackbar() },
-                limitsCount = uiState.limitsCount
+                limitsCount = uiState.limitsCount,
+                setLimitSheetState = uiState.setLimitSheetState,
+                onQuickLimitIconClicked = viewModel::onQuickLimitIconClicked,
+                onDismissSetLimitSheet = viewModel::dismissSetLimitSheet,
+                onDeleteLimit = viewModel::onDeleteLimit
             )
         }
         composable(
@@ -166,7 +168,14 @@ private fun NavGraphBuilder.addDashboardGraph(
             arguments = listOf(navArgument("tab") { type = NavType.StringType })
         ) { backStackEntry ->
             val tab = backStackEntry.arguments?.getString("tab")
-            DashboardTabs(navController = navController, selectedTab = tab)
+            val todaySummaryViewModel: TodaySummaryViewModel = hiltViewModel()
+            DashboardTabs(
+                navController = navController,
+                selectedTab = tab,
+                onSetLimit = todaySummaryViewModel::onSetLimit,
+                onDeleteLimit = todaySummaryViewModel::onDeleteLimit,
+                onQuickLimitIconClicked = todaySummaryViewModel::onQuickLimitIconClicked
+            )
         }
         composable(
             route = ScreenRoutes.AppDetailRoute.route,
@@ -178,7 +187,9 @@ private fun NavGraphBuilder.addDashboardGraph(
                 AppDetailScreen(
                     navController = navController,
                     viewModel = appDetailViewModel,
-                    packageName = packageName
+                    packageName = packageName,
+                    onSetLimit = { _, _ -> },
+                    onDeleteLimit = { }
                 )
             } else {
                 navController.popBackStack()
@@ -198,7 +209,10 @@ private fun NavGraphBuilder.addDashboardGraph(
                 }
                 ScrollDetailScreen(
                     navController = navController,
-                    viewModel = scrollDetailViewModel
+                    viewModel = scrollDetailViewModel,
+                    onSetLimit = { _, _ -> },
+                    onDeleteLimit = { },
+                    onQuickLimitIconClicked = { _, _ -> }
                 )
             } else {
                 Text("Error: Date not found for Scroll Detail.")

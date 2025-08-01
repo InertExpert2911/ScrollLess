@@ -58,8 +58,8 @@ class ScrollDataRepositoryImpl @Inject constructor(
     private val unlockSessionDao: UnlockSessionDao,
     private val dailyInsightDao: DailyInsightDao,
     private val dailyDataProcessor: DailyDataProcessor,
-    @ApplicationContext private val context: Context,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @param:ApplicationContext private val context: Context,
+    @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ScrollDataRepository {
 
     private val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
@@ -214,6 +214,9 @@ class ScrollDataRepositoryImpl @Inject constructor(
     }
     override suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord> = dailyAppUsageDao.getUsageForPackageAndDates(packageName, dateStrings)
     override suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate> = scrollSessionDao.getAggregatedScrollForPackageAndDates(packageName, dateStrings)
+    override fun getAverageUsageForPackage(packageName: String, dateStrings: List<String>): Flow<Long?> {
+        return dailyAppUsageDao.getAverageUsageForPackageAndDates(packageName, dateStrings).map { it?.toLong() }
+    }
     override fun getAllDistinctUsageDateStrings(): Flow<List<String>> = dailyAppUsageDao.getAllDistinctUsageDateStrings()
     override fun getTotalUnlockCountForDate(dateString: String): Flow<Int> = unlockSessionDao.getUnlockCountForDateFlow(dateString)
 

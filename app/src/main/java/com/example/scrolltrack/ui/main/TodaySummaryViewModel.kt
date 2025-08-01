@@ -53,7 +53,8 @@ private data class TodayData(
     val isDarkMode: Boolean,
     val dailyAppUsage: List<DailyAppUsageRecord>,
     val scrollData: List<AppScrollData>,
-    val limitsCount: Int
+    val limitsCount: Int,
+    val setLimitSheetState: SetLimitSheetState?
 )
 
 data class TodaySummaryUiState(
@@ -74,13 +75,14 @@ data class TodaySummaryUiState(
     val isRefreshing: Boolean = false,
     val snackbarMessage: String? = null,
     val selectedTheme: AppTheme = AppTheme.CalmLavender,
-    val isDarkMode: Boolean = true
+    val isDarkMode: Boolean = true,
+    val setLimitSheetState: SetLimitSheetState? = null
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class TodaySummaryViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @param:ApplicationContext private val context: Context,
     private val scrollDataRepository: ScrollDataRepository,
     private val settingsRepository: SettingsRepository,
     private val limitsRepository: LimitsRepository,
@@ -95,6 +97,7 @@ class TodaySummaryViewModel @Inject constructor(
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     private val _selectedDate = MutableStateFlow(dateUtil.getCurrentLocalDateString())
+    private val _setLimitSheetState = MutableStateFlow<SetLimitSheetState?>(null)
 
     private var lastPermissionState: PermissionState? = null
 
@@ -205,7 +208,8 @@ class TodaySummaryViewModel @Inject constructor(
             isDarkMode,
             _selectedDate.flatMapLatest { scrollDataRepository.getAppUsageForDate(it) },
             _selectedDate.flatMapLatest { scrollDataRepository.getScrollDataForDate(it) },
-            limitsCount
+            limitsCount,
+            _setLimitSheetState
         )
     ) { args: Array<*> ->
         TodayData(
@@ -217,9 +221,10 @@ class TodaySummaryViewModel @Inject constructor(
             snackbarMessage = args[5] as String?,
             selectedTheme = args[6] as AppTheme,
             isDarkMode = args[7] as Boolean,
-            dailyAppUsage = args[8] as List<DailyAppUsageRecord>,
-            scrollData = args[9] as List<AppScrollData>,
-            limitsCount = args[10] as Int
+            dailyAppUsage = args[8] as? List<DailyAppUsageRecord> ?: emptyList(),
+            scrollData = args[9] as? List<AppScrollData> ?: emptyList(),
+            limitsCount = args[10] as? Int ?: 0,
+            setLimitSheetState = args[11] as? SetLimitSheetState
         )
     }
 
@@ -244,7 +249,8 @@ class TodaySummaryViewModel @Inject constructor(
             isRefreshing = data.isRefreshing,
             snackbarMessage = data.snackbarMessage,
             selectedTheme = data.selectedTheme,
-            isDarkMode = data.isDarkMode
+            isDarkMode = data.isDarkMode,
+            setLimitSheetState = data.setLimitSheetState
         )
     }.stateIn(
         scope = viewModelScope,
@@ -340,6 +346,47 @@ class TodaySummaryViewModel @Inject constructor(
     fun setLimit(packageName: String, limitInMinutes: Int) {
         viewModelScope.launch {
             scrollDataRepository.setAppLimit(packageName, limitInMinutes)
+        }
+    }
+
+    fun onQuickLimitIconClicked(packageName: String, appName: String) {
+        viewModelScope.launch {
+            val sevenDaysAgo = (0..6).map { dateUtil.getPastDateString(it) }
+            val averageUsageFlow = scrollDataRepository.getAverageUsageForPackage(packageName, sevenDaysAgo)
+            val existingLimitFlow = limitsRepository.getLimitedApp(packageName)
+
+            combine(averageUsageFlow, existingLimitFlow) { averageUsage, existingLimit ->
+                val existingLimitMinutes = if (existingLimit != null) {
+                    limitsRepository.getGroupWithApps(existingLimit.group_id).firstOrNull()?.group?.time_limit_minutes
+                } else {
+                    null
+                }
+
+               _setLimitSheetState.value = SetLimitSheetState(
+                   packageName = packageName,
+                   appName = appName,
+                   existingLimitMinutes = existingLimitMinutes,
+                   averageUsageMillis = averageUsage
+               )
+           }.first()
+       }
+   }
+
+   fun dismissSetLimitSheet() {
+       _setLimitSheetState.value = null
+   }
+
+    fun onSetLimit(packageName: String, limitMinutes: Int) {
+        viewModelScope.launch {
+            limitsRepository.setAppLimit(packageName, limitMinutes)
+            dismissSetLimitSheet()
+        }
+    }
+
+    fun onDeleteLimit(packageName: String) {
+        viewModelScope.launch {
+            limitsRepository.removeAppLimit(packageName)
+            dismissSetLimitSheet()
         }
     }
 

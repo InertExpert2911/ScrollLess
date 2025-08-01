@@ -39,6 +39,7 @@ import com.example.scrolltrack.R
 import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.components.AppUsageCard
 import com.example.scrolltrack.ui.components.DashboardCard
+import com.example.scrolltrack.ui.components.SetLimitBottomSheet
 import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.ui.theme.AppTheme
 import com.example.scrolltrack.ui.theme.getThemeColors
@@ -81,12 +82,14 @@ fun TodaySummaryScreen(
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier,
     snackbarMessage: String?,
-    onSnackbarDismiss: () -> Unit
+    onSnackbarDismiss: () -> Unit,
+    setLimitSheetState: SetLimitSheetState?,
+    onQuickLimitIconClicked: (String, String) -> Unit,
+    onDismissSetLimitSheet: () -> Unit,
+    onDeleteLimit: (String) -> Unit
 ) {
     val state = rememberPullToRefreshState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var showBottomSheet by remember { mutableStateOf(false) }
-    var selectedAppForLimit by remember { mutableStateOf<AppUsageUiItem?>(null) }
 
     LaunchedEffect(snackbarMessage) {
         if (snackbarMessage != null) {
@@ -273,8 +276,7 @@ fun TodaySummaryScreen(
                     totalUsageTimeMillis = totalUsageTimeMillis,
                     onAppClick = onNavigateToAppDetail,
                     onSetLimitClick = { app ->
-                        selectedAppForLimit = app
-                        showBottomSheet = true
+                        onQuickLimitIconClicked(app.packageName, app.appName)
                     },
                     showSetLimitButton = true,
                     modifier = Modifier
@@ -282,42 +284,13 @@ fun TodaySummaryScreen(
             }
         }
     }
-    if (showBottomSheet) {
-        ModalBottomSheet(onDismissRequest = { showBottomSheet = false }) {
-            var sliderPosition by remember { mutableFloatStateOf(30f) }
-
-            Column(
-                modifier = Modifier.padding(16.dp).navigationBarsPadding(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text(
-                    text = "Set limit for ${selectedAppForLimit?.appName}",
-                    style = MaterialTheme.typography.titleLarge
-                )
-                Slider(
-                    value = sliderPosition,
-                    onValueChange = { sliderPosition = it },
-                    valueRange = 10f..180f, // 10 minutes to 3 hours
-                    steps = 16 // Snap to 10-minute intervals
-                )
-                Text(
-                    text = "${sliderPosition.toInt()} minutes",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Button(
-                    onClick = {
-                        selectedAppForLimit?.let { app ->
-                            onSetLimit(app.packageName, sliderPosition.toInt())
-                        }
-                        showBottomSheet = false
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Set Limit")
-                }
-            }
-        }
+    if (setLimitSheetState != null) {
+        SetLimitBottomSheet(
+            onDismissRequest = onDismissSetLimitSheet,
+            onSetLimit = onSetLimit,
+            onDeleteLimit = onDeleteLimit,
+            sheetState = setLimitSheetState
+        )
     }
 }
 }

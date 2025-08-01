@@ -35,6 +35,7 @@ interface ScrollDataRepository {
     fun getAppUsageForDate(dateString: String): Flow<List<DailyAppUsageRecord>>
     suspend fun getUsageForPackageAndDates(packageName: String, dateStrings: List<String>): List<DailyAppUsageRecord>
     suspend fun getAggregatedScrollForPackageAndDates(packageName: String, dateStrings: List<String>): List<AppScrollDataPerDate>
+    fun getAverageUsageForPackage(packageName: String, dateStrings: List<String>): Flow<Long?>
 
     // --- Historical / Date-based Data Access ---
     fun getAllDistinctUsageDateStrings(): Flow<List<String>>

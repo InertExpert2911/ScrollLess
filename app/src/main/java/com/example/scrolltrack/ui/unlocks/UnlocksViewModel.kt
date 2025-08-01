@@ -16,6 +16,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
@@ -149,7 +150,4 @@ class UnlocksViewModel @Inject constructor(
         _period.value = period
     }
 
-    fun setLimit(packageName: String, limitInMinutes: Int) {
-        repository.setAppLimit(packageName, limitInMinutes)
-    }
 }

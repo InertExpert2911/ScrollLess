@@ -10,6 +10,7 @@ import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -157,7 +158,4 @@ class ScrollDetailViewModel @Inject constructor(
         _uiState.update { it.copy(period = period) }
     }
 
-    fun setLimit(packageName: String, limitInMinutes: Int) {
-        repository.setAppLimit(packageName, limitInMinutes)
-    }
 }

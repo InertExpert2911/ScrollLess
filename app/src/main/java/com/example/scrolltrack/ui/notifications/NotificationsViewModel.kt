@@ -12,6 +12,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -133,8 +134,5 @@ fun onDateSelected(date: LocalDate) {
 
 suspend fun getIconFile(packageName: String): java.io.File? = withContext(ioDispatcher) {
         appMetadataRepository.getIconFile(packageName)
-    }
-    fun setLimit(packageName: String, limitInMinutes: Int) {
-        repository.setAppLimit(packageName, limitInMinutes)
     }
 }

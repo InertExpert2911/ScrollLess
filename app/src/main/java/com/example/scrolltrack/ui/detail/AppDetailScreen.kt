@@ -113,7 +113,9 @@ fun AppDetailScreen(
     navController: NavController,
     viewModel: AppDetailViewModel,
     packageName: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSetLimit: (String, Int) -> Unit,
+    onDeleteLimit: (String) -> Unit
 ) {
     LaunchedEffect(packageName) {
         // viewModel.loadAppDetailsInfo(packageName) // This is now handled in the ViewModel's init block
