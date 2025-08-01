@@ -45,7 +45,9 @@ fun TodaySummaryScreenPreview() {
             screenTimeComparison = null,
             unlocksComparison = null,
             notificationsComparison = null,
-            scrollComparison = null
+            scrollComparison = null,
+            limitsCount = 5,
+            onNavigateToLimits = {}
         )
     }
 }
@@ -89,7 +91,9 @@ fun TodaySummaryScreenDarkPreview() {
             screenTimeComparison = null,
             unlocksComparison = null,
             notificationsComparison = null,
-            scrollComparison = null
+            scrollComparison = null,
+            limitsCount = 5,
+            onNavigateToLimits = {}
         )
     }
 }
@@ -132,7 +136,9 @@ fun TodaySummaryScreenWithPermissionsPreview() {
             screenTimeComparison = null,
             unlocksComparison = null,
             notificationsComparison = null,
-            scrollComparison = null
+            scrollComparison = null,
+            limitsCount = 0,
+            onNavigateToLimits = {}
         )
     }
 }

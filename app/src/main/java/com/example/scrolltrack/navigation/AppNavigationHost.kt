@@ -49,8 +49,6 @@ import com.example.scrolltrack.ui.limit.CreateEditLimitGroupScreen
 import com.example.scrolltrack.ui.limit.LimitsScreen
 import com.example.scrolltrack.ui.limit.LimitsViewModel
 
-const val LIMITS_GRAPH_ROUTE = "limits_graph"
-
 @Composable
 fun AppNavigationHost(
     navController: NavHostController,
@@ -152,13 +150,15 @@ private fun NavGraphBuilder.addDashboardGraph(
                 onNavigateToAppDetail = { packageName: String ->
                     navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(packageName))
                 },
+                onNavigateToLimits = { navController.navigate(LIMITS_GRAPH_ROUTE) },
                 onSetLimit = { packageName, limitMinutes ->
                     limitsViewModel.setQuickLimit(packageName, limitMinutes)
                 },
                 isRefreshing = uiState.isRefreshing,
                 onRefresh = { viewModel.onPullToRefresh() },
                 snackbarMessage = uiState.snackbarMessage,
-                onSnackbarDismiss = { viewModel.dismissSnackbar() }
+                onSnackbarDismiss = { viewModel.dismissSnackbar() },
+                limitsCount = uiState.limitsCount
             )
         }
         composable(
@@ -264,3 +264,4 @@ private fun NavGraphBuilder.addLimitsGraph(navController: NavHostController) {
         }
     }
 }
+

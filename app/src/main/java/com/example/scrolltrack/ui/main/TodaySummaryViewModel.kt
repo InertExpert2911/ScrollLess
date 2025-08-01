@@ -52,7 +52,8 @@ private data class TodayData(
     val selectedTheme: AppTheme,
     val isDarkMode: Boolean,
     val dailyAppUsage: List<DailyAppUsageRecord>,
-    val scrollData: List<AppScrollData>
+    val scrollData: List<AppScrollData>,
+    val limitsCount: Int
 )
 
 data class TodaySummaryUiState(
@@ -69,6 +70,7 @@ data class TodaySummaryUiState(
     val unlocksComparison: StatComparison? = null,
     val notificationsComparison: StatComparison? = null,
     val scrollComparison: StatComparison? = null,
+    val limitsCount: Int = 0,
     val isRefreshing: Boolean = false,
     val snackbarMessage: String? = null,
     val selectedTheme: AppTheme = AppTheme.CalmLavender,
@@ -81,6 +83,7 @@ class TodaySummaryViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val scrollDataRepository: ScrollDataRepository,
     private val settingsRepository: SettingsRepository,
+    private val limitsRepository: LimitsRepository,
     private val appUiModelMapper: AppUiModelMapper,
     private val greetingUtil: GreetingUtil,
     private val dateUtil: DateUtil,
@@ -185,6 +188,10 @@ class TodaySummaryViewModel @Inject constructor(
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
+    private val limitsCount: StateFlow<Int> = limitsRepository.getAllVisibleGroups()
+        .map { it.size }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
+
     @OptIn(ExperimentalCoroutinesApi::class)
     private val todayDataFlow: Flow<TodayData> = combine(
         listOf(
@@ -197,7 +204,8 @@ class TodaySummaryViewModel @Inject constructor(
             selectedThemePalette,
             isDarkMode,
             _selectedDate.flatMapLatest { scrollDataRepository.getAppUsageForDate(it) },
-            _selectedDate.flatMapLatest { scrollDataRepository.getScrollDataForDate(it) }
+            _selectedDate.flatMapLatest { scrollDataRepository.getScrollDataForDate(it) },
+            limitsCount
         )
     ) { args: Array<*> ->
         TodayData(
@@ -210,7 +218,8 @@ class TodaySummaryViewModel @Inject constructor(
             selectedTheme = args[6] as AppTheme,
             isDarkMode = args[7] as Boolean,
             dailyAppUsage = args[8] as List<DailyAppUsageRecord>,
-            scrollData = args[9] as List<AppScrollData>
+            scrollData = args[9] as List<AppScrollData>,
+            limitsCount = args[10] as Int
         )
     }
 
@@ -231,6 +240,7 @@ class TodaySummaryViewModel @Inject constructor(
             unlocksComparison = calculateComparison(data.summary?.totalUnlockCount?.toLong(), data.yesterdaySummary?.totalUnlockCount?.toLong()),
             notificationsComparison = calculateComparison(data.summary?.totalNotificationCount?.toLong(), data.yesterdaySummary?.totalNotificationCount?.toLong()),
             scrollComparison = calculateComparison(totalScroll, yesterdayTotalScroll),
+            limitsCount = data.limitsCount,
             isRefreshing = data.isRefreshing,
             snackbarMessage = data.snackbarMessage,
             selectedTheme = data.selectedTheme,

@@ -69,10 +69,12 @@ fun TodaySummaryScreen(
     unlocksComparison: StatComparison?,
     notificationsComparison: StatComparison?,
     scrollComparison: StatComparison?,
+    limitsCount: Int,
     onNavigateToHistoricalUsage: () -> Unit,
     onNavigateToUnlocks: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToScrollDetail: () -> Unit,
+    onNavigateToLimits: () -> Unit,
     onNavigateToAppDetail: (String) -> Unit,
     onSetLimit: (String, Int) -> Unit,
     isRefreshing: Boolean,
@@ -244,6 +246,24 @@ fun TodaySummaryScreen(
                         showComparisonText = true,
                         onCardClick = onNavigateToScrollDetail
                     )
+                }
+            }
+
+            item {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    DashboardCard(
+                        modifier = Modifier.weight(1f),
+                        title = "Limits",
+                        value = limitsCount.toString(),
+                        unit = "active",
+                        comparison = null,
+                        showComparisonText = false,
+                        onCardClick = onNavigateToLimits
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
                 }
             }
             

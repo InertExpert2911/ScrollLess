@@ -4,6 +4,7 @@ package com.example.scrolltrack.navigation
 const val DASHBOARD_GRAPH_ROUTE = "dashboard_graph"
 const val INSIGHTS_GRAPH_ROUTE = "insights_graph"
 const val SETTINGS_GRAPH_ROUTE = "settings_graph"
+const val LIMITS_GRAPH_ROUTE = "limits_graph"
 
 // Make ScreenRoutes a sealed class
 sealed class ScreenRoutes(val route: String) {
