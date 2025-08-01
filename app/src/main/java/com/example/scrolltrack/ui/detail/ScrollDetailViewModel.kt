@@ -2,16 +2,16 @@ package com.example.scrolltrack.ui.detail
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.scrolltrack.data.LimitsRepository
 import com.example.scrolltrack.data.ScrollDataRepository
+import com.example.scrolltrack.ui.limit.LimitViewModelDelegate
 import com.example.scrolltrack.ui.mappers.AppUiModelMapper
 import com.example.scrolltrack.ui.model.AppScrollUiItem
-import com.example.scrolltrack.ui.limit.LimitViewModelDelegate
 import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -37,6 +37,7 @@ data class ScrollDetailUiState(
 @HiltViewModel
 class ScrollDetailViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
+    limitsRepository: LimitsRepository,
     private val mapper: AppUiModelMapper,
     val conversionUtil: ConversionUtil,
     private val limitViewModelDelegate: LimitViewModelDelegate
@@ -45,6 +46,9 @@ class ScrollDetailViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ScrollDetailUiState())
     val uiState: StateFlow<ScrollDetailUiState> = _uiState.asStateFlow()
     val setLimitSheetState = limitViewModelDelegate.setLimitSheetState
+
+    private val selectedDateAndPeriod = _uiState.map { it.selectedDate to it.period }.distinctUntilChanged()
+    private val allLimitedApps = limitsRepository.getAllLimitedApps()
 
     init {
         observeHeatmapData()
@@ -69,34 +73,37 @@ class ScrollDetailViewModel @Inject constructor(
     }
 
     private fun observeSelectedDateChanges() {
-        _uiState.map { it.selectedDate to it.period }
-            .distinctUntilChanged()
-            .flatMapLatest { (date, period) ->
-                when (period) {
-                    ScrollDetailPeriod.Daily -> getDailyScroll(date)
-                    ScrollDetailPeriod.Weekly -> getWeeklyScroll(date)
-                    ScrollDetailPeriod.Monthly -> getMonthlyScroll(date)
-                }
+        combine(
+            selectedDateAndPeriod,
+            allLimitedApps
+        ) { (date, period), _ ->
+            when (period) {
+                ScrollDetailPeriod.Daily -> getDailyScroll(date)
+                ScrollDetailPeriod.Weekly -> getWeeklyScroll(date)
+                ScrollDetailPeriod.Monthly -> getMonthlyScroll(date)
             }
+        }.flatMapLatest { it }
             .onEach { newState ->
-                _uiState.update {
-                    it.copy(
-                        periodDisplay = newState.periodDisplay,
-                        scrollStat = newState.scrollStat,
-                        appScrolls = newState.appScrolls
-                    )
-                }
+            _uiState.update {
+                it.copy(
+                    periodDisplay = newState.periodDisplay,
+                    scrollStat = newState.scrollStat,
+                    appScrolls = newState.appScrolls
+                )
             }
-            .launchIn(viewModelScope)
+        }
+        .launchIn(viewModelScope)
     }
 
     private fun getDailyScroll(date: LocalDate): Flow<ScrollDetailUiState> {
         return repository.getScrollDataForDate(DateUtil.formatLocalDateToString(date)).map { scrollData ->
             val totalScroll = scrollData.sumOf { it.totalScroll }
+            val usageRecords = scrollData.map { repository.getUsageForPackageAndDates(it.packageName, listOf(DateUtil.formatLocalDateToString(date))) }.flatten()
+            val usageMap = usageRecords.associateBy { it.packageName }
             _uiState.value.copy(
                 periodDisplay = date.format(DateTimeFormatter.ofPattern("MMM d, yyyy")),
                 scrollStat = "${conversionUtil.formatScrollDistance(totalScroll, 0).first} ${conversionUtil.formatScrollDistance(totalScroll, 0).second}",
-                appScrolls = scrollData.sortedByDescending { it.totalScroll }.map { mapper.mapToAppScrollUiItem(it) }
+                appScrolls = scrollData.sortedByDescending { it.totalScroll }.map { mapper.mapToAppScrollUiItem(it, usageMap[it.packageName]) }
             )
         }
     }
@@ -118,11 +125,13 @@ class ScrollDetailViewModel @Inject constructor(
                         totalScrollY = totalY / daysInPeriod
                     )
                 }
+            val usageRecords = averagedAppScrolls.map { repository.getUsageForPackageAndDates(it.packageName, listOf(DateUtil.formatLocalDateToString(date))) }.flatten()
+            val usageMap = usageRecords.associateBy { it.packageName }
 
             _uiState.value.copy(
                 periodDisplay = "Week ${DateUtil.getWeekOfYear(date)} (${weekRange.first.format(DateTimeFormatter.ofPattern("MMM d"))} - ${weekRange.second.format(DateTimeFormatter.ofPattern("d, yyyy"))})",
                 scrollStat = "${conversionUtil.formatScrollDistance(totalScroll, 0).first}${conversionUtil.formatScrollDistance(totalScroll, 0).second}",
-                appScrolls = averagedAppScrolls.sortedByDescending { it.totalScroll }.map { mapper.mapToAppScrollUiItem(it) }
+                appScrolls = averagedAppScrolls.sortedByDescending { it.totalScroll }.map { mapper.mapToAppScrollUiItem(it, usageMap[it.packageName]) }
             )
         }
     }
@@ -144,11 +153,13 @@ class ScrollDetailViewModel @Inject constructor(
                         totalScrollY = totalY / daysInPeriod
                     )
                 }
+            val usageRecords = averagedAppScrolls.map { repository.getUsageForPackageAndDates(it.packageName, listOf(DateUtil.formatLocalDateToString(date))) }.flatten()
+            val usageMap = usageRecords.associateBy { it.packageName }
 
             _uiState.value.copy(
                 periodDisplay = YearMonth.from(date).format(DateTimeFormatter.ofPattern("MMMM yyyy")),
                 scrollStat = "${conversionUtil.formatScrollDistance(totalScroll, 0).first}${conversionUtil.formatScrollDistance(totalScroll, 0).second}",
-                appScrolls = averagedAppScrolls.sortedByDescending { it.totalScroll }.map { mapper.mapToAppScrollUiItem(it) }
+                appScrolls = averagedAppScrolls.sortedByDescending { it.totalScroll }.map { mapper.mapToAppScrollUiItem(it, usageMap[it.packageName]) }
             )
         }
     }

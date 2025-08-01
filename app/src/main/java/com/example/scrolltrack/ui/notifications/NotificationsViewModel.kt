@@ -5,8 +5,10 @@ import androidx.lifecycle.viewModelScope
 import com.example.scrolltrack.data.AppMetadataRepository
 import com.example.scrolltrack.data.NotificationCountPerApp
 import com.example.scrolltrack.data.ScrollDataRepository
+import com.example.scrolltrack.data.LimitsRepository
 import com.example.scrolltrack.db.AppMetadata
 import com.example.scrolltrack.di.IoDispatcher
+import com.example.scrolltrack.ui.limit.LimitInfo
 import com.example.scrolltrack.ui.limit.LimitViewModelDelegate
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,10 +26,16 @@ enum class NotificationPeriod {
     Daily, Weekly, Monthly
 }
 
+data class NotificationUiItem(
+    val metadata: AppMetadata,
+    val count: Int,
+    val limitInfo: LimitInfo?
+)
+
 sealed interface NotificationsUiState {
     object Loading : NotificationsUiState
     data class Success(
-        val notificationCounts: List<Pair<AppMetadata, Int>>,
+        val notificationItems: List<NotificationUiItem>,
         val selectedPeriod: NotificationPeriod,
         val periodTitle: String,
         val totalCount: Int,
@@ -40,6 +48,7 @@ sealed interface NotificationsUiState {
 @HiltViewModel
 class NotificationsViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
+    private val limitsRepository: LimitsRepository,
     private val appMetadataRepository: AppMetadataRepository,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     private val limitViewModelDelegate: LimitViewModelDelegate
@@ -54,8 +63,10 @@ class NotificationsViewModel @Inject constructor(
     val uiState: StateFlow<NotificationsUiState> = combine(
         _selectedDate,
         _selectedPeriod,
-        repository.getAllNotificationSummaries()
-    ) { localDate, period, allSummaries ->
+        repository.getAllNotificationSummaries(),
+        limitsRepository.getAllLimitedApps(),
+        repository.getAppUsageForDate(DateUtil.formatLocalDateToString(LocalDate.now()))
+    ) { localDate, period, allSummaries, limits, usageRecords ->
         val heatmapData = allSummaries
             .mapNotNull { summary -> summary.date?.let { LocalDate.parse(it) to summary.count } }
             .toMap()
@@ -90,17 +101,30 @@ class NotificationsViewModel @Inject constructor(
                             else -> (countPerApp.count.toDouble() / periodDetails.dateRange.size).toInt()
                         }
                         if (avgCount > 0) {
-                            metadata to avgCount
+                            val limit = limits.find { it.package_name == metadata.packageName }
+                            val usage = usageRecords.find { it.packageName == metadata.packageName }
+                            val limitInfo = if (limit != null) {
+                                val group = limitsRepository.getGroupWithApps(limit.group_id).firstOrNull()?.group
+                                if (group != null) {
+                                    val timeRemaining = (group.time_limit_minutes * 60 * 1000L) - (usage?.usageTimeMillis ?: 0L)
+                                    LimitInfo(group.time_limit_minutes * 60 * 1000L, timeRemaining)
+                                } else {
+                                    null
+                                }
+                            } else {
+                                null
+                            }
+                            NotificationUiItem(metadata, avgCount, limitInfo)
                         } else {
                             null
                         }
                     }
                 }
-                .sortedByDescending { it.second }
+                .sortedByDescending { it.count }
         }
 
         val totalCount = when (period) {
-            NotificationPeriod.Daily -> notificationItems.sumOf { it.second }
+            NotificationPeriod.Daily -> notificationItems.sumOf { it.count }
             else -> {
                 val total = appNotificationCounts.sumOf { it.count }
                 if (periodDetails.dateRange.isNotEmpty()) (total.toDouble() / periodDetails.dateRange.size).toInt() else 0
@@ -108,7 +132,7 @@ class NotificationsViewModel @Inject constructor(
         }
 
         NotificationsUiState.Success(
-            notificationCounts = notificationItems,
+            notificationItems = notificationItems,
             selectedPeriod = period,
             periodTitle = periodDetails.title,
             totalCount = totalCount,

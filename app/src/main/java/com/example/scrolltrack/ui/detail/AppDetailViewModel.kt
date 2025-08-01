@@ -1,41 +1,33 @@
 package com.example.scrolltrack.ui.detail
 
 import android.content.Context
-import android.graphics.drawable.Drawable
-import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.scrolltrack.data.AppMetadataRepository
+import com.example.scrolltrack.data.LimitsRepository
 import com.example.scrolltrack.data.ScrollDataRepository
-import com.example.scrolltrack.db.DailyAppUsageRecord
+import com.example.scrolltrack.di.MainDispatcher
+import com.example.scrolltrack.ui.limit.LimitInfo
+import com.example.scrolltrack.ui.limit.LimitViewModelDelegate
 import com.example.scrolltrack.ui.main.ComparisonColorType
 import com.example.scrolltrack.ui.main.ComparisonIconType
-import com.example.scrolltrack.ui.model.AppDailyDetailData
-import com.example.scrolltrack.ui.limit.LimitViewModelDelegate
 import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.time.format.DateTimeFormatter
-import java.time.format.TextStyle
-import java.time.temporal.WeekFields
-import javax.inject.Inject
-import kotlinx.coroutines.async
-import java.time.LocalDate
-import java.time.format.FormatStyle
-import java.time.temporal.TemporalAdjusters
-import java.util.Locale
-import kotlin.math.abs
 import kotlinx.coroutines.CoroutineDispatcher
-import com.example.scrolltrack.di.MainDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import timber.log.Timber
+import java.io.File
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
+import java.util.*
+import javax.inject.Inject
+import kotlin.math.abs
 
 
 enum class ChartPeriodType {
@@ -56,6 +48,7 @@ data class CombinedAppDailyData(
 class AppDetailViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
     private val appMetadataRepository: AppMetadataRepository,
+    private val limitsRepository: LimitsRepository,
     internal val conversionUtil: ConversionUtil,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context,
@@ -65,6 +58,9 @@ class AppDetailViewModel @Inject constructor(
 
     private val packageName: String = savedStateHandle.get<String>("packageName")!!
     val setLimitSheetState = limitViewModelDelegate.setLimitSheetState
+
+    private val _limitInfo = MutableStateFlow<LimitInfo?>(null)
+    val limitInfo: StateFlow<LimitInfo?> = _limitInfo.asStateFlow()
 
     // --- App Detail Screen Specific States ---
     private val _appDetailAppName = MutableStateFlow<String?>(null)
@@ -114,11 +110,9 @@ class AppDetailViewModel @Inject constructor(
     private val _appDetailFocusedOpenCount = MutableStateFlow(0)
     val appDetailFocusedOpenCount: StateFlow<Int> = _appDetailFocusedOpenCount.asStateFlow()
 
-    private val _appDetailFocusedDate = MutableStateFlow(DateUtil.getCurrentLocalDateString())
-    val appDetailFocusedDate: StateFlow<String> = _appDetailFocusedDate.asStateFlow()
-
     init {
         loadAppDetailsInfo()
+        observeLimitAndUsage()
     }
 
     // Methods for App Detail Screen
@@ -134,7 +128,8 @@ class AppDetailViewModel @Inject constructor(
                 val iconFile = appMetadataRepository.getIconFile(packageName)
                 _appDetailAppIcon.value = iconFile
             } else {
-                Log.w("AppDetailViewModel", "App info not found for $packageName in AppDetailScreen")
+                Timber.tag("AppDetailViewModel")
+                    .w("App info not found for $packageName in AppDetailScreen")
                 _appDetailAppName.value = packageName.substringAfterLast('.', packageName)
                 _appDetailAppIcon.value = null
             }
@@ -154,11 +149,13 @@ class AppDetailViewModel @Inject constructor(
             _appDetailPeriodDescriptionText.value = null
             _appDetailFocusedOpenCount.value = 0
 
-            Log.d("AppDetailViewModel", "Loading chart data for $packageName, Period: $period, RefDate: $referenceDateStr")
+            Timber.tag("AppDetailViewModel")
+                .d("Loading chart data for $packageName, Period: $period, RefDate: $referenceDateStr")
 
             val referenceDate = DateUtil.parseLocalDate(referenceDateStr)
             if (referenceDate == null) {
-                Log.e("AppDetailViewModel", "Could not parse reference date: $referenceDateStr")
+                Timber.tag("AppDetailViewModel")
+                    .e("Could not parse reference date: $referenceDateStr")
                 // Handle error state appropriately, maybe clear the chart
                 _appDetailChartData.value = emptyList()
                 return@launch
@@ -166,7 +163,8 @@ class AppDetailViewModel @Inject constructor(
 
             val dateStringsForCurrentPeriod = calculateDateStringsForPeriod(period, referenceDate)
             if (dateStringsForCurrentPeriod.isEmpty()) {
-                Log.w("AppDetailViewModel", "Date strings for current period resulted in empty list.")
+                Timber.tag("AppDetailViewModel")
+                    .w("Date strings for current period resulted in empty list.")
                 _appDetailChartData.value = emptyList()
                 _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(0L)
                 _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(0L)
@@ -204,7 +202,8 @@ class AppDetailViewModel @Inject constructor(
             }.sortedBy { it.date }
 
             _appDetailChartData.value = chartEntries
-            Log.d("AppDetailViewModel", "Chart data loaded: ${chartEntries.size} points for current period.")
+            Timber.tag("AppDetailViewModel")
+                .d("Chart data loaded: ${chartEntries.size} points for current period.")
 
             val sdfDisplay = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
             val sdfMonth = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())
@@ -226,7 +225,7 @@ class AppDetailViewModel @Inject constructor(
                     _appDetailFocusedUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageUsage)
                     val currentPeriodAverageActiveUsage = calculateAverageActiveUsage(chartEntries)
                     _appDetailFocusedActiveUsageDisplay.value = DateUtil.formatDuration(currentPeriodAverageActiveUsage)
-                    
+
                     val totalScrollX = chartEntries.sumOf { it.scrollUnitsX }
                     val totalScrollY = chartEntries.sumOf { it.scrollUnitsY }
                     val scrollDistance = conversionUtil.formatScrollDistance(totalScrollX, totalScrollY)
@@ -274,10 +273,6 @@ class AppDetailViewModel @Inject constructor(
         }
     }
 
-    private fun getWeekOfYear(date: LocalDate): Int {
-        return DateUtil.getWeekOfYear(date)
-    }
-
     private fun calculateAverageUsage(data: List<CombinedAppDailyData>): Long {
         if (data.isEmpty()) return 0L
         return data.sumOf { it.usageTimeMillis } / data.size
@@ -288,12 +283,7 @@ class AppDetailViewModel @Inject constructor(
         return data.sumOf { it.activeTimeMillis } / data.size
     }
 
-    private fun calculateAverageScroll(data: List<CombinedAppDailyData>): Long {
-        if (data.isEmpty()) return 0L
-        return data.sumOf { it.scrollUnits } / data.size
-    }
-
-    private fun calculateAverageUsageFromRecords(data: List<DailyAppUsageRecord>, periodDays: Int): Long {
+    private fun calculateAverageUsageFromRecords(data: List<com.example.scrolltrack.db.DailyAppUsageRecord>, periodDays: Int): Long {
         if (data.isEmpty() || periodDays == 0) return 0L
         return data.sumOf { it.usageTimeMillis } / periodDays
     }
@@ -422,18 +412,6 @@ class AppDetailViewModel @Inject constructor(
         loadAppDetailChartData(packageName, _currentChartPeriodType.value, newDateStr)
     }
 
-    fun setFocusedDate(newDate: String) {
-        if (_currentChartReferenceDate.value != newDate) {
-            _currentChartReferenceDate.value = newDate
-            if (_currentChartPeriodType.value == ChartPeriodType.DAILY) {
-                loadAppDetailChartData(packageName, ChartPeriodType.DAILY, newDate)
-            } else {
-                Log.w("AppDetailViewModel", "setFocusedDate called with period type ${_currentChartPeriodType.value}. Expected DAILY.")
-                loadAppDetailChartData(packageName, _currentChartPeriodType.value, newDate)
-            }
-        }
-    }
-
     fun onQuickLimitIconClicked(appName: String) {
         limitViewModelDelegate.onQuickLimitIconClicked(viewModelScope, packageName, appName)
     }
@@ -448,5 +426,35 @@ class AppDetailViewModel @Inject constructor(
 
     fun dismissSetLimitSheet() {
         limitViewModelDelegate.dismissSetLimitSheet()
+    }
+
+    private fun observeLimitAndUsage() {
+        viewModelScope.launch {
+            val today = DateUtil.getCurrentLocalDateString()
+            // Combine the flow for the limit and the flow for today's usage
+            limitsRepository.getLimitedApp(packageName).flatMapLatest { limit ->
+                if (limit == null) {
+                    flowOf(null) // No limit, emit null
+                } else {
+                    limitsRepository.getGroupWithApps(limit.group_id).map { groupWithApps ->
+                        val group = groupWithApps?.group
+                        if (group != null) {
+                            val usageRecords = repository.getUsageForPackageAndDates(packageName, listOf(today))
+                            val todaysUsage = usageRecords.firstOrNull()?.usageTimeMillis ?: 0L
+                            val timeLimitMillis = group.time_limit_minutes * 60 * 1000L
+                            val timeRemainingMillis = timeLimitMillis - todaysUsage
+                            LimitInfo(
+                                timeLimitMillis = timeLimitMillis,
+                                timeRemainingMillis = timeRemainingMillis
+                            )
+                        } else {
+                            null
+                        }
+                    }
+                }
+            }.collect { limitInfo: LimitInfo? ->
+                _limitInfo.value = limitInfo
+            }
+        }
     }
 }

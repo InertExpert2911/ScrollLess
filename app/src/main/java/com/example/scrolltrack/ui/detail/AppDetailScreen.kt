@@ -92,6 +92,7 @@ import java.time.LocalDate
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.rememberNavController
+import com.example.scrolltrack.ui.components.LimitStatusIndicator
 import com.example.scrolltrack.ui.components.SetLimitBottomSheet
 import com.example.scrolltrack.ui.theme.ScrollTrackTheme
 
@@ -127,6 +128,7 @@ fun AppDetailScreen(
     val chartData by viewModel.appDetailChartData.collectAsStateWithLifecycle()
     val currentPeriodType by viewModel.currentChartPeriodType.collectAsStateWithLifecycle()
     val currentReferenceDateStr by viewModel.currentChartReferenceDate.collectAsStateWithLifecycle()
+    val limitInfo by viewModel.limitInfo.collectAsStateWithLifecycle()
 
     // Collect palette colors - REMOVE THESE
     // val appBarColor by viewModel.appDetailAppBarColor.collectAsStateWithLifecycle()
@@ -201,12 +203,11 @@ fun AppDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.onQuickLimitIconClicked(appName ?: packageName) }) {
-                        Icon(
-                            painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_hour_glass_duotone),
-                            contentDescription = "Set Limit"
-                        )
-                    }
+                    LimitStatusIndicator(
+                        limitInfo = limitInfo,
+                        onClick = { viewModel.onQuickLimitIconClicked(appName ?: packageName) },
+                        modifier = Modifier.size(48.dp)
+                    )
                 },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {

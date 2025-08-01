@@ -77,12 +77,12 @@ object DateUtil {
     }
 
     fun formatDuration(millis: Long): String {
-        if (millis < 0) return "N/A"
-        if (millis == 0L) return "0m"
+        if (millis <= 0) return "0m"
         if (millis < 60000) return "< 1m" // 60,000 ms = 1 minute
 
-        val hours = TimeUnit.MILLISECONDS.toHours(millis)
-        val minutes = TimeUnit.MILLISECONDS.toMinutes(millis) - TimeUnit.HOURS.toMinutes(hours)
+        val totalMinutes = TimeUnit.MILLISECONDS.toMinutes(millis)
+        val hours = totalMinutes / 60
+        val minutes = totalMinutes % 60
 
         return when {
             hours > 0 -> String.format(Locale.US, "%dh %dm", hours, minutes)

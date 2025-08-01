@@ -26,6 +26,7 @@ import com.example.scrolltrack.R
 import com.example.scrolltrack.navigation.ScreenRoutes
 import com.example.scrolltrack.ui.components.HeatmapLegend
 import com.example.scrolltrack.ui.components.InteractiveCalendarHeatmap
+import com.example.scrolltrack.ui.components.LimitStatusIndicator
 import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.util.DateUtil
 import com.example.scrolltrack.ui.phoneusage.PhoneUsagePeriod
@@ -215,12 +216,11 @@ fun AppUsageRowItem(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-           IconButton(onClick = { onSetLimitClick(usageItem) }) {
-               Icon(
-                   painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_hour_glass_duotone),
-                   contentDescription = "Set Limit"
-               )
-           }
+            LimitStatusIndicator(
+                limitInfo = usageItem.limitInfo,
+                onClick = { onSetLimitClick(usageItem) },
+                modifier = Modifier.size(48.dp)
+            )
         }
     }
 }

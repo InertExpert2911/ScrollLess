@@ -36,6 +36,9 @@ interface LimitsDao {
     @Query("SELECT * FROM limited_apps WHERE package_name = :packageName")
     fun getLimitedApp(packageName: String): Flow<LimitedApp?>
 
+    @Query("SELECT * FROM limited_apps WHERE package_name IN (:packageNames)")
+    fun getLimitedApps(packageNames: List<String>): Flow<List<LimitedApp>>
+
     @Query("SELECT EXISTS(SELECT 1 FROM limit_groups WHERE name = :name LIMIT 1)")
     suspend fun groupExists(name: String): Boolean
 }

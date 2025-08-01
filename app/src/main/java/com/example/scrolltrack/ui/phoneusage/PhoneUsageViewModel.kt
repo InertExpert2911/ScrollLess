@@ -2,6 +2,7 @@ package com.example.scrolltrack.ui.phoneusage
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.scrolltrack.data.LimitsRepository
 import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.ui.limit.LimitViewModelDelegate
 import com.example.scrolltrack.ui.mappers.AppUiModelMapper
@@ -10,11 +11,9 @@ import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 import javax.inject.Inject
 
 enum class PhoneUsagePeriod {
@@ -37,6 +36,7 @@ data class PhoneUsageUiState(
 @HiltViewModel
 class PhoneUsageViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
+    limitsRepository: LimitsRepository,
     private val mapper: AppUiModelMapper,
     private val limitViewModelDelegate: LimitViewModelDelegate
 ) : ViewModel() {
@@ -44,6 +44,9 @@ class PhoneUsageViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(PhoneUsageUiState())
     val uiState: StateFlow<PhoneUsageUiState> = _uiState.asStateFlow()
     val setLimitSheetState = limitViewModelDelegate.setLimitSheetState
+
+    private val selectedDateAndPeriod = _uiState.map { it.selectedDate to it.period }.distinctUntilChanged()
+    private val allLimitedApps = limitsRepository.getAllLimitedApps()
 
     init {
         observeHeatmapData()
@@ -68,15 +71,16 @@ class PhoneUsageViewModel @Inject constructor(
     }
 
     private fun observeSelectedDateChanges() {
-        _uiState.map { it.selectedDate to it.period }
-            .distinctUntilChanged()
-            .flatMapLatest { (date, period) ->
-                when (period) {
-                    PhoneUsagePeriod.Daily -> getDailyUsage(date)
-                    PhoneUsagePeriod.Weekly -> getWeeklyUsage(date)
-                    PhoneUsagePeriod.Monthly -> getMonthlyUsage(date)
-                }
+        combine(
+            selectedDateAndPeriod,
+            allLimitedApps
+        ) { (date, period), _ -> // We only need limitedApps to trigger the refresh
+            when (period) {
+                PhoneUsagePeriod.Daily -> getDailyUsage(date)
+                PhoneUsagePeriod.Weekly -> getWeeklyUsage(date)
+                PhoneUsagePeriod.Monthly -> getMonthlyUsage(date)
             }
+        }.flatMapLatest { it }
             .onEach { newState ->
                 _uiState.update {
                     it.copy(
@@ -106,7 +110,8 @@ class PhoneUsageViewModel @Inject constructor(
             val appUsage = mapper.mapToAppUsageUiItems(usageRecords, 7)
             val totalUsage = appUsage.sumOf { it.usageTimeMillis }
             _uiState.value.copy(
-                periodDisplay = "Week ${DateUtil.getWeekOfYear(date)} (${weekRange.first.format(DateTimeFormatter.ofPattern("MMM d"))} - ${weekRange.second.format(DateTimeFormatter.ofPattern("d, yyyy"))})",
+                periodDisplay = "Week ${DateUtil.getWeekOfYear(date)} (${weekRange.first.format(DateTimeFormatter.ofPattern("MMM d"))} - ${weekRange.second.format(
+                    DateTimeFormatter.ofPattern("d, yyyy"))})",
                 usageStat = DateUtil.formatDuration(totalUsage),
                 appUsage = appUsage
             )

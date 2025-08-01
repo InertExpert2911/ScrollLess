@@ -53,7 +53,7 @@ fun AppUsageCard(
                 }
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    apps.forEach { app ->
+                    apps.take(3).forEach { app ->
                         AppUsageRow(
                             app = app,
                             totalUsageMillis = totalUsageTimeMillis,
@@ -131,12 +131,11 @@ private fun AppUsageRow(
             )
         }
         if (showSetLimitButton) {
-            IconButton(onClick = onSetLimitClick) {
-                Icon(
-                    painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_hour_glass_duotone),
-                    contentDescription = "Set Limit"
-                )
-            }
+            LimitStatusIndicator(
+                limitInfo = app.limitInfo,
+                onClick = onSetLimitClick,
+                modifier = Modifier.size(48.dp)
+            )
         }
     }
 }

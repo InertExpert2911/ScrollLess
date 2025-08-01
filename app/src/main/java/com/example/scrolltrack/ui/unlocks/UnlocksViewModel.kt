@@ -2,11 +2,13 @@ package com.example.scrolltrack.ui.unlocks
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.scrolltrack.data.LimitsRepository
 import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.db.DailyDeviceSummary
 import com.example.scrolltrack.ui.mappers.AppUiModelMapper
 import com.example.scrolltrack.di.IoDispatcher
+import com.example.scrolltrack.ui.limit.LimitInfo
 import com.example.scrolltrack.ui.limit.LimitViewModelDelegate
 import com.example.scrolltrack.ui.model.AppOpenUiItem
 import com.example.scrolltrack.util.DateUtil
@@ -46,6 +48,7 @@ data class UnlocksUiState(
 @HiltViewModel
 class UnlocksViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
+    private val limitsRepository: LimitsRepository,
     private val mapper: AppUiModelMapper,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     private val limitViewModelDelegate: LimitViewModelDelegate
@@ -58,8 +61,9 @@ class UnlocksViewModel @Inject constructor(
     val uiState: StateFlow<UnlocksUiState> = combine(
         _selectedDate,
         _period,
-        repository.getAllDeviceSummaries()
-    ) { selectedDate: LocalDate, period: UnlockPeriod, allSummaries: List<DailyDeviceSummary> ->
+        repository.getAllDeviceSummaries(),
+        limitsRepository.getAllLimitedApps()
+    ) { selectedDate: LocalDate, period: UnlockPeriod, allSummaries: List<DailyDeviceSummary>, limits ->
         val heatmapData = allSummaries.associate { LocalDate.parse(it.dateString) to it.totalUnlockCount }
         val monthsWithData = heatmapData.keys.map { YearMonth.from(it) }.distinct().sorted()
         val currentMonth = monthsWithData.lastOrNull() ?: YearMonth.now()

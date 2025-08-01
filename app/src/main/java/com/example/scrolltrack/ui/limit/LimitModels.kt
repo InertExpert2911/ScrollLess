@@ -37,3 +37,8 @@ data class SelectableAppUiModel(
     val app: AppUsageUiItem, // Use the correct UI model here too
     val isSelected: Boolean
 )
+
+data class LimitInfo(
+    val timeLimitMillis: Long,
+    val timeRemainingMillis: Long
+)

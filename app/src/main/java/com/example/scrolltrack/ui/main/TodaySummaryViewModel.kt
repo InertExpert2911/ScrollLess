@@ -165,8 +165,7 @@ class TodaySummaryViewModel @Inject constructor(
     val lastUnlockTime: StateFlow<String> = summaryData.map {
         it?.lastUnlockTimestampUtc?.let { ts -> dateUtil.formatUtcTimestampToTimeString(ts) } ?: "N/A"
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), "N/A")
-
-    val topWeeklyApp: StateFlow<AppUsageUiItem?> =
+    private val topWeeklyApp: StateFlow<AppUsageUiItem?> =
         scrollDataRepository.getUsageRecordsForDateRange(
             dateUtil.getPastDateString(6),
             dateUtil.getCurrentLocalDateString()
@@ -200,20 +199,18 @@ class TodaySummaryViewModel @Inject constructor(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private val todayDataFlow: Flow<TodayData> = combine(
-        listOf(
-            greeting,
-            summaryData,
-            yesterdaySummaryData,
-            topWeeklyApp,
-            isRefreshing,
-            snackbarMessage,
-            selectedThemePalette,
-            isDarkMode,
-            _selectedDate.flatMapLatest { scrollDataRepository.getAppUsageForDate(it) },
-            _selectedDate.flatMapLatest { scrollDataRepository.getScrollDataForDate(it) },
-            limitsCount,
-            setLimitSheetState
-        )
+        greeting,
+        summaryData,
+        yesterdaySummaryData,
+        topWeeklyApp,
+        isRefreshing,
+        snackbarMessage,
+        selectedThemePalette,
+        isDarkMode,
+        _selectedDate.flatMapLatest { scrollDataRepository.getAppUsageForDate(it) },
+        _selectedDate.flatMapLatest { scrollDataRepository.getScrollDataForDate(it) },
+        limitsCount,
+        setLimitSheetState
     ) { args: Array<*> ->
         TodayData(
             greeting = args[0] as String,
@@ -238,10 +235,10 @@ class TodaySummaryViewModel @Inject constructor(
             greeting = data.greeting,
             totalUsageTimeFormatted = dateUtil.formatDuration(data.summary?.totalUsageTimeMillis ?: 0L),
             totalUsageTimeMillis = data.summary?.totalUsageTimeMillis ?: 0L,
-            todaysAppUsageUiList = data.dailyAppUsage.map { appUiModelMapper.mapToAppUsageUiItem(it) },
+            todaysAppUsageUiList = appUiModelMapper.mapToAppUsageUiItems(data.dailyAppUsage),
             topWeeklyApp = data.topApp,
             totalScrollToday = totalScroll,
-            scrollDistanceTodayFormatted = conversionUtil.formatScrollDistanceSync(totalScroll),
+            scrollDistanceTodayFormatted = conversionUtil.formatScrollDistance(totalScroll, 0L),
             totalUnlocksToday = data.summary?.totalUnlockCount ?: 0,
             totalNotificationsToday = data.summary?.totalNotificationCount ?: 0,
             screenTimeComparison = calculateComparison(data.summary?.totalUsageTimeMillis, data.yesterdaySummary?.totalUsageTimeMillis),
@@ -286,7 +283,9 @@ class TodaySummaryViewModel @Inject constructor(
                 _snackbarMessage.value = "Error refreshing data"
                 _uiState.value = UiState.Error("An unexpected error occurred.")
             } finally {
-                _uiState.value = UiState.Ready
+                if (_uiState.value !is UiState.Error) {
+                    _uiState.value = UiState.Ready
+                }
             }
         }
     }
@@ -338,12 +337,6 @@ class TodaySummaryViewModel @Inject constructor(
         }
 
         lastPermissionState = currentState
-    }
-
-    fun updateThemePalette(theme: AppTheme) {
-        viewModelScope.launch {
-            settingsRepository.setSelectedTheme(theme)
-        }
     }
 
     fun onQuickLimitIconClicked(packageName: String, appName: String) {

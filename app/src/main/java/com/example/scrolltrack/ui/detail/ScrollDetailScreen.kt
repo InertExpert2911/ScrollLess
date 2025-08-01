@@ -45,6 +45,7 @@ import java.time.ZoneOffset
 import androidx.compose.material.icons.filled.Check
 import com.example.scrolltrack.ui.components.HeatmapLegend
 import com.example.scrolltrack.ui.components.InteractiveCalendarHeatmap
+import com.example.scrolltrack.ui.components.LimitStatusIndicator
 import com.example.scrolltrack.ui.components.SetLimitBottomSheet
 import com.example.scrolltrack.ui.model.AppUsageUiItem
 
@@ -264,12 +265,11 @@ fun AppScrollDetailItemEntry(
                     modifier = Modifier.size(18.dp)
                 )
             }
-           IconButton(onClick = { onSetLimitClick(appItem) }) {
-               Icon(
-                   painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_hour_glass_duotone),
-                   contentDescription = "Set Limit"
-               )
-           }
+            LimitStatusIndicator(
+                limitInfo = appItem.limitInfo,
+                onClick = { onSetLimitClick(appItem) },
+                modifier = Modifier.size(48.dp)
+            )
         }
     }
 }

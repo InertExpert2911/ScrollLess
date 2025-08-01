@@ -11,6 +11,8 @@ interface LimitsRepository {
     fun getAllLimitedApps(): Flow<List<LimitedApp>>
     fun getGroupWithApps(groupId: Long): Flow<GroupWithApps?>
     fun getLimitedApp(packageName: String): Flow<LimitedApp?>
+    fun getLimitedApps(packageNames: List<String>): Flow<List<LimitedApp>>
+    suspend fun getLimitsForApps(packageNames: List<String>): Map<String, LimitGroup>
     suspend fun groupExists(name: String): Boolean
     suspend fun createGroup(name: String, timeLimitMinutes: Int): Long
     suspend fun updateGroup(group: LimitGroup)

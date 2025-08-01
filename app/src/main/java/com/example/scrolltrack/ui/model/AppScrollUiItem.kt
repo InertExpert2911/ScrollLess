@@ -1,6 +1,7 @@
 package com.example.scrolltrack.ui.model
 
 import android.graphics.drawable.Drawable
+import com.example.scrolltrack.ui.limit.LimitInfo
 import java.io.File
 
 /**
@@ -14,5 +15,6 @@ data class AppScrollUiItem(
     val totalScrollX: Long,
     val totalScrollY: Long,
     val packageName: String,
-    val dataType: String
-) 
+    val dataType: String,
+    val limitInfo: LimitInfo? = null
+)

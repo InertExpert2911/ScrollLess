@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import com.example.scrolltrack.ui.components.InteractiveCalendarHeatmap
 import com.example.scrolltrack.ui.components.HeatmapLegend
+import com.example.scrolltrack.ui.components.LimitStatusIndicator
 import com.example.scrolltrack.ui.components.SetLimitBottomSheet
 import com.example.scrolltrack.ui.model.AppUsageUiItem
 import androidx.compose.runtime.rememberCoroutineScope
@@ -140,7 +141,7 @@ fun NotificationsScreen(
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 
-                    if (state.notificationCounts.isEmpty()) {
+                    if (state.notificationItems.isEmpty()) {
                         item {
                             Box(
                                 modifier = Modifier
@@ -156,10 +157,10 @@ fun NotificationsScreen(
                             }
                         }
                     } else {
-                        items(state.notificationCounts, key = { it.first.packageName }) { (metadata, count) ->
+                        items(state.notificationItems, key = { it.metadata.packageName }) { item ->
                             var icon by remember { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
-                            LaunchedEffect(metadata.packageName) {
-                                icon = viewModel.getIcon(metadata.packageName)
+                            LaunchedEffect(item.metadata.packageName) {
+                                icon = viewModel.getIcon(item.metadata.packageName)
                             }
 
                             Card(
@@ -178,21 +179,21 @@ fun NotificationsScreen(
                                         painter = rememberAsyncImagePainter(
                                             model = icon ?: R.mipmap.ic_launcher_round
                                         ),
-                                        contentDescription = "${metadata.appName} icon",
+                                        contentDescription = "${item.metadata.appName} icon",
                                         modifier = Modifier
                                             .size(40.dp)
                                             .clip(CircleShape)
                                     )
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = metadata.appName,
+                                            text = item.metadata.appName,
                                             style = MaterialTheme.typography.bodyLarge,
                                             fontWeight = FontWeight.SemiBold
                                         )
                                         Spacer(modifier = Modifier.height(4.dp))
                                         val countText = when (state.selectedPeriod) {
-                                            NotificationPeriod.Daily -> if (count == 1) "1 notification" else "$count notifications"
-                                            else -> "$count notifications on average"
+                                            NotificationPeriod.Daily -> if (item.count == 1) "1 notification" else "${item.count} notifications"
+                                            else -> "${item.count} notifications on average"
                                         }
                                         Text(
                                             text = countText,
@@ -200,14 +201,11 @@ fun NotificationsScreen(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
-                                   IconButton(onClick = {
-                                       viewModel.onQuickLimitIconClicked(metadata.packageName, metadata.appName)
-                                   }) {
-                                       Icon(
-                                           painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_hour_glass_duotone),
-                                           contentDescription = "Set Limit"
-                                       )
-                                   }
+                                    LimitStatusIndicator(
+                                        limitInfo = item.limitInfo,
+                                        onClick = { viewModel.onQuickLimitIconClicked(item.metadata.packageName, item.metadata.appName) },
+                                        modifier = Modifier.size(48.dp)
+                                    )
                                 }
                             }
                             Spacer(modifier = Modifier.height(8.dp))
