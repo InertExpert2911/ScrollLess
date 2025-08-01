@@ -188,7 +188,7 @@ class TodaySummaryViewModel @Inject constructor(
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), null)
 
-    private val limitsCount: StateFlow<Int> = limitsRepository.getAllVisibleGroups()
+    private val limitsCount: StateFlow<Int> = limitsRepository.getAllLimitedApps()
         .map { it.size }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), 0)
 

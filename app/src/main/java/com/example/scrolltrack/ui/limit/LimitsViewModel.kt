@@ -35,36 +35,60 @@ class LimitsViewModel @Inject constructor(
 
     private var originalSelectedApps: Set<String> = emptySet()
 
-    val limitGroups: StateFlow<List<LimitGroupUiModel>> =
-        limitsRepository.getAllVisibleGroups()
-            .combine(appMetadataRepository.getAllMetadata()) { groups, metadataList ->
-                val metadataMap = metadataList.associateBy { it.packageName }
-                groups.map { group ->
-                    val groupWithApps = limitsRepository.getGroupWithApps(group.id).firstOrNull()
-                    val appModels = groupWithApps?.apps?.mapNotNull { limitedApp ->
-                        metadataMap[limitedApp.package_name]?.let { metadata ->
-                            AppUsageUiItem(
-                                id = metadata.packageName,
-                                appName = metadata.appName,
-                                icon = appMetadataRepository.getIconFile(metadata.packageName),
-                                usageTimeMillis = 0L, // Not needed for this display
-                                packageName = metadata.packageName
-                            )
-                        }
-                    } ?: emptyList()
+    val uiState: StateFlow<LimitsScreenUiState> =
+        combine(
+            limitsRepository.getCustomGroups(),
+            limitsRepository.getQuickLimitedGroups(),
+            appMetadataRepository.getAllMetadata()
+        ) { customGroups, quickLimitedGroups, metadataList ->
+            val metadataMap = metadataList.associateBy { it.packageName }
 
-                    LimitGroupUiModel(
-                        groupId = group.id,
-                        name = group.name,
-                        timeLimitFormatted = "${group.time_limit_minutes} min",
-                        apps = appModels
-                    )
+            val customLimitGroupUiModels = customGroups.map { group ->
+                val groupWithApps = limitsRepository.getGroupWithApps(group.id).firstOrNull()
+                val appModels = groupWithApps?.apps?.mapNotNull { limitedApp ->
+                    metadataMap[limitedApp.package_name]?.let { metadata ->
+                        AppUsageUiItem(
+                            id = metadata.packageName,
+                            appName = metadata.appName,
+                            icon = appMetadataRepository.getIconFile(metadata.packageName),
+                            usageTimeMillis = 0L,
+                            packageName = metadata.packageName
+                        )
+                    }
+                } ?: emptyList()
+
+                LimitGroupUiModel(
+                    groupId = group.id,
+                    name = group.name,
+                    timeLimitFormatted = "${group.time_limit_minutes} min",
+                    apps = appModels
+                )
+            }
+
+            val individualLimits = quickLimitedGroups.mapNotNull { group ->
+                val groupWithApps = limitsRepository.getGroupWithApps(group.id).firstOrNull()
+                val app = groupWithApps?.apps?.firstOrNull()
+                app?.let {
+                    metadataMap[it.package_name]?.let { metadata ->
+                        IndividualLimitUiModel(
+                            packageName = metadata.packageName,
+                            appName = metadata.appName,
+                            icon = appMetadataRepository.getIconFile(metadata.packageName),
+                            timeLimitFormatted = "${group.time_limit_minutes} min"
+                        )
+                    }
                 }
-            }.stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000),
-                initialValue = emptyList()
+            }
+
+            LimitsScreenUiState(
+                individualLimits = individualLimits,
+                customLimitGroups = customLimitGroupUiModels
             )
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = LimitsScreenUiState()
+        )
     fun loadGroupDetails(groupId: Long?) {
         viewModelScope.launch {
             val allAppsMetadata = appMetadataRepository.getVisibleApps().first()

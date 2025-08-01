@@ -6,7 +6,9 @@ import com.example.scrolltrack.db.LimitedApp
 import kotlinx.coroutines.flow.Flow
 
 interface LimitsRepository {
-    fun getAllVisibleGroups(): Flow<List<LimitGroup>>
+    fun getCustomGroups(): Flow<List<LimitGroup>>
+    fun getQuickLimitedGroups(): Flow<List<LimitGroup>>
+    fun getAllLimitedApps(): Flow<List<LimitedApp>>
     fun getGroupWithApps(groupId: Long): Flow<GroupWithApps?>
     fun getLimitedApp(packageName: String): Flow<LimitedApp?>
     suspend fun groupExists(name: String): Boolean

@@ -44,7 +44,7 @@ fun LimitsScreen(
     viewModel: LimitsViewModel = hiltViewModel(),
     navController: NavController
 ) {
-    val groups by viewModel.limitGroups.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
 
     Scaffold(
         floatingActionButton = {
@@ -53,21 +53,100 @@ fun LimitsScreen(
             }
         }
     ) { paddingValues ->
-        LazyColumn(
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        Column(modifier = Modifier.padding(paddingValues)) {
+            Text(
+                text = "App Limits",
+                style = MaterialTheme.typography.headlineLarge,
+                modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp)
+            )
+            LazyColumn(
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 88.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item {
+                    Text(
+                        text = "Individual Limits",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+                if (uiState.individualLimits.isEmpty()) {
+                    item { Text("No individual app limits set yet.") }
+                } else {
+                    items(uiState.individualLimits) { limit ->
+                        IndividualLimitCard(limit = limit, onClick = { /*TODO*/ })
+                    }
+                }
+
+                item {
+                    Text(
+                        text = "Custom App Groups",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                    )
+                }
+                if (uiState.customLimitGroups.isEmpty()) {
+                    item { Text("No limit groups created yet.") }
+                } else {
+                    items(uiState.customLimitGroups) { group ->
+                        LimitGroupCard(
+                            group = group,
+                            onClick = { navController.navigate(ScreenRoutes.CreateEditLimitGroupRoute.createRoute(group.groupId)) },
+                            onDelete = { viewModel.deleteGroup(group.groupId) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun IndividualLimitCard(
+    limit: IndividualLimitUiModel,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            if (groups.isEmpty()) {
-                item { Text("No limit groups created yet.", modifier = Modifier.padding(paddingValues)) }
-            } else {
-                items(groups) { group ->
-                    LimitGroupCard(
-                        group = group,
-                        onClick = { navController.navigate(ScreenRoutes.CreateEditLimitGroupRoute.createRoute(group.groupId)) },
-                        onDelete = { viewModel.deleteGroup(group.groupId) }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painter = rememberAsyncImagePainter(model = limit.icon),
+                    contentDescription = limit.appName,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(modifier = Modifier.size(16.dp))
+                Column {
+                    Text(
+                        text = limit.appName,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Limit: ${limit.timeLimitFormatted}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = "Edit Limit",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

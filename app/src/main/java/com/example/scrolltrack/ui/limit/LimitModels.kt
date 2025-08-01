@@ -1,6 +1,7 @@
 package com.example.scrolltrack.ui.limit
 
 import com.example.scrolltrack.ui.model.AppUsageUiItem
+import java.io.File
 
 // Represents a single group shown on the "Limits Hub" screen
 data class LimitGroupUiModel(
@@ -8,6 +9,18 @@ data class LimitGroupUiModel(
     val name: String,
     val timeLimitFormatted: String,
     val apps: List<AppUsageUiItem> // Use the correct UI model
+)
+
+data class IndividualLimitUiModel(
+    val packageName: String,
+    val appName: String,
+    val icon: File?,
+    val timeLimitFormatted: String
+)
+
+data class LimitsScreenUiState(
+    val individualLimits: List<IndividualLimitUiModel> = emptyList(),
+    val customLimitGroups: List<LimitGroupUiModel> = emptyList()
 )
 
 // Represents the state of the "Create/Edit" screen

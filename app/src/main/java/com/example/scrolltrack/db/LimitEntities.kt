@@ -10,7 +10,7 @@ import androidx.room.Relation
 
 @Entity(
     tableName = "limit_groups",
-    indices = [Index(value = ["name"], unique = true)] // <-- ADD THIS
+    indices = [Index(value = ["name"], unique = true)]
 )
 data class LimitGroup(
     @PrimaryKey(autoGenerate = true)
@@ -19,7 +19,7 @@ data class LimitGroup(
     val name: String,
     val time_limit_minutes: Int,
     val is_enabled: Boolean = true,
-    val is_user_visible: Boolean, // To distinguish "invisible" groups
+    val group_type: LimitGroupType,
     val creation_timestamp: Long = System.currentTimeMillis()
 )
 

@@ -1,9 +1,6 @@
 package com.example.scrolltrack.data
 
-import com.example.scrolltrack.db.GroupWithApps
-import com.example.scrolltrack.db.LimitGroup
-import com.example.scrolltrack.db.LimitedApp
-import com.example.scrolltrack.db.LimitsDao
+import com.example.scrolltrack.db.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import javax.inject.Inject
@@ -14,14 +11,22 @@ class LimitsRepositoryImpl @Inject constructor(
     private val limitsDao: LimitsDao
 ) : LimitsRepository {
 
-    override fun getAllVisibleGroups(): Flow<List<LimitGroup>> {
-        return limitsDao.getAllVisibleGroups()
+    override fun getCustomGroups(): Flow<List<LimitGroup>> {
+        return limitsDao.getCustomGroups()
+    }
+
+    override fun getQuickLimitedGroups(): Flow<List<LimitGroup>> {
+        return limitsDao.getQuickLimitedGroups()
     }
 
     override fun getGroupWithApps(groupId: Long): Flow<GroupWithApps?> {
         return limitsDao.getGroupWithApps(groupId)
     }
-    
+
+    override fun getAllLimitedApps(): Flow<List<LimitedApp>> {
+        return limitsDao.getAllLimitedApps()
+    }
+
     override fun getLimitedApp(packageName: String): Flow<LimitedApp?> {
         return limitsDao.getLimitedApp(packageName)
     }
@@ -34,7 +39,7 @@ class LimitsRepositoryImpl @Inject constructor(
         val group = LimitGroup(
             name = name,
             time_limit_minutes = timeLimitMinutes,
-            is_user_visible = true
+            group_type = LimitGroupType.CUSTOM_GROUP
         )
         return limitsDao.insertGroup(group)
     }
@@ -56,9 +61,9 @@ class LimitsRepositoryImpl @Inject constructor(
         removeAppFromAnyGroup(packageName)
 
         val group = LimitGroup(
-            name = "invisible_group_for_$packageName",
+            name = "quick_limit_for_$packageName",
             time_limit_minutes = limitMinutes,
-            is_user_visible = false,
+            group_type = LimitGroupType.QUICK_LIMIT
         )
         val newGroupId = limitsDao.insertGroup(group)
         limitsDao.insertOrUpdateLimitedApp(LimitedApp(packageName, newGroupId))
@@ -75,7 +80,7 @@ class LimitsRepositoryImpl @Inject constructor(
 
             limitsDao.deleteLimitedApp(packageName)
 
-            if (group != null && !group.is_user_visible) {
+            if (group != null && group.group_type == LimitGroupType.QUICK_LIMIT) {
                 val remainingApps = limitsDao.getGroupWithApps(group.id).firstOrNull()?.apps
                 if (remainingApps.isNullOrEmpty()) {
                     limitsDao.deleteGroup(group)
