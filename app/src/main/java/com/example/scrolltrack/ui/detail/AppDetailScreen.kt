@@ -92,6 +92,7 @@ import java.time.LocalDate
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.rememberNavController
+import com.example.scrolltrack.ui.components.SetLimitBottomSheet
 import com.example.scrolltrack.ui.theme.ScrollTrackTheme
 
 // Helper functions for date formatting specific to this screen
@@ -113,10 +114,10 @@ fun AppDetailScreen(
     navController: NavController,
     viewModel: AppDetailViewModel,
     packageName: String,
-    modifier: Modifier = Modifier,
-    onSetLimit: (String, Int) -> Unit,
-    onDeleteLimit: (String) -> Unit
+    modifier: Modifier = Modifier
 ) {
+    val setLimitSheetState by viewModel.setLimitSheetState.collectAsStateWithLifecycle()
+
     LaunchedEffect(packageName) {
         // viewModel.loadAppDetailsInfo(packageName) // This is now handled in the ViewModel's init block
     }
@@ -169,6 +170,15 @@ fun AppDetailScreen(
         }
     }
 
+    setLimitSheetState?.let {
+        SetLimitBottomSheet(
+            onDismissRequest = { viewModel.dismissSetLimitSheet() },
+            onSetLimit = { _, limit -> viewModel.onSetLimit(limit) },
+            onDeleteLimit = { viewModel.onDeleteLimit() },
+            sheetState = it
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -187,6 +197,14 @@ fun AppDetailScreen(
                             style = MaterialTheme.typography.headlineMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { viewModel.onQuickLimitIconClicked(appName ?: packageName) }) {
+                        Icon(
+                            painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_hour_glass_duotone),
+                            contentDescription = "Set Limit"
                         )
                     }
                 },

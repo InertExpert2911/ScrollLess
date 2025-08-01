@@ -7,6 +7,7 @@ import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.db.DailyDeviceSummary
 import com.example.scrolltrack.ui.mappers.AppUiModelMapper
 import com.example.scrolltrack.di.IoDispatcher
+import com.example.scrolltrack.ui.limit.LimitViewModelDelegate
 import com.example.scrolltrack.ui.model.AppOpenUiItem
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -46,11 +47,13 @@ data class UnlocksUiState(
 class UnlocksViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
     private val mapper: AppUiModelMapper,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
+    private val limitViewModelDelegate: LimitViewModelDelegate
 ) : ViewModel() {
 
     private val _selectedDate = MutableStateFlow(LocalDate.now())
     private val _period = MutableStateFlow(UnlockPeriod.Daily)
+    val setLimitSheetState = limitViewModelDelegate.setLimitSheetState
 
     val uiState: StateFlow<UnlocksUiState> = combine(
         _selectedDate,
@@ -150,4 +153,19 @@ class UnlocksViewModel @Inject constructor(
         _period.value = period
     }
 
+    fun onQuickLimitIconClicked(packageName: String, appName: String) {
+        limitViewModelDelegate.onQuickLimitIconClicked(viewModelScope, packageName, appName)
+    }
+
+    fun onSetLimit(packageName: String, limitMinutes: Int) {
+        limitViewModelDelegate.onSetLimit(viewModelScope, packageName, limitMinutes)
+    }
+
+    fun onDeleteLimit(packageName: String) {
+        limitViewModelDelegate.onDeleteLimit(viewModelScope, packageName)
+    }
+
+    fun dismissSetLimitSheet() {
+        limitViewModelDelegate.dismissSetLimitSheet()
+    }
 }

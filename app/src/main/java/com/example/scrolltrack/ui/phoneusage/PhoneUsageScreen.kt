@@ -37,18 +37,23 @@ import com.example.scrolltrack.ui.components.SetLimitBottomSheet
 fun PhoneUsageScreen(
     navController: NavController,
     viewModel: PhoneUsageViewModel,
-    modifier: Modifier = Modifier,
-    onSetLimit: (String, Int) -> Unit,
-    onDeleteLimit: (String) -> Unit,
-    onQuickLimitIconClicked: (String, String) -> Unit
+    modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var showBottomSheet by remember { mutableStateOf(false) }
-    var selectedAppForLimit by remember { mutableStateOf<AppUsageUiItem?>(null) }
- 
-     Scaffold(
-         modifier = modifier.navigationBarsPadding()
-     ) { innerPadding ->
+    val setLimitSheetState by viewModel.setLimitSheetState.collectAsStateWithLifecycle()
+
+    setLimitSheetState?.let {
+        SetLimitBottomSheet(
+            onDismissRequest = viewModel::dismissSetLimitSheet,
+            onSetLimit = viewModel::onSetLimit,
+            onDeleteLimit = viewModel::onDeleteLimit,
+            sheetState = it
+        )
+    }
+
+    Scaffold(
+        modifier = modifier.navigationBarsPadding()
+    ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -144,7 +149,7 @@ fun PhoneUsageScreen(
                         period = uiState.period,
                         onClick = { navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(usageItem.packageName)) },
                         onSetLimitClick = {
-                            onQuickLimitIconClicked(it.packageName, it.appName)
+                            viewModel.onQuickLimitIconClicked(it.packageName, it.appName)
                         },
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )

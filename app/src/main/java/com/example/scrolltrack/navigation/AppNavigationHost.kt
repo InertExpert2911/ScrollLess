@@ -171,10 +171,7 @@ private fun NavGraphBuilder.addDashboardGraph(
             val todaySummaryViewModel: TodaySummaryViewModel = hiltViewModel()
             DashboardTabs(
                 navController = navController,
-                selectedTab = tab,
-                onSetLimit = todaySummaryViewModel::onSetLimit,
-                onDeleteLimit = todaySummaryViewModel::onDeleteLimit,
-                onQuickLimitIconClicked = todaySummaryViewModel::onQuickLimitIconClicked
+                selectedTab = tab
             )
         }
         composable(
@@ -188,8 +185,6 @@ private fun NavGraphBuilder.addDashboardGraph(
                     navController = navController,
                     viewModel = appDetailViewModel,
                     packageName = packageName,
-                    onSetLimit = { _, _ -> },
-                    onDeleteLimit = { }
                 )
             } else {
                 navController.popBackStack()
@@ -209,10 +204,7 @@ private fun NavGraphBuilder.addDashboardGraph(
                 }
                 ScrollDetailScreen(
                     navController = navController,
-                    viewModel = scrollDetailViewModel,
-                    onSetLimit = { _, _ -> },
-                    onDeleteLimit = { },
-                    onQuickLimitIconClicked = { _, _ -> }
+                    viewModel = scrollDetailViewModel
                 )
             } else {
                 Text("Error: Date not found for Scroll Detail.")

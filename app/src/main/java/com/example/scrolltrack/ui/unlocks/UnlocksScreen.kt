@@ -36,21 +36,26 @@ import java.time.LocalDate
 @Composable
 fun UnlocksScreen(
     navController: NavController,
-    viewModel: UnlocksViewModel = hiltViewModel(),
-    onSetLimit: (String, Int) -> Unit,
-    onDeleteLimit: (String) -> Unit,
-    onQuickLimitIconClicked: (String, String) -> Unit
+    viewModel: UnlocksViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var showBottomSheet by remember { mutableStateOf(false) }
-    var selectedAppForLimit by remember { mutableStateOf<AppUsageUiItem?>(null) }
- 
-     Scaffold { innerPadding ->
-         LazyColumn(
-             modifier = Modifier
-                 .fillMaxSize()
-                 .padding(innerPadding)
-         ) {
+    val setLimitSheetState by viewModel.setLimitSheetState.collectAsStateWithLifecycle()
+
+    setLimitSheetState?.let {
+        SetLimitBottomSheet(
+            onDismissRequest = viewModel::dismissSetLimitSheet,
+            onSetLimit = viewModel::onSetLimit,
+            onDeleteLimit = viewModel::onDeleteLimit,
+            sheetState = it
+        )
+    }
+
+    Scaffold { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
             item {
                 Spacer(modifier = Modifier.height(16.dp))
                 InteractiveCalendarHeatmap(
@@ -144,7 +149,7 @@ fun UnlocksScreen(
                             navController.navigate(ScreenRoutes.AppDetailRoute.createRoute(app.packageName))
                         },
                         onSetLimitClick = {
-                            onQuickLimitIconClicked(it.packageName, it.appName)
+                            viewModel.onQuickLimitIconClicked(it.packageName, it.appName)
                         },
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )

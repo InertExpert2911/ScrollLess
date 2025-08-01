@@ -51,10 +51,7 @@ enum class DashboardScreen(
 fun DashboardTabs(
     navController: NavController,
     selectedTab: String?,
-    modifier: Modifier = Modifier,
-    onSetLimit: (String, Int) -> Unit,
-    onDeleteLimit: (String) -> Unit,
-    onQuickLimitIconClicked: (String, String) -> Unit
+    modifier: Modifier = Modifier
 ) {
     val initialPageIndex = remember {
         DashboardScreen.valueOf(selectedTab ?: DashboardScreen.PhoneUsage.name).ordinal
@@ -114,10 +111,10 @@ fun DashboardTabs(
                 modifier = Modifier.fillMaxSize()
             ) { page ->
                 when (page) {
-                    DashboardScreen.PhoneUsage.ordinal -> PhoneUsageScreen(navController = navController, viewModel = hiltViewModel(), onSetLimit = onSetLimit, onDeleteLimit = onDeleteLimit, onQuickLimitIconClicked = onQuickLimitIconClicked)
-                    DashboardScreen.Unlocks.ordinal -> UnlocksScreen(navController = navController, viewModel = hiltViewModel(), onSetLimit = onSetLimit, onDeleteLimit = onDeleteLimit, onQuickLimitIconClicked = onQuickLimitIconClicked)
-                    DashboardScreen.ScrollDistance.ordinal -> ScrollDetailScreen(navController = navController, viewModel = hiltViewModel(), onSetLimit = onSetLimit, onDeleteLimit = onDeleteLimit, onQuickLimitIconClicked = onQuickLimitIconClicked)
-                    DashboardScreen.Notifications.ordinal -> NotificationsScreen(navController = navController, viewModel = hiltViewModel(), onSetLimit = onSetLimit, onDeleteLimit = onDeleteLimit, onQuickLimitIconClicked = onQuickLimitIconClicked)
+                    DashboardScreen.PhoneUsage.ordinal -> PhoneUsageScreen(navController = navController, viewModel = hiltViewModel())
+                    DashboardScreen.Unlocks.ordinal -> UnlocksScreen(navController = navController, viewModel = hiltViewModel())
+                    DashboardScreen.ScrollDistance.ordinal -> ScrollDetailScreen(navController = navController, viewModel = hiltViewModel())
+                    DashboardScreen.Notifications.ordinal -> NotificationsScreen(navController = navController, viewModel = hiltViewModel())
                 }
             }
         }

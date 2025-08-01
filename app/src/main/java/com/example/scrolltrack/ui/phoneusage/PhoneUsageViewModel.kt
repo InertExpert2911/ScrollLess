@@ -3,6 +3,7 @@ package com.example.scrolltrack.ui.phoneusage
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.scrolltrack.data.ScrollDataRepository
+import com.example.scrolltrack.ui.limit.LimitViewModelDelegate
 import com.example.scrolltrack.ui.mappers.AppUiModelMapper
 import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.util.DateUtil
@@ -36,11 +37,13 @@ data class PhoneUsageUiState(
 @HiltViewModel
 class PhoneUsageViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
-    private val mapper: AppUiModelMapper
+    private val mapper: AppUiModelMapper,
+    private val limitViewModelDelegate: LimitViewModelDelegate
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PhoneUsageUiState())
     val uiState: StateFlow<PhoneUsageUiState> = _uiState.asStateFlow()
+    val setLimitSheetState = limitViewModelDelegate.setLimitSheetState
 
     init {
         observeHeatmapData()
@@ -132,4 +135,19 @@ class PhoneUsageViewModel @Inject constructor(
         _uiState.update { it.copy(period = period) }
     }
 
+    fun onQuickLimitIconClicked(packageName: String, appName: String) {
+        limitViewModelDelegate.onQuickLimitIconClicked(viewModelScope, packageName, appName)
+    }
+
+    fun onSetLimit(packageName: String, limitMinutes: Int) {
+        limitViewModelDelegate.onSetLimit(viewModelScope, packageName, limitMinutes)
+    }
+
+    fun onDeleteLimit(packageName: String) {
+        limitViewModelDelegate.onDeleteLimit(viewModelScope, packageName)
+    }
+
+    fun dismissSetLimitSheet() {
+        limitViewModelDelegate.dismissSetLimitSheet()
+    }
 }

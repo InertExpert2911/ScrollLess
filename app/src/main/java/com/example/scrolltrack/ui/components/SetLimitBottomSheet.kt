@@ -5,9 +5,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import com.example.scrolltrack.ui.model.AppUsageUiItem
-
 import com.example.scrolltrack.ui.main.SetLimitSheetState
 import com.example.scrolltrack.util.DateUtil
 
@@ -33,11 +35,15 @@ fun SetLimitBottomSheet(
                 text = "Control your time on ${sheetState.appName}",
                 style = MaterialTheme.typography.headlineSmall
             )
-            sheetState.averageUsageMillis?.let {
-                Text(
-                    text = "Your average daily use is ${DateUtil.formatDuration(it)}. Try setting a limit just below that.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
+            sheetState.suggestedLimitMinutes?.let { suggestedMinutes ->
+                val suggestionText = buildAnnotatedString {
+                    append("Suggested limit is ")
+                    withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                        append(DateUtil.formatMinutesToHoursAndMinutes(suggestedMinutes))
+                    }
+                    append(" based on usage.")
+                }
+                SuggestionCard(text = suggestionText)
             }
             Slider(
                 value = sliderPosition,

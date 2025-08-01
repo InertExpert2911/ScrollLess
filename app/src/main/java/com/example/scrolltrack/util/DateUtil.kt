@@ -89,6 +89,18 @@ object DateUtil {
             else -> String.format(Locale.US, "%dm", minutes)
         }
     }
+fun formatMinutesToHoursAndMinutes(minutes: Int): String {
+        if (minutes < 0) return "N/A"
+        if (minutes == 0) return "0m"
+        val hours = minutes / 60
+        val remainingMinutes = minutes % 60
+
+        return when {
+            hours > 0 && remainingMinutes > 0 -> String.format(Locale.US, "%dh %dm", hours, remainingMinutes)
+            hours > 0 -> String.format(Locale.US, "%dh", hours)
+            else -> String.format(Locale.US, "%dm", remainingMinutes)
+        }
+    }
 
     fun formatDurationWithSeconds(millis: Long): String {
         if (millis < 0) return "0s"

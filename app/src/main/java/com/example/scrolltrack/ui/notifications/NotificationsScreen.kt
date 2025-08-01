@@ -44,19 +44,23 @@ import kotlinx.coroutines.launch
 @Composable
 fun NotificationsScreen(
     navController: NavController,
-    viewModel: NotificationsViewModel,
-    onSetLimit: (String, Int) -> Unit,
-    onDeleteLimit: (String) -> Unit,
-    onQuickLimitIconClicked: (String, String) -> Unit
+    viewModel: NotificationsViewModel
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var showBottomSheet by remember { mutableStateOf(false) }
-    var selectedAppForLimit by remember { mutableStateOf<AppUsageUiItem?>(null) }
-    val coroutineScope = rememberCoroutineScope()
- 
-     Scaffold(
-         modifier = Modifier.navigationBarsPadding()
-     ) { innerPadding ->
+    val setLimitSheetState by viewModel.setLimitSheetState.collectAsState()
+
+    setLimitSheetState?.let {
+        SetLimitBottomSheet(
+            onDismissRequest = viewModel::dismissSetLimitSheet,
+            onSetLimit = viewModel::onSetLimit,
+            onDeleteLimit = viewModel::onDeleteLimit,
+            sheetState = it
+        )
+    }
+
+    Scaffold(
+        modifier = Modifier.navigationBarsPadding()
+    ) { innerPadding ->
         when (val state = uiState) {
             is NotificationsUiState.Loading -> {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -197,7 +201,7 @@ fun NotificationsScreen(
                                         )
                                     }
                                    IconButton(onClick = {
-                                       onQuickLimitIconClicked(metadata.packageName, metadata.appName)
+                                       viewModel.onQuickLimitIconClicked(metadata.packageName, metadata.appName)
                                    }) {
                                        Icon(
                                            painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_hour_glass_duotone),

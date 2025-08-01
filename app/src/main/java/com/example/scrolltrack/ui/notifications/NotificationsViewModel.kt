@@ -7,6 +7,7 @@ import com.example.scrolltrack.data.NotificationCountPerApp
 import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.db.AppMetadata
 import com.example.scrolltrack.di.IoDispatcher
+import com.example.scrolltrack.ui.limit.LimitViewModelDelegate
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
@@ -40,10 +41,12 @@ sealed interface NotificationsUiState {
 class NotificationsViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
     private val appMetadataRepository: AppMetadataRepository,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher,
+    private val limitViewModelDelegate: LimitViewModelDelegate
 ) : ViewModel() {
 
     private data class PeriodDetails(val startDate: String, val endDate: String, val title: String, val dateRange: List<String>)
+    val setLimitSheetState = limitViewModelDelegate.setLimitSheetState
 
     private val _selectedDate = MutableStateFlow(LocalDate.now())
     private val _selectedPeriod = MutableStateFlow(NotificationPeriod.Daily)
@@ -134,5 +137,21 @@ fun onDateSelected(date: LocalDate) {
 
 suspend fun getIconFile(packageName: String): java.io.File? = withContext(ioDispatcher) {
         appMetadataRepository.getIconFile(packageName)
+    }
+
+    fun onQuickLimitIconClicked(packageName: String, appName: String) {
+        limitViewModelDelegate.onQuickLimitIconClicked(viewModelScope, packageName, appName)
+    }
+
+    fun onSetLimit(packageName: String, limitMinutes: Int) {
+        limitViewModelDelegate.onSetLimit(viewModelScope, packageName, limitMinutes)
+    }
+
+    fun onDeleteLimit(packageName: String) {
+        limitViewModelDelegate.onDeleteLimit(viewModelScope, packageName)
+    }
+
+    fun dismissSetLimitSheet() {
+        limitViewModelDelegate.dismissSetLimitSheet()
     }
 }

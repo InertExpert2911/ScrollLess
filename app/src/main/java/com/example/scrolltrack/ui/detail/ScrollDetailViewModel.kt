@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.scrolltrack.data.ScrollDataRepository
 import com.example.scrolltrack.ui.mappers.AppUiModelMapper
 import com.example.scrolltrack.ui.model.AppScrollUiItem
+import com.example.scrolltrack.ui.limit.LimitViewModelDelegate
 import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -37,11 +38,13 @@ data class ScrollDetailUiState(
 class ScrollDetailViewModel @Inject constructor(
     private val repository: ScrollDataRepository,
     private val mapper: AppUiModelMapper,
-    val conversionUtil: ConversionUtil
+    val conversionUtil: ConversionUtil,
+    private val limitViewModelDelegate: LimitViewModelDelegate
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ScrollDetailUiState())
     val uiState: StateFlow<ScrollDetailUiState> = _uiState.asStateFlow()
+    val setLimitSheetState = limitViewModelDelegate.setLimitSheetState
 
     init {
         observeHeatmapData()
@@ -158,4 +161,19 @@ class ScrollDetailViewModel @Inject constructor(
         _uiState.update { it.copy(period = period) }
     }
 
+    fun onQuickLimitIconClicked(packageName: String, appName: String) {
+        limitViewModelDelegate.onQuickLimitIconClicked(viewModelScope, packageName, appName)
+    }
+
+    fun onSetLimit(packageName: String, limitMinutes: Int) {
+        limitViewModelDelegate.onSetLimit(viewModelScope, packageName, limitMinutes)
+    }
+
+    fun onDeleteLimit(packageName: String) {
+        limitViewModelDelegate.onDeleteLimit(viewModelScope, packageName)
+    }
+
+    fun dismissSetLimitSheet() {
+        limitViewModelDelegate.dismissSetLimitSheet()
+    }
 }

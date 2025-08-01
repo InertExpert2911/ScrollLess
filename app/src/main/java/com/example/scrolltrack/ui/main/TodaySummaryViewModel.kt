@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.scrolltrack.data.*
 import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.db.DailyDeviceSummary
+import com.example.scrolltrack.ui.limit.LimitViewModelDelegate
 import com.example.scrolltrack.ui.mappers.AppUiModelMapper
 import com.example.scrolltrack.ui.model.AppUsageUiItem
 import com.example.scrolltrack.ui.theme.AppTheme
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
 sealed class UiState {
     object InitialLoading : UiState()
@@ -90,14 +92,15 @@ class TodaySummaryViewModel @Inject constructor(
     private val greetingUtil: GreetingUtil,
     private val dateUtil: DateUtil,
     private val clock: Clock,
-    private val conversionUtil: ConversionUtil
+    private val conversionUtil: ConversionUtil,
+    private val limitViewModelDelegate: LimitViewModelDelegate
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<UiState>(UiState.InitialLoading)
     val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     private val _selectedDate = MutableStateFlow(dateUtil.getCurrentLocalDateString())
-    private val _setLimitSheetState = MutableStateFlow<SetLimitSheetState?>(null)
+    val setLimitSheetState: StateFlow<SetLimitSheetState?> = limitViewModelDelegate.setLimitSheetState
 
     private var lastPermissionState: PermissionState? = null
 
@@ -209,7 +212,7 @@ class TodaySummaryViewModel @Inject constructor(
             _selectedDate.flatMapLatest { scrollDataRepository.getAppUsageForDate(it) },
             _selectedDate.flatMapLatest { scrollDataRepository.getScrollDataForDate(it) },
             limitsCount,
-            _setLimitSheetState
+            setLimitSheetState
         )
     ) { args: Array<*> ->
         TodayData(
@@ -343,51 +346,20 @@ class TodaySummaryViewModel @Inject constructor(
         }
     }
 
-    fun setLimit(packageName: String, limitInMinutes: Int) {
-        viewModelScope.launch {
-            scrollDataRepository.setAppLimit(packageName, limitInMinutes)
-        }
+    fun onQuickLimitIconClicked(packageName: String, appName: String) {
+        limitViewModelDelegate.onQuickLimitIconClicked(viewModelScope, packageName, appName)
     }
 
-    fun onQuickLimitIconClicked(packageName: String, appName: String) {
-        viewModelScope.launch {
-            val sevenDaysAgo = (0..6).map { dateUtil.getPastDateString(it) }
-            val averageUsageFlow = scrollDataRepository.getAverageUsageForPackage(packageName, sevenDaysAgo)
-            val existingLimitFlow = limitsRepository.getLimitedApp(packageName)
-
-            combine(averageUsageFlow, existingLimitFlow) { averageUsage, existingLimit ->
-                val existingLimitMinutes = if (existingLimit != null) {
-                    limitsRepository.getGroupWithApps(existingLimit.group_id).firstOrNull()?.group?.time_limit_minutes
-                } else {
-                    null
-                }
-
-               _setLimitSheetState.value = SetLimitSheetState(
-                   packageName = packageName,
-                   appName = appName,
-                   existingLimitMinutes = existingLimitMinutes,
-                   averageUsageMillis = averageUsage
-               )
-           }.first()
-       }
-   }
-
-   fun dismissSetLimitSheet() {
-       _setLimitSheetState.value = null
-   }
+    fun dismissSetLimitSheet() {
+        limitViewModelDelegate.dismissSetLimitSheet()
+    }
 
     fun onSetLimit(packageName: String, limitMinutes: Int) {
-        viewModelScope.launch {
-            limitsRepository.setAppLimit(packageName, limitMinutes)
-            dismissSetLimitSheet()
-        }
+        limitViewModelDelegate.onSetLimit(viewModelScope, packageName, limitMinutes)
     }
 
     fun onDeleteLimit(packageName: String) {
-        viewModelScope.launch {
-            limitsRepository.removeAppLimit(packageName)
-            dismissSetLimitSheet()
-        }
+        limitViewModelDelegate.onDeleteLimit(viewModelScope, packageName)
     }
 
     private fun calculateComparison(current: Long?, previous: Long?): StatComparison? {

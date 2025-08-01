@@ -12,6 +12,7 @@ import com.example.scrolltrack.db.DailyAppUsageRecord
 import com.example.scrolltrack.ui.main.ComparisonColorType
 import com.example.scrolltrack.ui.main.ComparisonIconType
 import com.example.scrolltrack.ui.model.AppDailyDetailData
+import com.example.scrolltrack.ui.limit.LimitViewModelDelegate
 import com.example.scrolltrack.util.ConversionUtil
 import com.example.scrolltrack.util.DateUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -58,10 +59,12 @@ class AppDetailViewModel @Inject constructor(
     internal val conversionUtil: ConversionUtil,
     savedStateHandle: SavedStateHandle,
     @param:ApplicationContext private val context: Context,
-    @MainDispatcher private val mainDispatcher: CoroutineDispatcher
+    @MainDispatcher private val mainDispatcher: CoroutineDispatcher,
+    private val limitViewModelDelegate: LimitViewModelDelegate
 ) : ViewModel() {
 
     private val packageName: String = savedStateHandle.get<String>("packageName")!!
+    val setLimitSheetState = limitViewModelDelegate.setLimitSheetState
 
     // --- App Detail Screen Specific States ---
     private val _appDetailAppName = MutableStateFlow<String?>(null)
@@ -430,4 +433,20 @@ class AppDetailViewModel @Inject constructor(
             }
         }
     }
-} 
+
+    fun onQuickLimitIconClicked(appName: String) {
+        limitViewModelDelegate.onQuickLimitIconClicked(viewModelScope, packageName, appName)
+    }
+
+    fun onSetLimit(limitMinutes: Int) {
+        limitViewModelDelegate.onSetLimit(viewModelScope, packageName, limitMinutes)
+    }
+
+    fun onDeleteLimit() {
+        limitViewModelDelegate.onDeleteLimit(viewModelScope, packageName)
+    }
+
+    fun dismissSetLimitSheet() {
+        limitViewModelDelegate.dismissSetLimitSheet()
+    }
+}
